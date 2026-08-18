@@ -6,6 +6,7 @@ import argparse
 import random
 import sys
 import os
+import time
 
 # Platform-specific imports for keyboard input
 if sys.platform == 'win32':
@@ -13,6 +14,24 @@ if sys.platform == 'win32':
 else:
     import tty
     import termios
+
+# smallest maze that still has an interior path
+MIN_DIMENSION = 2
+
+# seconds to wait between keyboard polls on Windows, so an idle
+# game loop does not spin the CPU at 100%
+KEY_POLL_INTERVAL = 0.01
+
+# byte prefixes Windows sends ahead of an extended (arrow) key
+WINDOWS_ARROW_PREFIXES = (b'\xe0', b'\x00')
+
+# second byte of a Windows extended key, mapped to a direction
+WINDOWS_ARROW_KEYS = {
+    b'H': 'up',
+    b'P': 'down',
+    b'K': 'left',
+    b'M': 'right',
+}
 
 
 class MazeGenerator:
@@ -161,43 +180,59 @@ class MazeGame:
     # get a single keypress from user (cross-platform)
     def get_key(self):
         if sys.platform == 'win32':
-            # windows
-            if msvcrt.kbhit():
-                key = msvcrt.getch()
-                # handle arrow keys (they come as two bytes)
-                if key == b'\xe0':  # arrow key prefix on Windows
-                    key = msvcrt.getch()
-                    if key == b'H':  # up arrow
-                        return 'up'
-                    elif key == b'P':  # down arrow
-                        return 'down'
-                    elif key == b'K':  # left arrow
-                        return 'left'
-                    elif key == b'M':  # right arrow
-                        return 'right'
-                return key.decode('utf-8', errors='ignore').lower()
-        else:
-            # unix/linux/mac
-            fd = sys.stdin.fileno()
-            old_settings = termios.tcgetattr(fd)
-            try:
-                tty.setraw(sys.stdin.fileno())
-                key = sys.stdin.read(1)
-                # handle arrow keys (they come as escape sequences)
-                if key == '\x1b':
-                    key += sys.stdin.read(2)
-                    if key == '\x1b[A':
-                        return 'up'
-                    elif key == '\x1b[B':
-                        return 'down'
-                    elif key == '\x1b[D':
-                        return 'left'
-                    elif key == '\x1b[C':
-                        return 'right'
-                return key.lower()
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return None
+            return self.get_key_windows()
+        return self.get_key_posix()
+
+    def get_key_windows(self):
+        # wait for a keypress on Windows
+        #
+        # Returns:
+        #     'up', 'down', 'left' or 'right' for an arrow key, otherwise
+        #     the lowercased character that was typed
+
+        # poll until a key is waiting, sleeping between checks so the
+        # game loop stays idle instead of burning a whole CPU core
+        while not msvcrt.kbhit():
+            time.sleep(KEY_POLL_INTERVAL)
+
+        key = msvcrt.getch()
+
+        # arrow keys arrive as two bytes: a prefix, then the direction.
+        # the prefix is b'\xe0' for most keyboards and b'\x00' for the
+        # function-key block, so both have to be handled
+        if key in WINDOWS_ARROW_PREFIXES:
+            key = msvcrt.getch()
+            if key in WINDOWS_ARROW_KEYS:
+                return WINDOWS_ARROW_KEYS[key]
+
+        return key.decode('utf-8', errors='ignore').lower()
+
+    def get_key_posix(self):
+        # wait for a keypress on unix/linux/mac
+        #
+        # Returns:
+        #     'up', 'down', 'left' or 'right' for an arrow key, otherwise
+        #     the lowercased character that was typed
+
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            key = sys.stdin.read(1)
+            # handle arrow keys (they come as escape sequences)
+            if key == '\x1b':
+                key += sys.stdin.read(2)
+                if key == '\x1b[A':
+                    return 'up'
+                elif key == '\x1b[B':
+                    return 'down'
+                elif key == '\x1b[D':
+                    return 'left'
+                elif key == '\x1b[C':
+                    return 'right'
+            return key.lower()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     # main game loop
     def play(self):
@@ -229,17 +264,53 @@ class MazeGame:
                 break
 
 
+def maze_dimension(value):
+    # argparse type for --width and --height
+    #
+    # Args:
+    #     value: Raw command-line string for the option
+    #
+    # Returns:
+    #     int: The dimension in cells
+    #
+    # Raises:
+    #     argparse.ArgumentTypeError: If the value is not a whole number
+    #     of at least MIN_DIMENSION cells
+
+    try:
+        cells = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "'%s' is not a whole number of cells" % value)
+
+    if cells < MIN_DIMENSION:
+        raise argparse.ArgumentTypeError(
+            "maze dimensions must be at least %d cells, got %d"
+            % (MIN_DIMENSION, cells))
+
+    return cells
+
+
+# Build the command-line parser for py_maze.
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Generate a random, solvable maze and play through it.")
+    parser.add_argument("--width", "-w", type=maze_dimension, default=9,
+                        help="Width of the maze in cells (minimum %d)" % MIN_DIMENSION)
+    # NOTE: -h is reserved by argparse for --help, so height uses -H
+    parser.add_argument("--height", "-H", type=maze_dimension, default=11,
+                        help="Height of the maze in cells (minimum %d)" % MIN_DIMENSION)
+    return parser
+
+
 # Main entry point for py_maze command.
 def main():
-    print("Generating maze...")
-
     # use width and height from argument or defaults
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--width", "-w", type=int, default=9, help="Width of the maze in cells")
-    parser.add_argument("--height", "-H", type=int, default=11, help="Height of the maze in cells")
-    args = parser.parse_args()
+    args = build_parser().parse_args()
     height = args.height
     width = args.width
+
+    print("Generating maze...")
 
     # generate a random maze
     generator = MazeGenerator(width, height)

@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='py_maze',
-    version='1.0.0',
+    version='1.0.1',
     description='A command-line maze generator and game',
     author='Your Name',
     py_modules=['py_maze'],

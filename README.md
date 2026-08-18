@@ -33,7 +33,35 @@ python py_maze.py
 or set custom width and height for the maze like:
 
 ```bash
-python py_maze.py -w 20 -h 30
+python py_maze.py -w 20 -H 30
+```
+
+## Command-Line Options
+
+| Option | Short | Default | Description |
+| --- | --- | --- | --- |
+| `--width` | `-w` | `9` | Width of the maze in cells (minimum 2) |
+| `--height` | `-H` | `11` | Height of the maze in cells (minimum 2) |
+| `--help` | `-h` | | Show usage and exit |
+
+Note that the short flag for height is a capital `-H`. Lowercase `-h` is
+reserved by argparse for `--help`.
+
+A maze is drawn with walls between cells, so a maze of `W` by `H` cells
+renders as `W * 2 + 1` characters wide and `H * 2 + 1` characters tall.
+
+Values below 2 cells cannot produce a maze with an interior path, so they
+are rejected:
+
+```bash
+python py_maze.py -w 1
+```
+
+**Output:**
+
+```
+usage: py_maze.py [-h] [--width WIDTH] [--height HEIGHT]
+py_maze.py: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
 
 ## How to Play
@@ -95,8 +123,19 @@ The project structure:
 ```
 py_maze/
 ├── py_maze.py          # Main game module
+├── test_py_maze.py     # Unit tests
 ├── setup.py            # Installation configuration
+├── CHANGELOG.md        # Version history
 └── README.md           # This file
+```
+
+### Running the Tests
+
+The tests use only the standard library, so no test dependencies are
+needed:
+
+```bash
+python -m unittest discover -v
 ```
 
 ## License
