@@ -5,6 +5,46 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-08-19
+
+### Added
+
+- A `--version`/`-V` flag that prints the package version and exits. The
+  number is read from the module, so the flag, the manifest and an installed
+  copy can never disagree.
+- Maze sizes are now measured against the terminal before generating. A maze
+  wider or taller than the screen is capped to what fits, with a warning
+  naming the option, the space it needed and the size being used instead.
+  When the terminal cannot hold even the smallest maze, the warning says so
+  rather than shrinking below the two cell minimum.
+- `pyproject.toml`, declaring the package metadata and reading the version
+  from `py_maze.__version__` so it is recorded in exactly one place.
+- A `.gitignore` covering Python artifacts (`__pycache__/`, `*.egg-info/`,
+  `build/`, `dist/`), test and coverage output, virtual environments, and
+  editor and operating system noise.
+- Tests for the POSIX keyboard branch, the interrupt handling, the terminal
+  fitting helpers and the `--version` flag. The POSIX branch is driven
+  through a fake terminal, so the suite still runs on any platform.
+
+### Changed
+
+- Packaging moved from `setup.py` to `pyproject.toml`. Installing with
+  `pip install -e .` is unchanged, but building from source now needs
+  setuptools 61 or newer.
+- The placeholder author metadata left in `setup.py` has been replaced with
+  the real project details, and the manifest now records the project's home
+  page, repository, changelog and issue tracker.
+- Quitting at the "would you like to play" prompt and interrupting the game
+  now print the same parting message, from a single constant.
+
+### Fixed
+
+- Ctrl+C during gameplay no longer ends in a traceback over a terminal still
+  in raw mode. Raw mode suppresses the usual interrupt signal, so the key
+  arrived as an ordinary byte and was ignored on POSIX and swallowed by
+  `getch` on Windows. Both key readers now restore the terminal and raise
+  the interrupt, and the game loop catches it and exits with a message.
+
 ## [1.0.1] - 2026-08-18
 
 ### Added

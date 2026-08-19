@@ -7,47 +7,35 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add a `.gitignore` for Python artifacts (`__pycache__/`,
-  `*.egg-info/`, `build/`, `dist/`)
-  - From: Project Infrastructure
-- [ ] Handle Ctrl+C cleanly during gameplay: restore the terminal state
-  on POSIX and exit with a goodbye message instead of a traceback
-  - From: Fixes and Hardening
-- [ ] Cap maze dimensions to the current terminal size (or warn when
-  the maze will not fit) so large `--width`/`--height` values do not
-  produce an unreadable render
-  - From: Fixes and Hardening
-- [ ] Migrate packaging from `setup.py` to `pyproject.toml` with a
-  single-sourced version so the manifest can be updated in one place
-  - From: Project Infrastructure
-- [ ] Replace placeholder author metadata in `setup.py` with real
-  project metadata and add a `--version` flag to the CLI wired to the
-  package version
-  - From: Fixes and Hardening
+- [ ] Add a `--seed` option so the same maze can be regenerated
+  deterministically
+  - From: Gameplay Enhancements
+- [ ] Add difficulty levels (easy, normal, hard) that map to preset
+  maze sizes selectable from the command line
+  - From: Gameplay Enhancements
+- [ ] Implement a maze solver (breadth-first search) that can print the
+  solution path overlaid on the maze via a `--solve` flag
+  - From: Maze Solver and Visualization
+- [ ] Add an in-game hint command that briefly highlights the next step
+  along the solution path
+  - From: Maze Solver and Visualization
+- [ ] Add an animated solver visualization mode that steps through the
+  search frontier in the terminal
+  - From: Maze Solver and Visualization
 
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
 items in this section is a patch version update.
 
-- [ ] Handle Ctrl+C cleanly during gameplay: restore the terminal state
-  on POSIX and exit with a goodbye message instead of a traceback
-- [ ] Cap maze dimensions to the current terminal size (or warn when
-  the maze will not fit) so large `--width`/`--height` values do not
-  produce an unreadable render
-- [ ] Replace placeholder author metadata in `setup.py` with real
-  project metadata and add a `--version` flag to the CLI wired to the
-  package version
+No items are currently queued in this section.
 
 ## Project Infrastructure
 
 Tooling, packaging, and documentation groundwork. Completing items in
 this section is a patch version update.
 
-- [ ] Migrate packaging from `setup.py` to `pyproject.toml` with a
-  single-sourced version so the manifest can be updated in one place
-- [ ] Add a `.gitignore` for Python artifacts (`__pycache__/`,
-  `*.egg-info/`, `build/`, `dist/`)
+No items are currently queued in this section.
 
 ## Gameplay Enhancements
 
@@ -98,3 +86,20 @@ items in this section is a minor version update.
   entrance and exit placement) and `MazeGame` (movement, wall
   collision, win detection)
   - From: Project Infrastructure
+- [x] Add a `.gitignore` for Python artifacts (`__pycache__/`,
+  `*.egg-info/`, `build/`, `dist/`)
+  - From: Project Infrastructure
+- [x] Handle Ctrl+C cleanly during gameplay: restore the terminal state
+  on POSIX and exit with a goodbye message instead of a traceback
+  - From: Fixes and Hardening
+- [x] Cap maze dimensions to the current terminal size (or warn when
+  the maze will not fit) so large `--width`/`--height` values do not
+  produce an unreadable render
+  - From: Fixes and Hardening
+- [x] Migrate packaging from `setup.py` to `pyproject.toml` with a
+  single-sourced version so the manifest can be updated in one place
+  - From: Project Infrastructure
+- [x] Replace placeholder author metadata in `setup.py` with real
+  project metadata and add a `--version` flag to the CLI wired to the
+  package version
+  - From: Fixes and Hardening

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py_maze"
+description = "A command-line maze generator and game"
+readme = "README.md"
+requires-python = ">=3.6"
+license = { text = "MIT" }
+authors = [
+    { name = "John Haugabook", email = "johnhaugabook@gmail.com" },
+]
+keywords = ["maze", "game", "terminal", "console", "puzzle"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Games/Entertainment :: Puzzle Games",
+]
+# read from py_maze.__version__ so the version lives in exactly one place
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/isocialPractice/py_maze"
+Repository = "https://github.com/isocialPractice/py_maze"
+Changelog = "https://github.com/isocialPractice/py_maze/blob/main/CHANGELOG.md"
+Issues = "https://github.com/isocialPractice/py_maze/issues"
+
+[project.scripts]
+py_maze = "py_maze:main"
+
+[tool.setuptools]
+py-modules = ["py_maze"]
+
+[tool.setuptools.dynamic]
+version = { attr = "py_maze.__version__" }

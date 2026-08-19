@@ -4,6 +4,7 @@
 
 import argparse
 import random
+import shutil
 import sys
 import os
 import time
@@ -15,12 +16,27 @@ else:
     import tty
     import termios
 
+# single source of the package version: the manifest reads it from here
+__version__ = '1.0.2'
+
 # smallest maze that still has an interior path
 MIN_DIMENSION = 2
+
+# lines render() prints around the maze itself: the "start" marker, the
+# "end" marker, the blank spacer and the controls line
+RENDER_ROW_OVERHEAD = 4
 
 # seconds to wait between keyboard polls on Windows, so an idle
 # game loop does not spin the CPU at 100%
 KEY_POLL_INTERVAL = 0.01
+
+# a terminal in raw mode delivers Ctrl+C as ordinary input rather than
+# as the signal that would normally raise KeyboardInterrupt
+INTERRUPT_KEY = '\x03'
+WINDOWS_INTERRUPT_KEY = b'\x03'
+
+# parting message for a quit or an interrupted game
+GOODBYE_MESSAGE = "Goodbye!"
 
 # byte prefixes Windows sends ahead of an extended (arrow) key
 WINDOWS_ARROW_PREFIXES = (b'\xe0', b'\x00')
@@ -189,6 +205,9 @@ class MazeGame:
         # Returns:
         #     'up', 'down', 'left' or 'right' for an arrow key, otherwise
         #     the lowercased character that was typed
+        #
+        # Raises:
+        #     KeyboardInterrupt: If Ctrl+C was pressed
 
         # poll until a key is waiting, sleeping between checks so the
         # game loop stays idle instead of burning a whole CPU core
@@ -196,6 +215,11 @@ class MazeGame:
             time.sleep(KEY_POLL_INTERVAL)
 
         key = msvcrt.getch()
+
+        # getch() consumes Ctrl+C as a plain byte instead of raising, so
+        # turn it back into the interrupt the game loop expects
+        if key == WINDOWS_INTERRUPT_KEY:
+            raise KeyboardInterrupt
 
         # arrow keys arrive as two bytes: a prefix, then the direction.
         # the prefix is b'\xe0' for most keyboards and b'\x00' for the
@@ -213,12 +237,20 @@ class MazeGame:
         # Returns:
         #     'up', 'down', 'left' or 'right' for an arrow key, otherwise
         #     the lowercased character that was typed
+        #
+        # Raises:
+        #     KeyboardInterrupt: If Ctrl+C was pressed. The terminal is
+        #     taken out of raw mode before it propagates
 
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
             tty.setraw(sys.stdin.fileno())
             key = sys.stdin.read(1)
+            # raw mode disables the interrupt signal, so Ctrl+C shows up
+            # here as a byte and has to be raised by hand
+            if key == INTERRUPT_KEY:
+                raise KeyboardInterrupt
             # handle arrow keys (they come as escape sequences)
             if key == '\x1b':
                 key += sys.stdin.read(2)
@@ -238,30 +270,35 @@ class MazeGame:
     def play(self):
         self.render()
 
-        while True:
-            key = self.get_key()
+        try:
+            while True:
+                key = self.get_key()
 
-            if key == 'q':
-                print("\nThanks for playing!")
-                break
-            elif key in ['w', 'up']:
-                self.move_player(0, -1)
-            elif key in ['s', 'down']:
-                self.move_player(0, 1)
-            elif key in ['a', 'left']:
-                self.move_player(-1, 0)
-            elif key in ['d', 'right']:
-                self.move_player(1, 0)
-            else:
-                continue
+                if key == 'q':
+                    print("\nThanks for playing!")
+                    break
+                elif key in ['w', 'up']:
+                    self.move_player(0, -1)
+                elif key in ['s', 'down']:
+                    self.move_player(0, 1)
+                elif key in ['a', 'left']:
+                    self.move_player(-1, 0)
+                elif key in ['d', 'right']:
+                    self.move_player(1, 0)
+                else:
+                    continue
 
-            self.render()
+                self.render()
 
-            if self.check_win():
-                print("\n🎉 Congratulations! You solved the maze! 🎉")
-                print("Press any key to exit...")
-                self.get_key()
-                break
+                if self.check_win():
+                    print("\n🎉 Congratulations! You solved the maze! 🎉")
+                    print("Press any key to exit...")
+                    self.get_key()
+                    break
+        except KeyboardInterrupt:
+            # the key readers restore the terminal before letting the
+            # interrupt through, so leaving quietly is all that is left
+            print("\n" + GOODBYE_MESSAGE)
 
 
 def maze_dimension(value):
@@ -291,6 +328,97 @@ def maze_dimension(value):
     return cells
 
 
+def fit_dimension(cells, available, option, unit):
+    # cap one maze dimension to the space the terminal has for it
+    #
+    # Args:
+    #     cells: Requested size in cells
+    #     available: Characters the terminal has along this axis, with
+    #         the lines printed around the maze already taken out
+    #     option: Name of the option being capped, for the warning text
+    #     unit: What available counts, for the warning text
+    #
+    # Returns:
+    #     tuple: (cells to generate, warning text or None). The warning is
+    #     None whenever the requested size already fits
+
+    # a maze of N cells draws as N*2+1 characters, so the reverse is how
+    # many cells the available characters can hold
+    fits = (available - 1) // 2
+
+    if cells <= fits:
+        return cells, None
+
+    needed = cells * 2 + 1
+
+    if fits < MIN_DIMENSION:
+        # the terminal cannot hold even the smallest maze, so there is
+        # nothing to cap to: generate what was asked for and say so
+        return cells, (
+            "warning: --%s %d needs %d %s but only %d are available; the "
+            "maze will not fit on screen"
+            % (option, cells, needed, unit, max(available, 0)))
+
+    return fits, (
+        "warning: --%s %d needs %d %s but only %d are available; using %d"
+        % (option, cells, needed, unit, available, fits))
+
+
+def terminal_size():
+    # measure the terminal the maze will be drawn in
+    #
+    # Returns:
+    #     os.terminal_size: The size of the terminal on standard output,
+    #     or None when output is piped or redirected and there is no
+    #     terminal to fit the maze to
+
+    try:
+        if not os.isatty(sys.stdout.fileno()):
+            return None
+    except (AttributeError, ValueError, OSError):
+        # stdout has been replaced with something that has no file
+        # descriptor, so treat it as "not a terminal"
+        return None
+
+    # COLUMNS and LINES override the measured size when they are set
+    return shutil.get_terminal_size()
+
+
+def fit_to_terminal(width, height, size=None, stream=None):
+    # shrink a maze so its render fits the current terminal
+    #
+    # Args:
+    #     width: Requested width in cells
+    #     height: Requested height in cells
+    #     size: Terminal size to measure against, or None to measure the
+    #         terminal on standard output
+    #     stream: Where warnings are written, defaulting to sys.stderr
+    #
+    # Returns:
+    #     tuple: (width, height) in cells, capped to what fits on screen.
+    #     The requested size is returned unchanged when output is not
+    #     going to a terminal
+
+    if size is None:
+        size = terminal_size()
+        if size is None:
+            return width, height
+    if stream is None:
+        stream = sys.stderr
+
+    width, width_warning = fit_dimension(
+        width, size.columns, "width", "columns")
+    # the maze shares its rows with the markers and the controls line
+    height, height_warning = fit_dimension(
+        height, size.lines - RENDER_ROW_OVERHEAD, "height", "rows")
+
+    for warning in (width_warning, height_warning):
+        if warning:
+            print(warning, file=stream)
+
+    return width, height
+
+
 # Build the command-line parser for py_maze.
 def build_parser():
     parser = argparse.ArgumentParser(
@@ -300,15 +428,18 @@ def build_parser():
     # NOTE: -h is reserved by argparse for --help, so height uses -H
     parser.add_argument("--height", "-H", type=maze_dimension, default=11,
                         help="Height of the maze in cells (minimum %d)" % MIN_DIMENSION)
+    parser.add_argument("--version", "-V", action="version",
+                        version="py_maze %s" % __version__,
+                        help="Show the installed version and exit")
     return parser
 
 
 # Main entry point for py_maze command.
 def main():
-    # use width and height from argument or defaults
+    # use width and height from argument or defaults, capped to whatever
+    # the terminal can actually show
     args = build_parser().parse_args()
-    height = args.height
-    width = args.width
+    width, height = fit_to_terminal(args.width, args.height)
 
     print("Generating maze...")
 
@@ -336,9 +467,10 @@ def main():
             game = MazeGame(maze_grid)
             game.play()
         else:
-            print("Goodbye!")
+            print(GOODBYE_MESSAGE)
     except KeyboardInterrupt:
-        print("\nGoodbye!")
+        # Ctrl+C at the prompt, before the game takes over the terminal
+        print("\n" + GOODBYE_MESSAGE)
 
 
 if __name__ == "__main__":

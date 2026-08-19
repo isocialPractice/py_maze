@@ -42,6 +42,7 @@ python py_maze.py -w 20 -H 30
 | --- | --- | --- | --- |
 | `--width` | `-w` | `9` | Width of the maze in cells (minimum 2) |
 | `--height` | `-H` | `11` | Height of the maze in cells (minimum 2) |
+| `--version` | `-V` | | Show the installed version and exit |
 | `--help` | `-h` | | Show usage and exit |
 
 Note that the short flag for height is a capital `-H`. Lowercase `-h` is
@@ -60,8 +61,42 @@ python py_maze.py -w 1
 **Output:**
 
 ```
-usage: py_maze.py [-h] [--width WIDTH] [--height HEIGHT]
+usage: py_maze.py [-h] [--width WIDTH] [--height HEIGHT] [--version]
 py_maze.py: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
+```
+
+### Fitting the Terminal
+
+A maze larger than the screen scrolls out of view and cannot be played, so
+sizes are measured against the terminal before the maze is generated. When a
+requested size does not fit, it is capped to the largest one that does and a
+warning explains the change:
+
+```bash
+python py_maze.py -w 60 -H 60
+```
+
+**Output (on an 80 by 24 terminal):**
+
+```
+warning: --width 60 needs 121 columns but only 80 are available; using 39
+warning: --height 60 needs 121 rows but only 20 are available; using 9
+```
+
+Four rows are reserved for the `start` and `end` markers, the spacer and the
+controls line, which is why the height allowance is smaller than the terminal
+is tall.
+
+Two limits apply to the capping:
+
+- Mazes are never capped below the 2 cell minimum. If the terminal cannot
+  hold even the smallest maze, the requested size is generated as asked and
+  the warning says the maze will not fit on screen.
+- Nothing is capped when the output is piped or redirected, since there is no
+  terminal to fit. Writing a large maze to a file works exactly as before:
+
+```bash
+python py_maze.py -w 60 -H 60 > maze.txt
 ```
 
 ## How to Play
@@ -72,7 +107,7 @@ py_maze.py: error: argument --width/-w: maze dimensions must be at least 2 cells
 4. If you choose to play:
    - Use **arrow keys** or **WASD** to move your character (`o`)
    - Navigate from the **start** (top) to the **end** (bottom)
-   - Press **'q'** to quit at any time
+   - Press **'q'** to quit at any time, or **Ctrl+C** to interrupt
 
 ## Example Maze
 
@@ -96,11 +131,21 @@ end
 
 - **Arrow Keys** or **W/A/S/D**: Move up/left/down/right
 - **Q**: Quit the game
+- **Ctrl+C**: Interrupt the game
+
+While the game is running, the terminal is put into raw mode so single
+keypresses can be read without waiting for Enter. Raw mode also means Ctrl+C
+arrives as an ordinary keypress rather than as an interrupt signal, so the
+game handles it itself: the terminal is restored to its normal mode and the
+game exits with a goodbye message instead of a traceback.
 
 ## Requirements
 
 - Python 3.6 or higher
 - No external dependencies required! (Uses only standard library)
+
+Building or installing from source additionally needs pip with setuptools 61
+or newer, which is what reads `pyproject.toml`.
 
 ## How It Works
 
@@ -124,10 +169,27 @@ The project structure:
 py_maze/
 ├── py_maze.py          # Main game module
 ├── test_py_maze.py     # Unit tests
-├── setup.py            # Installation configuration
+├── pyproject.toml      # Packaging and project metadata
+├── .gitignore          # Ignored build, cache and editor artifacts
 ├── CHANGELOG.md        # Version history
 └── README.md           # This file
 ```
+
+### The Version Number
+
+The version lives in one place, `__version__` in `py_maze.py`. The manifest
+reads it from there, so a release only ever changes the module:
+
+```toml
+# pyproject.toml
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = { attr = "py_maze.__version__" }
+```
+
+The same value backs the `--version` flag, and the test suite checks that the
+changelog has an entry for it.
 
 ### Running the Tests
 
@@ -137,6 +199,10 @@ needed:
 ```bash
 python -m unittest discover -v
 ```
+
+The suite runs on any platform. Both the Windows and the POSIX keyboard
+branches are exercised through fake terminals, so neither is skipped for
+running on the other operating system.
 
 ## License
 
