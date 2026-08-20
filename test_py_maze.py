@@ -585,9 +585,52 @@ class TestBuildParser(unittest.TestCase):
         return stderr.getvalue()
 
     def test_defaults(self):
+        # the size now comes from the difficulty preset, so the options
+        # themselves default to "not given"
         args = self.parse([])
 
-        self.assertEqual((args.width, args.height), (9, 11))
+        self.assertEqual((args.width, args.height), (None, None))
+        self.assertEqual(args.difficulty, py_maze.DEFAULT_DIFFICULTY)
+        self.assertIsNone(args.seed)
+        self.assertFalse(args.solve)
+        self.assertFalse(args.animate)
+
+    def test_the_default_maze_is_still_nine_by_eleven(self):
+        # the normal preset is the size py_maze has always generated
+        self.assertEqual(py_maze.resolve_dimensions(self.parse([])), (9, 11))
+
+    def test_difficulty_chooses_a_preset_size(self):
+        for name, size in py_maze.DIFFICULTIES.items():
+            args = self.parse(['--difficulty', name])
+
+            self.assertEqual(py_maze.resolve_dimensions(args), size)
+
+    def test_difficulty_short_flag(self):
+        args = self.parse(['-d', 'hard'])
+
+        self.assertEqual(args.difficulty, 'hard')
+
+    def test_an_unknown_difficulty_is_rejected(self):
+        message = self.parse_error(['-d', 'nightmare'])
+
+        self.assertIn('nightmare', message)
+
+    def test_seed_is_a_number_when_it_reads_as_one(self):
+        for flag in ['--seed', '-s']:
+            self.assertEqual(self.parse([flag, '2024']).seed, 2024)
+
+    def test_seed_can_be_text(self):
+        self.assertEqual(self.parse(['--seed', 'winter']).seed, 'winter')
+
+    def test_solve_and_animate_are_off_until_asked_for(self):
+        for flags, solve, animate in [(['--solve'], True, False),
+                                      (['-S'], True, False),
+                                      (['--animate'], False, True),
+                                      (['-a'], False, True),
+                                      (['-S', '-a'], True, True)]:
+            args = self.parse(flags)
+
+            self.assertEqual((args.solve, args.animate), (solve, animate))
 
     def test_documented_short_flags(self):
         # the README example: -w for width, capital -H for height
@@ -636,6 +679,606 @@ class TestBuildParser(unittest.TestCase):
             self.assertEqual(caught.exception.code, 0)
             self.assertIn(py_maze.__version__, stdout.getvalue())
             self.assertIn('py_maze', stdout.getvalue())
+
+
+class TestSeed(unittest.TestCase):
+    def generate(self, seed):
+        return py_maze.MazeGenerator(5, 6, seed=seed).generate()
+
+    def test_the_same_seed_carves_the_same_maze(self):
+        self.assertEqual(self.generate(2024), self.generate(2024))
+
+    def test_different_seeds_carve_different_mazes(self):
+        # a 5 by 6 maze has far too many shapes for two seeds to collide
+        self.assertNotEqual(self.generate(2024), self.generate(2025))
+
+    def test_a_text_seed_is_repeatable_too(self):
+        self.assertEqual(self.generate('winter'), self.generate('winter'))
+        self.assertNotEqual(self.generate('winter'), self.generate('summer'))
+
+    def test_the_generator_records_its_seed(self):
+        self.assertEqual(py_maze.MazeGenerator(3, 3, seed=7).seed, 7)
+        self.assertIsNone(py_maze.MazeGenerator(3, 3).seed)
+
+    def test_a_seeded_generator_leaves_the_shared_random_alone(self):
+        # seeding the module would make every later maze repeat as well
+        py_maze.random.seed(11)
+        expected = py_maze.random.random()
+
+        py_maze.random.seed(11)
+        self.generate(2024)
+
+        self.assertEqual(py_maze.random.random(), expected)
+
+    def test_without_a_seed_the_shared_random_is_used(self):
+        py_maze.random.seed(3)
+        first = py_maze.MazeGenerator(5, 6).generate()
+        py_maze.random.seed(3)
+        second = py_maze.MazeGenerator(5, 6).generate()
+
+        self.assertEqual(first, second)
+
+
+class TestMazeSeed(unittest.TestCase):
+    def test_whole_numbers_are_read_as_numbers(self):
+        self.assertEqual(py_maze.maze_seed('0'), 0)
+        self.assertEqual(py_maze.maze_seed('-12'), -12)
+
+    def test_anything_else_is_kept_as_text(self):
+        self.assertEqual(py_maze.maze_seed('winter'), 'winter')
+        self.assertEqual(py_maze.maze_seed('1.5'), '1.5')
+
+
+class TestDifficulty(unittest.TestCase):
+    def resolve(self, difficulty=py_maze.DEFAULT_DIFFICULTY,
+                width=None, height=None):
+        args = argparse.Namespace(
+            difficulty=difficulty, width=width, height=height)
+        return py_maze.resolve_dimensions(args)
+
+    def test_the_presets_run_from_easy_to_hard(self):
+        self.assertEqual(list(py_maze.DIFFICULTIES),
+                         ['easy', 'normal', 'hard'])
+
+    def test_harder_presets_are_larger(self):
+        sizes = [width * height for width, height
+                 in py_maze.DIFFICULTIES.values()]
+
+        self.assertEqual(sizes, sorted(sizes))
+
+    def test_every_preset_meets_the_minimum(self):
+        for width, height in py_maze.DIFFICULTIES.values():
+            self.assertGreaterEqual(min(width, height), py_maze.MIN_DIMENSION)
+
+    def test_the_preset_supplies_both_dimensions(self):
+        self.assertEqual(self.resolve('easy'), py_maze.DIFFICULTIES['easy'])
+        self.assertEqual(self.resolve('hard'), py_maze.DIFFICULTIES['hard'])
+
+    def test_width_and_height_override_the_preset(self):
+        preset_width, preset_height = py_maze.DIFFICULTIES['hard']
+
+        self.assertEqual(self.resolve('hard', width=3),
+                         (3, preset_height))
+        self.assertEqual(self.resolve('hard', height=4),
+                         (preset_width, 4))
+        self.assertEqual(self.resolve('hard', width=3, height=4), (3, 4))
+
+    def test_the_summary_names_every_preset(self):
+        summary = py_maze.difficulty_summary()
+
+        for name, (width, height) in py_maze.DIFFICULTIES.items():
+            self.assertIn(name, summary)
+            self.assertIn('%d by %d' % (width, height), summary)
+
+
+class TestFindEntranceAndExit(unittest.TestCase):
+    def test_they_find_the_openings(self):
+        grid = grid_from_strings(TestMazeGame.MAZE)
+
+        self.assertEqual(py_maze.find_entrance(grid), (1, 0))
+        self.assertEqual(py_maze.find_exit(grid), (3, 4))
+
+    def test_an_entrance_below_the_top_row_is_found(self):
+        grid = grid_from_strings([
+            "*****",
+            "* * *",
+            "*   *",
+            "*** *",
+        ])
+
+        self.assertEqual(py_maze.find_entrance(grid), (1, 1))
+
+    def test_a_sealed_maze_falls_back_to_the_border(self):
+        grid = grid_from_strings(["*****"] * 4)
+
+        self.assertEqual(py_maze.find_entrance(grid), (1, 0))
+        self.assertEqual(py_maze.find_exit(grid), (3, 3))
+
+
+class TestSolveMaze(unittest.TestCase):
+    # a maze with two ways round: the right-hand corridor is the short one
+    LOOPED = [
+        "* *****",
+        "*     *",
+        "*** * *",
+        "*   * *",
+        "* *** *",
+        "*     *",
+        "***** *",
+    ]
+
+    def test_the_path_runs_from_the_entrance_to_the_exit(self):
+        grid = grid_from_strings(TestMazeGame.MAZE)
+        path = py_maze.solve_maze(grid)
+
+        self.assertEqual(
+            path,
+            [(1, 0), (1, 1), (2, 1), (3, 1), (3, 2), (3, 3), (3, 4)])
+
+    def test_every_step_is_open_and_adjacent(self):
+        py_maze.random.seed(5)
+        grid = py_maze.MazeGenerator(7, 9).generate()
+        path = py_maze.solve_maze(grid)
+
+        for x, y in path:
+            self.assertFalse(grid[y][x], "the path crosses a wall")
+        for (x, y), (next_x, next_y) in zip(path, path[1:]):
+            self.assertEqual(abs(next_x - x) + abs(next_y - y), 1)
+
+    def test_the_shortest_way_round_is_chosen(self):
+        grid = grid_from_strings(self.LOOPED)
+        path = py_maze.solve_maze(grid)
+
+        self.assertEqual(
+            path,
+            [(1, 0), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1),
+             (5, 2), (5, 3), (5, 4), (5, 5), (5, 6)])
+
+    def test_generated_mazes_are_all_solvable(self):
+        for seed in range(5):
+            grid = py_maze.MazeGenerator(6, 8, seed=seed).generate()
+            path = py_maze.solve_maze(grid)
+
+            self.assertIsNotNone(path, "seed %d produced no solution" % seed)
+            self.assertEqual(path[0], py_maze.find_entrance(grid))
+            self.assertEqual(path[-1], py_maze.find_exit(grid))
+
+    def test_a_walled_off_exit_has_no_solution(self):
+        grid = grid_from_strings([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+
+        self.assertIsNone(py_maze.solve_maze(grid))
+
+    def test_a_start_inside_a_wall_has_no_solution(self):
+        grid = grid_from_strings(TestMazeGame.MAZE)
+
+        self.assertIsNone(py_maze.solve_maze(grid, start=(0, 0)))
+
+    def test_solving_from_the_exit_is_a_single_cell(self):
+        grid = grid_from_strings(TestMazeGame.MAZE)
+
+        self.assertEqual(py_maze.solve_maze(grid, start=(3, 4)), [(3, 4)])
+
+    def test_a_custom_start_and_end_are_honored(self):
+        grid = grid_from_strings(TestMazeGame.MAZE)
+
+        self.assertEqual(
+            py_maze.solve_maze(grid, start=(1, 1), end=(3, 1)),
+            [(1, 1), (2, 1), (3, 1)])
+
+
+class TestSearchFrames(unittest.TestCase):
+    def frames(self, rows, **kwargs):
+        grid = grid_from_strings(rows)
+        return grid, list(py_maze.search_frames(grid, **kwargs))
+
+    def test_the_search_starts_at_the_entrance(self):
+        _, frames = self.frames(TestMazeGame.MAZE)
+        visited, frontier, path = frames[0]
+
+        self.assertEqual(visited, {(1, 0)})
+        self.assertEqual(frontier, {(1, 0)})
+        self.assertIsNone(path)
+
+    def test_the_frontier_grows_one_step_per_frame(self):
+        grid, frames = self.frames(TestMazeGame.MAZE)
+        previous = set()
+
+        for visited, frontier, _ in frames:
+            self.assertTrue(frontier <= visited)
+            self.assertTrue(previous <= visited, "cells were forgotten")
+            for x, y in visited:
+                self.assertFalse(grid[y][x], "a wall was searched")
+            previous = visited
+
+    def test_only_the_last_frame_carries_the_path(self):
+        _, frames = self.frames(TestMazeGame.MAZE)
+
+        for visited, frontier, path in frames[:-1]:
+            self.assertIsNone(path)
+
+        visited, frontier, path = frames[-1]
+        self.assertEqual(frontier, set(), "the search should have finished")
+        self.assertEqual(path[-1], (3, 4))
+
+    def test_the_search_stops_once_the_exit_is_reached(self):
+        # the exit is reached by the wave grown after the last drawn
+        # frame, and nothing is searched past it
+        _, frames = self.frames(TestMazeGame.MAZE)
+
+        self.assertIn((3, 4), frames[-1][0])
+        self.assertNotIn((3, 4), frames[-2][0])
+        self.assertTrue(frames[-2][0] < frames[-1][0])
+
+    def test_an_unreachable_exit_ends_without_a_path(self):
+        grid, frames = self.frames([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+        visited, frontier, path = frames[-1]
+
+        self.assertIsNone(path)
+        self.assertEqual(visited, {(1, 0), (1, 1), (2, 1), (3, 1)})
+
+    def test_a_search_from_a_wall_draws_nothing(self):
+        _, frames = self.frames(TestMazeGame.MAZE, start=(0, 0))
+
+        self.assertEqual(frames, [(set(), set(), None)])
+
+
+class TestMazeLines(unittest.TestCase):
+    PICTURE = [
+        "* ***",
+        "*   *",
+        "*** *",
+    ]
+
+    def test_a_bare_maze_is_drawn_as_it_is(self):
+        grid = grid_from_strings(self.PICTURE)
+
+        self.assertEqual(py_maze.maze_lines(grid), self.PICTURE)
+
+    def test_an_overlay_marks_its_cells(self):
+        grid = grid_from_strings(self.PICTURE)
+        lines = py_maze.maze_lines(grid, [('.', {(1, 0), (1, 1)})])
+
+        self.assertEqual(lines, ["*.***", "*.  *", "*** *"])
+
+    def test_the_first_overlay_wins(self):
+        grid = grid_from_strings(self.PICTURE)
+        cell = {(1, 1)}
+        lines = py_maze.maze_lines(grid, [('o', cell), ('?', cell)])
+
+        self.assertEqual(lines[1], "*o  *")
+
+    def test_an_overlay_can_cover_a_wall(self):
+        # the search marks whole cells, walls included, while it runs
+        grid = grid_from_strings(self.PICTURE)
+        lines = py_maze.maze_lines(grid, [('~', {(0, 0)})])
+
+        self.assertEqual(lines[0], "~ ***")
+
+    def test_a_solution_overlay_is_empty_without_a_solution(self):
+        self.assertEqual(py_maze.solution_overlay(None), [])
+        self.assertEqual(py_maze.solution_overlay([]), [])
+        self.assertEqual(py_maze.solution_overlay([(1, 0)]),
+                         [(py_maze.SOLUTION_MARKER, {(1, 0)})])
+
+    def test_print_maze_wraps_the_maze_in_its_markers(self):
+        stream = io.StringIO()
+        py_maze.print_maze(grid_from_strings(self.PICTURE), stream=stream)
+
+        self.assertEqual(stream.getvalue().splitlines(),
+                         ["start"] + self.PICTURE + ["end"])
+
+    def test_to_string_can_overlay_a_solution(self):
+        generator = py_maze.MazeGenerator(width=2, height=2)
+        generator.grid = grid_from_strings(TestMazeGame.MAZE)
+        path = py_maze.solve_maze(generator.grid)
+
+        self.assertEqual(
+            generator.to_string(path),
+            "*.***\n*...*\n***.*\n*  .*\n***.*")
+
+
+# Records the frames an animation draws, in place of a real terminal.
+class FakeScreen:
+    def __init__(self):
+        self.stream = io.StringIO()
+        self.clears = 0
+        self.pauses = []
+
+    def clear(self):
+        self.clears += 1
+
+    def pause(self, delay):
+        self.pauses.append(delay)
+
+    def sections(self):
+        # Returns:
+        #     list: Everything each frame wrote, split on the screen clears
+        return self.stream.getvalue().split('Solving...\n')[1:]
+
+    def frames(self):
+        # Returns:
+        #     list: Just the maze each frame drew, without the markers
+        #     around it or the legend below it
+        drawn = []
+        for section in self.sections():
+            lines = section.splitlines()
+            drawn.append('\n'.join(
+                lines[lines.index('start') + 1:lines.index('end')]))
+
+        return drawn
+
+
+class TestAnimateSearch(unittest.TestCase):
+    def animate(self, rows, **kwargs):
+        # Returns:
+        #     tuple: (solution path, fake screen it was drawn on)
+
+        grid = grid_from_strings(rows)
+        screen = FakeScreen()
+        path = py_maze.animate_search(
+            grid, stream=screen.stream, clear=screen.clear,
+            pause=screen.pause, **kwargs)
+
+        return path, screen
+
+    def test_it_returns_the_same_path_the_solver_finds(self):
+        path, _ = self.animate(TestMazeGame.MAZE)
+
+        self.assertEqual(
+            path, py_maze.solve_maze(grid_from_strings(TestMazeGame.MAZE)))
+
+    def test_every_frame_is_cleared_and_paused_for(self):
+        expected = len(list(py_maze.search_frames(
+            grid_from_strings(TestMazeGame.MAZE))))
+        _, screen = self.animate(TestMazeGame.MAZE)
+
+        self.assertEqual(screen.clears, expected)
+        self.assertEqual(len(screen.pauses), expected)
+        self.assertEqual(len(screen.frames()), expected)
+
+    def test_the_frame_delay_can_be_set(self):
+        _, screen = self.animate(TestMazeGame.MAZE, delay=0.25)
+
+        self.assertEqual(set(screen.pauses), {0.25})
+
+    def test_the_default_delay_is_the_frame_delay(self):
+        _, screen = self.animate(TestMazeGame.MAZE)
+
+        self.assertEqual(set(screen.pauses), {py_maze.FRAME_DELAY})
+
+    def test_the_frontier_leads_and_the_solution_lands_last(self):
+        _, screen = self.animate(TestMazeGame.MAZE)
+        frames = screen.frames()
+
+        self.assertIn(py_maze.FRONTIER_MARKER, frames[0])
+        self.assertNotIn(py_maze.SOLUTION_MARKER, frames[0])
+        self.assertIn(py_maze.VISITED_MARKER, frames[-1])
+        self.assertIn(py_maze.SOLUTION_MARKER, frames[-1])
+
+    def test_every_frame_explains_its_markers(self):
+        _, screen = self.animate(TestMazeGame.MAZE)
+
+        for section in screen.sections():
+            self.assertIn('frontier', section)
+            self.assertIn('explored', section)
+            self.assertIn('solution', section)
+
+    def test_an_unsolvable_maze_still_draws_its_search(self):
+        path, screen = self.animate([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+
+        self.assertIsNone(path)
+        self.assertTrue(screen.clears)
+        for frame in screen.frames():
+            self.assertNotIn(py_maze.SOLUTION_MARKER, frame)
+
+
+class TestHint(unittest.TestCase):
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def show_hint(self):
+        # Returns:
+        #     tuple: (highlighted cells, what was drawn, sleep mock)
+
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(py_maze.time, 'sleep') as sleep, \
+                contextlib.redirect_stdout(stdout):
+            steps = self.game.show_hint()
+
+        return steps, stdout.getvalue(), sleep
+
+    def test_the_next_step_of_the_solution_is_highlighted(self):
+        steps, drawn, _ = self.show_hint()
+
+        self.assertEqual(steps, [(1, 1)])
+        self.assertIn("*%s  *" % py_maze.HINT_MARKER, drawn)
+
+    def test_the_hint_is_only_shown_for_a_moment(self):
+        _, _, sleep = self.show_hint()
+
+        sleep.assert_called_once_with(py_maze.HINT_SECONDS)
+        self.assertEqual(self.game.hint_cells, set(),
+                         "the hint should be cleared for the next render")
+
+    def test_a_hint_points_the_way_back_after_a_wrong_turn(self):
+        # step off the solution, into the dead end at the top left
+        self.game.player_x, self.game.player_y = 1, 1
+        self.game.maze = grid_from_strings([
+            "* ***",
+            "*   *",
+            "* * *",
+            "*   *",
+            "*** *",
+        ])
+        steps, _, _ = self.show_hint()
+
+        self.assertEqual(steps, [(2, 1)])
+
+    def test_there_is_no_hint_at_the_exit(self):
+        self.game.player_x, self.game.player_y = self.game.end_x, self.game.end_y
+        steps, _, sleep = self.show_hint()
+
+        self.assertEqual(steps, [])
+        self.assertEqual(sleep.call_count, 0)
+
+    def test_there_is_no_hint_when_the_exit_is_walled_off(self):
+        self.game.maze[1][1] = True
+        steps, _, _ = self.show_hint()
+
+        self.assertEqual(steps, [])
+
+    def test_the_h_key_shows_a_hint_and_the_maze_is_redrawn_without_it(self):
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(self.game, 'get_key',
+                                  side_effect=['h', 'q']), \
+                mock.patch.object(py_maze.time, 'sleep'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.play()
+
+        output = stdout.getvalue()
+        self.assertIn(py_maze.HINT_MARKER, output)
+        self.assertNotIn(py_maze.HINT_MARKER, output.rsplit('start', 1)[-1])
+        self.assertEqual((self.game.player_x, self.game.player_y), (1, 0),
+                         "a hint should not move the player")
+
+    def test_the_controls_offer_the_hint_key(self):
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.render()
+
+        self.assertIn("'h' for a hint", stdout.getvalue())
+
+
+class TestMain(unittest.TestCase):
+    # main() is driven end to end, with the keyboard and the animation
+    # standing in for a real terminal
+
+    def run_main(self, argv=(), response='n', terminal=True):
+        # Returns:
+        #     tuple: (what main printed, the patched animate_search)
+
+        stdout = io.StringIO()
+        size = terminal_size(200, 80) if terminal else None
+        with mock.patch.object(py_maze.sys, 'argv', ['py_maze'] + list(argv)), \
+                mock.patch.object(py_maze, 'terminal_size',
+                                  return_value=size), \
+                mock.patch.object(py_maze, 'read_response',
+                                  side_effect=[response]), \
+                mock.patch.object(py_maze, 'animate_search',
+                                  return_value=[(1, 0)]) as animate, \
+                contextlib.redirect_stdout(stdout):
+            py_maze.main()
+
+        return stdout.getvalue(), animate
+
+    def maze_of(self, output):
+        # Returns:
+        #     str: The maze main printed, without the markers around it
+        lines = output.splitlines()
+        return '\n'.join(
+            lines[lines.index('start') + 1:lines.index('end')])
+
+    def test_a_plain_run_prints_an_unsolved_maze(self):
+        output, animate = self.run_main()
+
+        self.assertNotIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+        self.assertEqual(animate.call_count, 0)
+
+    def test_the_default_maze_is_the_normal_preset(self):
+        width, height = py_maze.DIFFICULTIES[py_maze.DEFAULT_DIFFICULTY]
+        output, _ = self.run_main()
+
+        self.assertEqual(len(self.maze_of(output).splitlines()), height * 2 + 1)
+        self.assertEqual(len(self.maze_of(output).splitlines()[0]),
+                         width * 2 + 1)
+
+    def test_a_difficulty_sets_the_size(self):
+        width, height = py_maze.DIFFICULTIES['easy']
+        output, _ = self.run_main(['-d', 'easy'])
+
+        self.assertEqual(len(self.maze_of(output).splitlines()), height * 2 + 1)
+
+    def test_solve_overlays_the_solution(self):
+        output, animate = self.run_main(['--solve'])
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+        self.assertEqual(animate.call_count, 0)
+
+    def test_animate_runs_the_search_on_a_terminal(self):
+        output, animate = self.run_main(['--animate'])
+
+        self.assertEqual(animate.call_count, 1)
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+    def test_animate_falls_back_to_solving_when_the_output_is_piped(self):
+        # there is no screen to animate over, but the solution is still
+        # worth printing
+        output, animate = self.run_main(['--animate'], terminal=False)
+
+        self.assertEqual(animate.call_count, 0)
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+    def test_the_seed_is_reported_so_the_maze_can_be_replayed(self):
+        output, _ = self.run_main(['--seed', '2024'])
+
+        self.assertIn('seed: 2024', output)
+
+    def test_the_same_seed_prints_the_same_maze(self):
+        first, _ = self.run_main(['--seed', '2024'])
+        second, _ = self.run_main(['--seed', '2024'])
+
+        self.assertEqual(self.maze_of(first), self.maze_of(second))
+
+    def test_an_unseeded_run_reports_the_seed_it_chose(self):
+        output, _ = self.run_main()
+        reported = re.search(r'^seed: (\d+)$', output, re.MULTILINE)
+
+        self.assertIsNotNone(reported, "every run should report its seed")
+        self.assertLess(int(reported.group(1)), py_maze.MAX_SEED)
+
+    def test_answering_yes_starts_the_game(self):
+        with mock.patch.object(py_maze, 'MazeGame') as game:
+            self.run_main(response='y')
+
+        game.return_value.play.assert_called_once_with()
+
+    def test_answering_no_says_goodbye(self):
+        output, _ = self.run_main(response='n')
+
+        self.assertIn(py_maze.GOODBYE_MESSAGE, output)
+
+    def test_an_interrupt_at_the_prompt_says_goodbye(self):
+        stdout = io.StringIO()
+        with mock.patch.object(py_maze.sys, 'argv', ['py_maze']), \
+                mock.patch.object(py_maze, 'terminal_size',
+                                  return_value=terminal_size(200, 80)), \
+                mock.patch.object(py_maze, 'read_response',
+                                  side_effect=KeyboardInterrupt), \
+                contextlib.redirect_stdout(stdout):
+            py_maze.main()
+
+        self.assertIn(py_maze.GOODBYE_MESSAGE, stdout.getvalue())
 
 
 if __name__ == '__main__':

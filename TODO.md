@@ -7,21 +7,15 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add a `--seed` option so the same maze can be regenerated
-  deterministically
+- [ ] Add a timer and move counter displayed during play and summarized
+  on the win screen
   - From: Gameplay Enhancements
-- [ ] Add difficulty levels (easy, normal, hard) that map to preset
-  maze sizes selectable from the command line
+- [ ] Add collectibles scattered on the path that are tallied in the
+  end-of-game summary
   - From: Gameplay Enhancements
-- [ ] Implement a maze solver (breadth-first search) that can print the
-  solution path overlaid on the maze via a `--solve` flag
-  - From: Maze Solver and Visualization
-- [ ] Add an in-game hint command that briefly highlights the next step
-  along the solution path
-  - From: Maze Solver and Visualization
-- [ ] Add an animated solver visualization mode that steps through the
-  search frontier in the terminal
-  - From: Maze Solver and Visualization
+- [ ] Add a save/load feature: write the current maze to a file and
+  replay a saved maze via a `--load <file>` option
+  - From: Gameplay Enhancements
 
 ## Fixes and Hardening
 
@@ -42,14 +36,10 @@ No items are currently queued in this section.
 New player-facing features from the README's future-enhancements list.
 Completing items in this section is a minor version update.
 
-- [ ] Add difficulty levels (easy, normal, hard) that map to preset
-  maze sizes selectable from the command line
 - [ ] Add a timer and move counter displayed during play and summarized
   on the win screen
 - [ ] Add a save/load feature: write the current maze to a file and
   replay a saved maze via a `--load <file>` option
-- [ ] Add a `--seed` option so the same maze can be regenerated
-  deterministically
 - [ ] Add collectibles scattered on the path that are tallied in the
   end-of-game summary
 
@@ -58,12 +48,7 @@ Completing items in this section is a minor version update.
 Algorithmic features around solving and displaying mazes. Completing
 items in this section is a minor version update.
 
-- [ ] Implement a maze solver (breadth-first search) that can print the
-  solution path overlaid on the maze via a `--solve` flag
-- [ ] Add an in-game hint command that briefly highlights the next step
-  along the solution path
-- [ ] Add an animated solver visualization mode that steps through the
-  search frontier in the terminal
+No items are currently queued in this section.
 
 ## Complete
 
@@ -103,3 +88,18 @@ items in this section is a minor version update.
   project metadata and add a `--version` flag to the CLI wired to the
   package version
   - From: Fixes and Hardening
+- [x] Add a `--seed` option so the same maze can be regenerated
+  deterministically
+  - From: Gameplay Enhancements
+- [x] Add difficulty levels (easy, normal, hard) that map to preset
+  maze sizes selectable from the command line
+  - From: Gameplay Enhancements
+- [x] Implement a maze solver (breadth-first search) that can print the
+  solution path overlaid on the maze via a `--solve` flag
+  - From: Maze Solver and Visualization
+- [x] Add an in-game hint command that briefly highlights the next step
+  along the solution path
+  - From: Maze Solver and Visualization
+- [x] Add an animated solver visualization mode that steps through the
+  search frontier in the terminal
+  - From: Maze Solver and Visualization
