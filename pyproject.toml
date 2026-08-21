@@ -11,7 +11,9 @@ license = { text = "MIT" }
 authors = [
     { name = "John Haugabook", email = "johnhaugabook@gmail.com" },
 ]
-keywords = ["maze", "game", "terminal", "console", "puzzle", "solver"]
+keywords = [
+    "maze", "game", "terminal", "console", "puzzle", "solver", "collectibles",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.6",

@@ -5,6 +5,42 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-21
+
+### Added
+
+- A timer and a move counter. Both run under the maze while the game is
+  played, on a status line beside the collectible tally, and both are
+  summarized on the win screen. The clock starts at the first render and
+  stops the moment the maze is won, so the summary reads the same however
+  long it is left on screen, and it is a monotonic clock, so an adjustment to
+  the system time mid-game cannot run it backwards. Only steps that moved the
+  player are counted, so walking into a wall costs nothing but the time it
+  took. Quitting with `q` prints the same summary for the game so far.
+- A `--collectibles`/`-c` option scattering that many `$` markers through the
+  maze for the player to pick up, tallied as "Collected: 2 of 3" in the
+  end-of-game summary. Places are drawn from the seeded generator, so the same
+  seed puts them in the same cells every run, and the entrance and the exit
+  are left clear so nothing is handed over before the first step or after the
+  last. Asking for more than the maze has room for fills every cell there is.
+  None are scattered unless the option is given.
+- A `--save`/`-o` option writing the maze, and any collectibles, to a file,
+  and a `--load`/`-l` option playing a maze back from one. A save file is the
+  maze exactly as it is drawn, under a short header recording the format and
+  the seed, so it can be read, edited by hand and compared like any other
+  text. A loaded maze comes from the file as it was saved, so the size, seed
+  and collectible options do not apply to it, and a file that is not a maze
+  this build can read is refused with a message naming the line and what was
+  wrong with it.
+
+### Changed
+
+- The maze render now reserves five rows around the maze rather than four,
+  the new one being the status line. The terminal cap measures against the
+  same number, so a maze is capped one row earlier than it was.
+- Solved mazes draw collectibles over the solution path, so a maze printed
+  with `--solve` still shows what there is to pick up along the way.
+
 ## [1.1.0] - 2026-08-20
 
 ### Added

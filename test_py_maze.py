@@ -7,11 +7,26 @@ import collections
 import contextlib
 import io
 import os
+import random
 import re
+import tempfile
 import unittest
 from unittest import mock
 
 import py_maze
+
+
+# A clock that only moves when a test moves it, so timings are exact.
+class FakeClock:
+    def __init__(self, now=0.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+        return self.now
 
 
 def terminal_size(columns, lines):
@@ -479,13 +494,26 @@ class TestFitToTerminal(unittest.TestCase):
         self.assertNotIn('--height', warnings)
 
     def test_height_allows_for_the_lines_around_the_maze(self):
-        # 40 rows less the 4 the render spends on markers and controls
-        # leaves 36, which holds 17 cells
+        # 40 rows less the 5 the render spends on markers, the status
+        # line and the controls leaves 35, which holds 17 cells
         width, height, warnings = self.fit(5, 30, 120, 40)
 
         self.assertEqual((width, height), (5, 17))
         self.assertIn('--height 30', warnings)
-        self.assertIn('only 36 are available', warnings)
+        self.assertIn('only 35 are available', warnings)
+
+    def test_the_overhead_matches_the_lines_the_render_prints(self):
+        # the cap is only right while it counts every line render() puts
+        # around the maze itself
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+        stdout = io.StringIO()
+        with mock.patch.object(game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            game.render()
+
+        printed = len(stdout.getvalue().splitlines())
+        self.assertEqual(printed - len(TestMazeGame.MAZE),
+                         py_maze.RENDER_ROW_OVERHEAD)
 
     def test_both_dimensions_can_be_capped_at_once(self):
         width, height, warnings = self.fit(60, 60, 41, 40)
@@ -1170,10 +1198,501 @@ class TestHint(unittest.TestCase):
         self.assertIn("'h' for a hint", stdout.getvalue())
 
 
-class TestMain(unittest.TestCase):
-    # main() is driven end to end, with the keyboard and the animation
-    # standing in for a real terminal
+class TestFormatDuration(unittest.TestCase):
+    def test_seconds_are_padded_under_a_minute(self):
+        self.assertEqual(py_maze.format_duration(0), "0:00")
+        self.assertEqual(py_maze.format_duration(7), "0:07")
 
+    def test_minutes_and_seconds(self):
+        self.assertEqual(py_maze.format_duration(75), "1:15")
+        self.assertEqual(py_maze.format_duration(599), "9:59")
+
+    def test_hours_are_shown_once_there_are_any(self):
+        self.assertEqual(py_maze.format_duration(3600), "1:00:00")
+        self.assertEqual(py_maze.format_duration(3725), "1:02:05")
+
+    def test_part_seconds_are_dropped_rather_than_rounded_up(self):
+        # a stopwatch reads the second it is in, not the next one
+        self.assertEqual(py_maze.format_duration(9.99), "0:09")
+
+
+class TestStatusAndSummaryLines(unittest.TestCase):
+    def test_the_status_reports_the_time_and_the_moves(self):
+        self.assertEqual(py_maze.status_line(75, 12), "time 1:15   moves 12")
+
+    def test_the_status_counts_collectibles_when_there_are_any(self):
+        self.assertIn("collected 2/5", py_maze.status_line(0, 0, 2, 5))
+
+    def test_a_maze_without_collectibles_does_not_mention_them(self):
+        self.assertNotIn("collected", py_maze.status_line(0, 0, 0, 0))
+
+    def test_the_summary_reports_the_time_and_the_moves(self):
+        self.assertEqual(py_maze.summary_lines(75, 12),
+                         ["Time:  1:15", "Moves: 12"])
+
+    def test_the_summary_tallies_collectibles_when_there_are_any(self):
+        lines = py_maze.summary_lines(0, 4, 1, 3)
+
+        self.assertEqual(lines[-1], "Collected: 1 of 3")
+
+    def test_a_summary_without_collectibles_does_not_mention_them(self):
+        self.assertEqual(len(py_maze.summary_lines(0, 4, 0, 0)), 2)
+
+
+class TestGameClock(unittest.TestCase):
+    def setUp(self):
+        self.clock = FakeClock()
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
+                                     clock=self.clock)
+
+    def test_the_clock_reads_nothing_before_the_game_starts(self):
+        self.clock.advance(60)
+
+        self.assertEqual(self.game.elapsed(), 0.0)
+
+    def test_the_clock_runs_from_the_start_of_the_game(self):
+        self.game.start_clock()
+        self.clock.advance(30)
+
+        self.assertEqual(self.game.elapsed(), 30)
+
+    def test_starting_twice_does_not_restart_the_clock(self):
+        self.game.start_clock()
+        self.clock.advance(30)
+        self.game.start_clock()
+
+        self.assertEqual(self.game.elapsed(), 30)
+
+    def test_the_clock_freezes_when_the_game_ends(self):
+        # the summary should read the same however long it is left up
+        self.game.start_clock()
+        self.clock.advance(45)
+        self.game.stop_clock()
+        self.clock.advance(600)
+
+        self.assertEqual(self.game.elapsed(), 45)
+
+    def test_stopping_twice_keeps_the_first_reading(self):
+        self.game.start_clock()
+        self.clock.advance(45)
+        self.game.stop_clock()
+        self.clock.advance(10)
+        self.game.stop_clock()
+
+        self.assertEqual(self.game.elapsed(), 45)
+
+    def test_a_game_that_never_started_cannot_be_stopped(self):
+        self.game.stop_clock()
+
+        self.assertIsNone(self.game.stopped)
+
+
+class TestMoveCounter(unittest.TestCase):
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def test_a_new_game_has_taken_no_moves(self):
+        self.assertEqual(self.game.moves, 0)
+
+    def test_each_step_counts(self):
+        self.game.move_player(0, 1)
+        self.game.move_player(1, 0)
+
+        self.assertEqual(self.game.moves, 2)
+
+    def test_walking_into_a_wall_is_not_a_move(self):
+        self.game.move_player(0, 1)
+        self.assertFalse(self.game.move_player(-1, 0))
+
+        self.assertEqual(self.game.moves, 1)
+
+    def test_stepping_outside_the_grid_is_not_a_move(self):
+        self.assertFalse(self.game.move_player(0, -1))
+
+        self.assertEqual(self.game.moves, 0)
+
+    def test_a_hint_is_not_a_move(self):
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(py_maze.time, 'sleep'), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.game.show_hint()
+
+        self.assertEqual(self.game.moves, 0)
+
+
+class TestCollectiblePlacement(unittest.TestCase):
+    def grid(self):
+        return py_maze.MazeGenerator(5, 6, seed=2024).generate()
+
+    def test_no_collectibles_are_placed_when_none_are_asked_for(self):
+        self.assertEqual(py_maze.place_collectibles(self.grid(), 0), set())
+        self.assertEqual(py_maze.place_collectibles(self.grid(), -3), set())
+
+    def test_the_number_asked_for_is_placed(self):
+        placed = py_maze.place_collectibles(self.grid(), 7, random.Random(1))
+
+        self.assertEqual(len(placed), 7)
+
+    def test_they_land_on_cells_the_player_can_stand_on(self):
+        grid = self.grid()
+        placed = py_maze.place_collectibles(grid, 10, random.Random(1))
+
+        for x, y in placed:
+            self.assertFalse(grid[y][x], "a collectible landed in a wall")
+
+    def test_the_entrance_and_exit_are_left_clear(self):
+        grid = self.grid()
+        # ask for one on every open cell, so only the excluded ones are left
+        placed = py_maze.place_collectibles(grid, 10000, random.Random(1))
+
+        self.assertNotIn(py_maze.find_entrance(grid), placed)
+        self.assertNotIn(py_maze.find_exit(grid), placed)
+
+    def test_asking_for_more_than_there_is_room_for_fills_the_maze(self):
+        grid = self.grid()
+        spots = len(list(py_maze.open_cells(grid))) - 2
+        placed = py_maze.place_collectibles(grid, 10000, random.Random(1))
+
+        self.assertEqual(len(placed), spots)
+
+    def test_the_same_seed_scatters_them_the_same_way(self):
+        def scatter():
+            generator = py_maze.MazeGenerator(5, 6, seed=2024)
+            grid = generator.generate()
+            return py_maze.place_collectibles(grid, 5, generator.random)
+
+        self.assertEqual(scatter(), scatter())
+
+    def test_a_different_seed_scatters_them_differently(self):
+        def scatter(seed):
+            generator = py_maze.MazeGenerator(8, 8, seed=seed)
+            grid = generator.generate()
+            return py_maze.place_collectibles(grid, 6, generator.random)
+
+        self.assertNotEqual(scatter(2024), scatter(2025))
+
+
+class TestOpenCells(unittest.TestCase):
+    def test_only_the_open_cells_are_listed(self):
+        grid = grid_from_strings(["* ***", "*   *", "*** *"])
+
+        self.assertEqual(
+            list(py_maze.open_cells(grid)),
+            [(1, 0), (1, 1), (2, 1), (3, 1), (3, 2)])
+
+    def test_a_solid_grid_has_none(self):
+        self.assertEqual(list(py_maze.open_cells(grid_from_strings(["***"]))),
+                         [])
+
+
+class TestCollectingThem(unittest.TestCase):
+    # the hand-built maze runs (1,0) (1,1) (2,1) (3,1) (3,2) (3,3) (3,4)
+
+    def game(self, collectibles):
+        return py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
+                                collectibles)
+
+    def test_a_new_game_has_collected_nothing(self):
+        game = self.game({(2, 1), (3, 3)})
+
+        self.assertEqual((game.collected, game.total_collectibles), (0, 2))
+
+    def test_stepping_onto_one_picks_it_up(self):
+        game = self.game({(1, 1)})
+        game.move_player(0, 1)
+
+        self.assertEqual(game.collected, 1)
+        self.assertEqual(game.collectibles, set())
+
+    def test_walking_past_an_empty_cell_collects_nothing(self):
+        game = self.game({(3, 3)})
+        game.move_player(0, 1)
+
+        self.assertEqual(game.collected, 0)
+
+    def test_each_one_is_only_collected_once(self):
+        game = self.game({(1, 1)})
+        game.move_player(0, 1)
+        game.move_player(0, -1)
+        game.move_player(0, 1)
+
+        self.assertEqual(game.collected, 1)
+
+    def test_one_on_the_entrance_is_picked_up_at_the_start(self):
+        # place_collectibles never does this, but a hand-edited save can
+        game = self.game({(1, 0)})
+
+        self.assertEqual(game.collected, 1)
+        self.assertEqual(game.collectibles, set())
+
+    def test_walking_the_maze_collects_every_one_on_the_route(self):
+        game = self.game({(1, 1), (3, 1), (3, 4)})
+        for dx, dy in [(0, 1), (1, 0), (1, 0), (0, 1), (0, 1), (0, 1)]:
+            game.move_player(dx, dy)
+
+        self.assertEqual(game.collected, 3)
+        self.assertTrue(game.check_win())
+
+    def test_they_are_drawn_on_the_maze(self):
+        game = self.game({(2, 1)})
+        stdout = io.StringIO()
+        with mock.patch.object(game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            game.render()
+
+        self.assertIn("* %s *" % py_maze.COLLECTIBLE_MARKER,
+                      stdout.getvalue())
+
+    def test_a_collected_one_stops_being_drawn(self):
+        game = self.game({(1, 1)})
+        game.move_player(0, 1)
+        stdout = io.StringIO()
+        with mock.patch.object(game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            game.render()
+
+        self.assertNotIn(py_maze.COLLECTIBLE_MARKER, stdout.getvalue())
+
+    def test_the_player_is_drawn_over_a_collectible(self):
+        # the player has to stay visible, and stepping on one takes it
+        game = self.game({(1, 1)})
+        game.player_x, game.player_y = 1, 1
+        stdout = io.StringIO()
+        with mock.patch.object(game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            game.render()
+
+        self.assertIn("*o  *", stdout.getvalue())
+
+    def test_the_game_does_not_empty_the_set_it_was_given(self):
+        collectibles = {(1, 1)}
+        game = self.game(collectibles)
+        game.move_player(0, 1)
+
+        self.assertEqual(collectibles, {(1, 1)},
+                         "the caller's collectibles should not be emptied")
+
+
+class TestEndOfGameSummary(unittest.TestCase):
+    def setUp(self):
+        self.clock = FakeClock()
+
+    def play(self, keys, collectibles=()):
+        # run the game loop against a scripted sequence of keypresses,
+        # with the clock ticking a second per keypress
+        #
+        # Returns:
+        #     tuple: (everything the game printed, the game)
+
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
+                                collectibles, clock=self.clock)
+
+        def key():
+            self.clock.advance(1)
+            return keys.pop(0)
+
+        stdout = io.StringIO()
+        with mock.patch.object(game, 'clear_screen'), \
+                mock.patch.object(game, 'get_key', side_effect=key), \
+                contextlib.redirect_stdout(stdout):
+            game.play()
+
+        return stdout.getvalue(), game
+
+    def win(self, collectibles=()):
+        # the only route out, then the keypress the win screen waits on
+        return self.play(['s', 'd', 'd', 's', 's', 's', 'x'], collectibles)
+
+    def test_the_win_screen_summarizes_the_time_and_the_moves(self):
+        output, _ = self.win()
+
+        self.assertIn('Congratulations', output)
+        self.assertIn('Time:  0:06', output)
+        self.assertIn('Moves: 6', output)
+
+    def test_the_win_screen_tallies_the_collectibles(self):
+        output, _ = self.win({(2, 1), (3, 3), (1, 1)})
+
+        self.assertIn('Collected: 3 of 3', output)
+
+    def test_collectibles_left_behind_are_still_tallied(self):
+        # (1, 3) sits in the dead end the winning route never enters
+        output, _ = self.win({(2, 1), (1, 3)})
+
+        self.assertIn('Collected: 1 of 2', output)
+
+    def test_quitting_summarizes_the_game_so_far(self):
+        output, _ = self.play(['s', 'd', 'q'])
+
+        self.assertIn('Thanks for playing', output)
+        self.assertIn('Time:  0:03', output)
+        self.assertIn('Moves: 2', output)
+
+    def test_the_summary_does_not_mention_a_maze_without_collectibles(self):
+        output, _ = self.win()
+
+        self.assertNotIn('Collected', output)
+
+    def test_the_clock_stops_at_the_win_rather_than_at_the_last_key(self):
+        # the win screen waits for a keypress, which must not be timed
+        _, game = self.win()
+
+        self.assertEqual(game.elapsed(), 6)
+
+    def test_the_status_line_is_drawn_under_the_maze_while_playing(self):
+        output, _ = self.play(['s', 'q'])
+
+        self.assertIn('time 0:', output)
+        self.assertIn('moves 1', output)
+
+    def test_the_status_line_counts_the_collectibles(self):
+        output, _ = self.play(['s', 'q'], {(1, 1), (3, 3)})
+
+        self.assertIn('collected 1/2', output)
+
+
+class TestCollectibleCount(unittest.TestCase):
+    def test_accepts_nought_and_above(self):
+        self.assertEqual(py_maze.collectible_count('0'), 0)
+        self.assertEqual(py_maze.collectible_count('12'), 12)
+
+    def test_rejects_negative_counts(self):
+        with self.assertRaises(argparse.ArgumentTypeError) as caught:
+            py_maze.collectible_count('-1')
+
+        self.assertIn('cannot be negative', str(caught.exception))
+
+    def test_rejects_non_numeric_counts(self):
+        with self.assertRaises(argparse.ArgumentTypeError) as caught:
+            py_maze.collectible_count('lots')
+
+        self.assertIn('whole number', str(caught.exception))
+
+
+class TestSaveFile(unittest.TestCase):
+    MAZE = [
+        "* ***",
+        "*   *",
+        "*** *",
+        "*   *",
+        "*** *",
+    ]
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def test_a_save_is_the_maze_under_a_header(self):
+        lines = py_maze.save_lines(grid_from_strings(self.MAZE))
+
+        self.assertEqual(lines[0], py_maze.SAVE_HEADER)
+        self.assertEqual(lines[1:], self.MAZE)
+
+    def test_the_seed_is_recorded_when_it_is_known(self):
+        lines = py_maze.save_lines(grid_from_strings(self.MAZE), seed=2024)
+
+        self.assertEqual(lines[1], "# seed: 2024")
+
+    def test_an_unknown_seed_is_left_out(self):
+        lines = py_maze.save_lines(grid_from_strings(self.MAZE))
+
+        self.assertNotIn("# seed:", '\n'.join(lines))
+
+    def test_collectibles_are_drawn_into_the_maze(self):
+        lines = py_maze.save_lines(grid_from_strings(self.MAZE), {(2, 1)})
+
+        self.assertEqual(lines[2], "* %s *" % py_maze.COLLECTIBLE_MARKER)
+
+    def test_a_maze_survives_a_round_trip(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        collectibles = py_maze.place_collectibles(grid, 5, random.Random(1))
+        py_maze.write_save(self.path, grid, collectibles, 2024)
+
+        self.assertEqual(py_maze.read_save(self.path),
+                         (grid, collectibles, 2024))
+
+    def test_a_text_seed_survives_a_round_trip(self):
+        grid = grid_from_strings(self.MAZE)
+        py_maze.write_save(self.path, grid, seed='winter')
+
+        self.assertEqual(py_maze.read_save(self.path), (grid, set(), 'winter'))
+
+    def test_a_save_without_a_seed_loads_without_one(self):
+        py_maze.write_save(self.path, grid_from_strings(self.MAZE))
+        _, _, seed = py_maze.read_save(self.path)
+
+        self.assertIsNone(seed)
+
+    def test_a_saved_file_ends_with_a_newline(self):
+        py_maze.write_save(self.path, grid_from_strings(self.MAZE))
+        with open(self.path, encoding='utf-8') as handle:
+            self.assertTrue(handle.read().endswith('\n'))
+
+    def test_blank_lines_and_notes_are_ignored(self):
+        text = "%s\n# a maze worth keeping\n\n%s\n" % (
+            py_maze.SAVE_HEADER, '\n'.join(self.MAZE))
+        grid, collectibles, seed = py_maze.parse_save(text)
+
+        self.assertEqual(grid, grid_from_strings(self.MAZE))
+        self.assertEqual((collectibles, seed), (set(), None))
+
+    def test_a_saved_maze_is_playable(self):
+        grid, collectibles, _ = py_maze.parse_save(
+            "%s\n* ***\n*  $*\n*** *\n" % py_maze.SAVE_HEADER)
+        game = py_maze.MazeGame(grid, collectibles)
+
+        self.assertEqual((game.player_x, game.player_y), (1, 0))
+        self.assertEqual(game.total_collectibles, 1)
+        self.assertTrue(game.move_player(0, 1))
+
+    def test_a_file_without_the_header_is_rejected(self):
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save('\n'.join(self.MAZE), 'maze.txt')
+
+        self.assertIn('not a py_maze save file', str(caught.exception))
+        self.assertIn('maze.txt', str(caught.exception))
+
+    def test_an_empty_file_is_rejected(self):
+        with self.assertRaises(py_maze.SaveFileError):
+            py_maze.parse_save('')
+
+    def test_a_header_with_no_maze_under_it_is_rejected(self):
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("%s\n# seed: 2024\n" % py_maze.SAVE_HEADER)
+
+        self.assertIn('no maze in it', str(caught.exception))
+
+    def test_a_newer_save_format_is_rejected(self):
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("# py_maze save 99\n* *\n")
+
+        self.assertIn('99', str(caught.exception))
+        self.assertIn('not supported', str(caught.exception))
+
+    def test_a_ragged_maze_is_rejected(self):
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("%s\n* ***\n*  *\n" % py_maze.SAVE_HEADER)
+
+        self.assertIn('line 3', str(caught.exception))
+        self.assertIn('expected 5', str(caught.exception))
+
+    def test_an_unknown_character_is_rejected(self):
+        # a solved maze pasted back in, rather than a saved one
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("%s\n*.***\n" % py_maze.SAVE_HEADER)
+
+        self.assertIn("'.'", str(caught.exception))
+        self.assertIn('line 2', str(caught.exception))
+
+    def test_a_missing_file_raises_an_os_error(self):
+        with self.assertRaises(OSError):
+            py_maze.read_save(os.path.join(self.directory.name, 'nowhere'))
+
+
+# Drives main() end to end, with the keyboard and the animation standing
+# in for a real terminal.
+class MainRunner:
     def run_main(self, argv=(), response='n', terminal=True):
         # Returns:
         #     tuple: (what main printed, the patched animate_search)
@@ -1199,6 +1718,8 @@ class TestMain(unittest.TestCase):
         return '\n'.join(
             lines[lines.index('start') + 1:lines.index('end')])
 
+
+class TestMain(MainRunner, unittest.TestCase):
     def test_a_plain_run_prints_an_unsolved_maze(self):
         output, animate = self.run_main()
 
@@ -1268,6 +1789,119 @@ class TestMain(unittest.TestCase):
 
         self.assertIn(py_maze.GOODBYE_MESSAGE, output)
 
+    def test_collectibles_are_scattered_over_the_maze(self):
+        output, _ = self.run_main(['-c', '4', '--seed', '2024'])
+
+        self.assertEqual(self.maze_of(output).count(
+            py_maze.COLLECTIBLE_MARKER), 4)
+
+    def test_a_plain_run_scatters_none(self):
+        output, _ = self.run_main()
+
+        self.assertNotIn(py_maze.COLLECTIBLE_MARKER, self.maze_of(output))
+
+    def test_the_same_seed_scatters_them_the_same_way(self):
+        first, _ = self.run_main(['-c', '4', '--seed', '2024'])
+        second, _ = self.run_main(['-c', '4', '--seed', '2024'])
+
+        self.assertEqual(self.maze_of(first), self.maze_of(second))
+
+    def test_collectibles_are_still_visible_on_a_solved_maze(self):
+        output, _ = self.run_main(['-c', '4', '--seed', '2024', '--solve'])
+        maze = self.maze_of(output)
+
+        self.assertEqual(maze.count(py_maze.COLLECTIBLE_MARKER), 4)
+        self.assertIn(py_maze.SOLUTION_MARKER, maze)
+
+    def test_the_game_is_handed_the_collectibles(self):
+        with mock.patch.object(py_maze, 'MazeGame') as game:
+            self.run_main(['-c', '3', '--seed', '2024'], response='y')
+
+        _, collectibles = game.call_args[0]
+        self.assertEqual(len(collectibles), 3)
+
+
+class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def test_save_writes_a_file_and_says_so(self):
+        output, _ = self.run_main(['--save', self.path, '--seed', '2024'])
+
+        self.assertIn('saved: %s' % self.path, output)
+        self.assertTrue(os.path.exists(self.path))
+
+    def test_a_saved_maze_loads_back_exactly(self):
+        saved, _ = self.run_main(
+            ['-o', self.path, '-c', '4', '--seed', '2024'])
+        loaded, _ = self.run_main(['--load', self.path])
+
+        self.assertEqual(self.maze_of(loaded), self.maze_of(saved))
+
+    def test_a_loaded_maze_reports_the_seed_it_was_saved_from(self):
+        self.run_main(['--save', self.path, '--seed', '2024'])
+        output, _ = self.run_main(['-l', self.path])
+
+        self.assertIn('Loading maze...', output)
+        self.assertIn('seed: 2024', output)
+
+    def test_a_loaded_maze_ignores_the_generation_options(self):
+        # the maze is 6 by 7 whatever --difficulty and --width ask for
+        self.run_main(['--save', self.path, '-w', '6', '-H', '7'])
+        output, _ = self.run_main(['--load', self.path, '-d', 'hard',
+                                   '-w', '20'])
+
+        self.assertEqual(len(self.maze_of(output).splitlines()), 7 * 2 + 1)
+
+    def test_a_loaded_maze_can_be_solved(self):
+        self.run_main(['--save', self.path, '--seed', '2024'])
+        output, _ = self.run_main(['--load', self.path, '--solve'])
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+    def test_a_loaded_maze_keeps_its_collectibles(self):
+        self.run_main(['--save', self.path, '-c', '4', '--seed', '2024'])
+        with mock.patch.object(py_maze, 'MazeGame') as game:
+            self.run_main(['--load', self.path], response='y')
+
+        _, collectibles = game.call_args[0]
+        self.assertEqual(len(collectibles), 4)
+
+    def test_a_maze_with_no_seed_to_report_says_nothing_about_one(self):
+        py_maze.write_save(self.path,
+                           py_maze.MazeGenerator(3, 3, seed=1).generate())
+        output, _ = self.run_main(['--load', self.path])
+
+        self.assertNotIn('seed:', output)
+
+    def test_loading_a_missing_file_exits_with_a_message(self):
+        missing = os.path.join(self.directory.name, 'nowhere.txt')
+        with self.assertRaises(SystemExit) as caught:
+            self.run_main(['--load', missing])
+
+        self.assertIn('py_maze:', str(caught.exception))
+        self.assertIn('nowhere.txt', str(caught.exception))
+
+    def test_loading_something_that_is_not_a_maze_exits_with_a_message(self):
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write("just some notes\n")
+
+        with self.assertRaises(SystemExit) as caught:
+            self.run_main(['--load', self.path])
+
+        self.assertIn('not a py_maze save file', str(caught.exception))
+
+    def test_saving_somewhere_unwritable_exits_with_a_message(self):
+        unwritable = os.path.join(self.directory.name, 'no', 'such', 'dir.txt')
+        with self.assertRaises(SystemExit) as caught:
+            self.run_main(['--save', unwritable])
+
+        self.assertIn('py_maze:', str(caught.exception))
+
+
+class TestMainInterrupt(unittest.TestCase):
     def test_an_interrupt_at_the_prompt_says_goodbye(self):
         stdout = io.StringIO()
         with mock.patch.object(py_maze.sys, 'argv', ['py_maze']), \

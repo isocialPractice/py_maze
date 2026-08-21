@@ -12,6 +12,9 @@ A command-line maze generator and game written in Python. Generate random, solva
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
 - 💡 **Hints**: Stuck mid-game? One key lights up the next step
+- ⏱️ **Timer and Move Counter**: Both run while you play and are summarized when you finish
+- 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
+- 💾 **Save and Load**: Keep a maze in a file and play it again later
 
 ## Installation
 
@@ -48,6 +51,9 @@ python py_maze.py -w 20 -H 30
 | `--height` | `-H` | from the preset | Height of the maze in cells (minimum 2) |
 | `--difficulty` | `-d` | `normal` | Preset maze size: `easy`, `normal` or `hard` |
 | `--seed` | `-s` | chosen at random | Seed for the maze generator |
+| `--collectibles` | `-c` | `0` | Scatter this many pickups through the maze |
+| `--save` | `-o` | | Write the maze to a file so it can be played again |
+| `--load` | `-l` | | Play the maze saved in a file instead of generating one |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
 | `--animate` | `-a` | off | Step through the solver's search on screen |
 | `--version` | `-V` | | Show the installed version and exit |
@@ -55,7 +61,8 @@ python py_maze.py -w 20 -H 30
 
 Note that the short flag for height is a capital `-H`. Lowercase `-h` is
 reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
-`-S` solves the maze, lowercase `-s` seeds it.
+`-S` solves the maze, lowercase `-s` seeds it. The short flag for `--save` is
+`-o`, as in an output file, since `-s` is already the seed.
 
 A maze is drawn with walls between cells, so a maze of `W` by `H` cells
 renders as `W * 2 + 1` characters wide and `H * 2 + 1` characters tall.
@@ -71,7 +78,8 @@ python py_maze.py -w 1
 
 ```
 usage: py_maze.py [-h] [--width WIDTH] [--height HEIGHT]
-                  [--difficulty {easy,normal,hard}] [--seed SEED] [--solve]
+                  [--difficulty {easy,normal,hard}] [--seed SEED]
+                  [--collectibles COUNT] [--save FILE] [--load FILE] [--solve]
                   [--animate] [--version]
 py_maze.py: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
@@ -125,6 +133,126 @@ The same seed only reproduces the same maze at the same size, since the size
 decides how many turns the generator takes. Pair a seed with `--difficulty`,
 or with `--width` and `--height`, to get the identical maze back.
 
+### Collectibles
+
+`--collectibles` scatters that many `$` markers through the maze for the
+player to pick up on the way past:
+
+```bash
+python py_maze.py -d easy --seed 2024 --collectibles 4
+```
+
+**Output:**
+
+```
+start
+* ***********
+* *     *   *
+* *** * *** *
+*   * *     *
+*** * *******
+*   *       *
+* *** ***** *
+*   *$*$  * *
+*** * * *** *
+*   * $$*   *
+* ******* * *
+*         * *
+*********** *
+end
+seed: 2024
+```
+
+Nothing is scattered unless the option is given, so a run without it is
+unchanged. The places are drawn from the same seed as the maze, so the command
+above puts the collectibles in those cells every time it is run.
+
+Every cell the player can stand on is a candidate, corridors as well as
+junctions, apart from the entrance and the exit. Those two are left clear so
+nothing is handed over before the first step or after the last. Asking for
+more than the maze has room for simply fills every cell there is.
+
+Collectibles are drawn over a solution path rather than under it, so a maze
+printed with `--solve` still shows what there is to pick up along the way.
+
+Picking one up is a matter of walking onto it. The running tally sits under
+the maze while the game is played, and the final one is part of the
+[end-of-game summary](#the-timer-and-the-move-counter).
+
+### Saving and Loading a Maze
+
+`--save` writes the maze, and any collectibles, to a file:
+
+```bash
+python py_maze.py -d easy --seed 2024 -c 4 --save maze.txt
+```
+
+**`maze.txt`:**
+
+```
+# py_maze save 1
+# seed: 2024
+* ***********
+* *     *   *
+* *** * *** *
+*   * *     *
+*** * *******
+*   *       *
+* *** ***** *
+*   *$*$  * *
+*** * * *** *
+*   * $$*   *
+* ******* * *
+*         * *
+*********** *
+```
+
+A save file is the maze exactly as it is drawn, under a short header recording
+the format and the seed it came from. That makes it readable, editable by hand
+and comparable like any other text file. Lines starting with `#` are comments,
+so a note about the maze can be kept alongside it.
+
+`--load` plays a saved maze back:
+
+```bash
+python py_maze.py --load maze.txt
+```
+
+The maze comes from the file as it was saved, so the options that generate one
+do not apply to it: `--width`, `--height`, `--difficulty`, `--seed` and
+`--collectibles` are all ignored for a loaded maze. `--solve`, `--animate` and
+the in-game hints work on it exactly as they do on a generated one.
+
+A loaded maze reports the seed its file records, so a maze that turned out to
+be worth keeping can still be traced back:
+
+```
+Loading maze...
+
+start
+...
+end
+seed: 2024
+```
+
+A file that is not a maze this build can read is refused rather than guessed
+at, with a message naming what was wrong:
+
+```bash
+python py_maze.py --load notes.txt
+```
+
+**Output:**
+
+```
+py_maze: notes.txt: not a py_maze save file
+```
+
+The same goes for a ragged maze (`notes.txt: line 3 is 4 characters, expected
+5`), a stray character such as a solution marker pasted back in
+(`notes.txt: unexpected character '.' on line 2`), and a file written by a
+newer build (`notes.txt: save format 2 is not supported, this build reads 1`).
+
 ### Fitting the Terminal
 
 A maze larger than the screen scrolls out of view and cannot be played, so
@@ -140,12 +268,12 @@ python py_maze.py -w 60 -H 60
 
 ```
 warning: --width 60 needs 121 columns but only 80 are available; using 39
-warning: --height 60 needs 121 rows but only 20 are available; using 9
+warning: --height 60 needs 121 rows but only 19 are available; using 9
 ```
 
-Four rows are reserved for the `start` and `end` markers, the spacer and the
-controls line, which is why the height allowance is smaller than the terminal
-is tall.
+Five rows are reserved for the `start` and `end` markers, the status line, the
+spacer and the controls line, which is why the height allowance is smaller
+than the terminal is tall.
 
 Two limits apply to the capping:
 
@@ -246,8 +374,48 @@ python py_maze.py --animate > solved.txt
 4. If you choose to play:
    - Use **arrow keys** or **WASD** to move your character (`o`)
    - Navigate from the **start** (top) to the **end** (bottom)
+   - Walk over any collectibles (`$`) to pick them up
    - Press **'h'** for a hint when you are stuck
    - Press **'q'** to quit at any time, or **Ctrl+C** to interrupt
+
+### The Timer and the Move Counter
+
+A status line under the maze reports how long the game has been running and
+how many steps have been taken. When the maze holds collectibles, it counts
+those too:
+
+```
+start
+* ***
+*o$ *
+*** *
+*   *
+*** *
+end
+time 0:12   moves 8   collected 1/2
+
+Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
+```
+
+Only steps that moved the player are counted, so walking into a wall costs
+nothing but the time it took. Asking for a hint is not a move either.
+
+Reaching the exit prints the same tallies as an end-of-game summary:
+
+```
+🎉 Congratulations! You solved the maze! 🎉
+
+Time:  1:12
+Moves: 84
+Collected: 3 of 4
+
+Press any key to exit...
+```
+
+The clock stops the moment the maze is won, so the summary reads the same
+however long it is left on screen. Quitting with `q` prints the summary for
+the game so far, and the `Collected` line is left out of a maze that had no
+collectibles in it.
 
 ### Hints
 
@@ -262,6 +430,7 @@ start
 *   *
 *** *
 end
+time 0:04   moves 1
 
 Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
 ```
@@ -390,9 +559,7 @@ Contributions are welcome! Feel free to submit issues or pull requests.
 ## Future Enhancements
 
 Ideas for future versions:
-- Timer and move counter
-- Save/load maze feature
 - Multiple player characters
-- Collectibles and obstacles
+- Obstacles that block or slow the way through
 
 Enjoy your maze adventures! 🎉

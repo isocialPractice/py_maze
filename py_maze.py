@@ -4,6 +4,7 @@
 
 import argparse
 import random
+import re
 import shutil
 import sys
 import os
@@ -17,7 +18,7 @@ else:
     import termios
 
 # single source of the package version: the manifest reads it from here
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 # smallest maze that still has an interior path
 MIN_DIMENSION = 2
@@ -46,6 +47,7 @@ SOLUTION_MARKER = '.'
 VISITED_MARKER = '~'
 FRONTIER_MARKER = '?'
 HINT_MARKER = '?'
+COLLECTIBLE_MARKER = '$'
 
 # steps of the solution path an in-game hint lights up
 HINT_STEPS = 1
@@ -60,8 +62,25 @@ FRAME_DELAY = 0.05
 MOVES = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
 # lines render() prints around the maze itself: the "start" marker, the
-# "end" marker, the blank spacer and the controls line
-RENDER_ROW_OVERHEAD = 4
+# "end" marker, the status line, the blank spacer and the controls line
+RENDER_ROW_OVERHEAD = 5
+
+# format of a save file, so an older build can say it cannot read a newer
+# one instead of misreading it
+SAVE_FORMAT = 1
+SAVE_HEADER = "# py_maze save %d" % SAVE_FORMAT
+
+# the comment lines a save file may open with
+SAVE_HEADER_PATTERN = re.compile(r'^#\s*py_maze save\s+(\d+)\s*$')
+SAVE_SEED_PATTERN = re.compile(r'^#\s*seed:\s*(.+?)\s*$')
+
+# what each character of a saved maze means: True for a wall, False for a
+# cell the player can stand on
+SAVE_CHARS = {
+    WALL_MARKER: True,
+    OPEN_MARKER: False,
+    COLLECTIBLE_MARKER: False,
+}
 
 # seconds to wait between keyboard polls on Windows, so an idle
 # game loop does not spin the CPU at 100%
@@ -85,6 +104,11 @@ WINDOWS_ARROW_KEYS = {
     b'K': 'left',
     b'M': 'right',
 }
+
+
+# Raised when a file handed to --load is not a maze this build can read.
+class SaveFileError(ValueError):
+    pass
 
 
 def find_entrance(grid):
@@ -117,6 +141,21 @@ def find_exit(grid):
         if not grid[y][x]:
             return x, y
     return x, len(grid) - 1
+
+
+def open_cells(grid):
+    # every cell of the maze the player can stand on
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #
+    # Yields:
+    #     tuple: (x, y) of each open cell, in reading order
+
+    for y, row in enumerate(grid):
+        for x, wall in enumerate(row):
+            if not wall:
+                yield x, y
 
 
 def open_neighbors(grid, x, y):
@@ -286,6 +325,230 @@ def solution_overlay(path):
     return [(SOLUTION_MARKER, set(path))] if path else []
 
 
+def collectible_overlay(collectibles):
+    # the overlay that draws collectibles over a maze
+    #
+    # Args:
+    #     collectibles: Cells holding a collectible, empty for a bare maze
+    #
+    # Returns:
+    #     list: Overlays for maze_lines, empty when there is nothing to draw
+
+    return [(COLLECTIBLE_MARKER, set(collectibles))] if collectibles else []
+
+
+def place_collectibles(grid, count, rng=None):
+    # scatter collectibles over the cells the player walks through
+    #
+    # The entrance and the exit are left out, so nothing is picked up
+    # before the player has taken a step or after the maze is won. Every
+    # other open cell is a candidate, corridors as well as junctions.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     count: How many collectibles to scatter
+    #     rng: Random number generator to draw the places from, so a
+    #         seeded generator scatters them the same way every run.
+    #         Defaults to the shared random module
+    #
+    # Returns:
+    #     set: The cells holding a collectible. A maze with fewer open
+    #     cells than the count asked for gets one on every cell there is
+
+    if count <= 0:
+        return set()
+    if rng is None:
+        rng = random
+
+    taken = {find_entrance(grid), find_exit(grid)}
+    spots = [cell for cell in open_cells(grid) if cell not in taken]
+
+    return set(rng.sample(spots, min(count, len(spots))))
+
+
+def format_duration(seconds):
+    # write a length of time the way a stopwatch would
+    #
+    # Args:
+    #     seconds: Seconds elapsed, whole or fractional
+    #
+    # Returns:
+    #     str: The time as m:ss, or h:mm:ss once it passes an hour
+
+    minutes, seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+
+    if hours:
+        return "%d:%02d:%02d" % (hours, minutes, seconds)
+    return "%d:%02d" % (minutes, seconds)
+
+
+def status_line(elapsed, moves, collected=0, total=0):
+    # the running tally shown under the maze while the game is played
+    #
+    # Args:
+    #     elapsed: Seconds since the game started
+    #     moves: Steps the player has taken
+    #     collected: Collectibles picked up so far
+    #     total: Collectibles the maze started with
+    #
+    # Returns:
+    #     str: The tally, naming collectibles only when the maze holds any
+
+    line = "time %s   moves %d" % (format_duration(elapsed), moves)
+    if total:
+        line += "   collected %d/%d" % (collected, total)
+
+    return line
+
+
+def summary_lines(elapsed, moves, collected=0, total=0):
+    # the end-of-game summary, one line per tally
+    #
+    # Args:
+    #     elapsed: Seconds the game lasted
+    #     moves: Steps the player took
+    #     collected: Collectibles picked up
+    #     total: Collectibles the maze started with
+    #
+    # Returns:
+    #     list: One string per line, naming collectibles only when the
+    #     maze held any
+
+    lines = ["Time:  %s" % format_duration(elapsed),
+             "Moves: %d" % moves]
+    if total:
+        lines.append("Collected: %d of %d" % (collected, total))
+
+    return lines
+
+
+def save_lines(grid, collectibles=(), seed=None):
+    # write a maze out as the picture of it, under a short header
+    #
+    # A save file is the maze as it is drawn, so it can be read, edited by
+    # hand and compared like any other text. Collectibles sit in the
+    # picture as their own marker rather than in the header, which keeps
+    # the file to one thing: the maze.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     collectibles: Cells holding a collectible
+    #     seed: Seed the maze was generated from, recorded as a comment
+    #         when it is known
+    #
+    # Returns:
+    #     list: One string per line of the file
+
+    lines = [SAVE_HEADER]
+    if seed is not None:
+        lines.append("# seed: %s" % seed)
+    lines.extend(maze_lines(grid, collectible_overlay(collectibles)))
+
+    return lines
+
+
+def write_save(path, grid, collectibles=(), seed=None):
+    # save a maze so it can be replayed with --load
+    #
+    # Args:
+    #     path: File to write
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     collectibles: Cells holding a collectible
+    #     seed: Seed the maze was generated from, or None when unknown
+    #
+    # Raises:
+    #     OSError: If the file cannot be written
+
+    with open(path, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(save_lines(grid, collectibles, seed)) + '\n')
+
+
+def parse_save(text, source=None):
+    # read a maze back out of a save file
+    #
+    # Args:
+    #     text: Contents of the file
+    #     source: Name of the file, for the error messages
+    #
+    # Returns:
+    #     tuple: (grid, collectibles, seed). The seed is None when the
+    #     file does not record one
+    #
+    # Raises:
+    #     SaveFileError: If the text is not a maze this build can read
+
+    where = "%s: " % source if source else ""
+    grid = []
+    collectibles = set()
+    seed = None
+    saved_format = None
+
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+
+        if line.startswith('#'):
+            header = SAVE_HEADER_PATTERN.match(line)
+            if header:
+                saved_format = int(header.group(1))
+                if saved_format != SAVE_FORMAT:
+                    raise SaveFileError(
+                        "%ssave format %d is not supported, this build "
+                        "reads %d" % (where, saved_format, SAVE_FORMAT))
+                continue
+
+            recorded = SAVE_SEED_PATTERN.match(line)
+            if recorded:
+                seed = maze_seed(recorded.group(1))
+            # any other comment is a note to whoever opens the file
+            continue
+
+        if saved_format is None:
+            raise SaveFileError("%snot a py_maze save file" % where)
+
+        row = []
+        for x, char in enumerate(line):
+            if char not in SAVE_CHARS:
+                raise SaveFileError(
+                    "%sunexpected character '%s' on line %d"
+                    % (where, char, number))
+            row.append(SAVE_CHARS[char])
+            if char == COLLECTIBLE_MARKER:
+                collectibles.add((x, len(grid)))
+
+        if grid and len(row) != len(grid[0]):
+            raise SaveFileError(
+                "%sline %d is %d characters, expected %d"
+                % (where, number, len(row), len(grid[0])))
+
+        grid.append(row)
+
+    if saved_format is None:
+        raise SaveFileError("%snot a py_maze save file" % where)
+    if not grid:
+        raise SaveFileError("%sthe save file has no maze in it" % where)
+
+    return grid, collectibles, seed
+
+
+def read_save(path):
+    # load a saved maze from a file
+    #
+    # Args:
+    #     path: File to read
+    #
+    # Returns:
+    #     tuple: (grid, collectibles, seed), as for parse_save
+    #
+    # Raises:
+    #     OSError: If the file cannot be read
+    #     SaveFileError: If the file is not a maze this build can read
+
+    with open(path, encoding='utf-8') as handle:
+        return parse_save(handle.read(), path)
+
+
 def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
                    stream=None, clear=None, pause=None):
     # play the solver's search through the terminal, frame by frame
@@ -404,11 +667,16 @@ class MazeGenerator:
 
 # Interactive maze game with player movement.
 class MazeGame:
-    def __init__(self, maze_grid):
+    def __init__(self, maze_grid, collectibles=(), clock=None):
         # initialize the game
         #
         # args:
         #     maze_grid: 2D list representing the maze (True = wall, False = path)
+        #     collectibles: Cells holding a collectible to pick up
+        #     clock: Callable returning a steadily rising number of
+        #         seconds, used to time the game. Defaults to a monotonic
+        #         clock, which cannot run backwards when the system time
+        #         is adjusted mid-game
 
         self.maze = [row[:] for row in maze_grid]  # copy the grid
         self.height = len(self.maze)
@@ -423,13 +691,85 @@ class MazeGame:
         # cells a hint is lighting up, empty whenever no hint is showing
         self.hint_cells = set()
 
+        # collectibles still waiting to be picked up, and the tally of
+        # the ones that have been
+        self.collectibles = set(collectibles)
+        self.total_collectibles = len(self.collectibles)
+        self.collected = 0
+
+        # steps taken, counting only the ones that moved the player
+        self.moves = 0
+
+        # the clock runs from the first render to the end of the game, so
+        # the summary reports how long the maze took rather than how long
+        # the process has been alive
+        self.clock = clock if clock is not None else time.monotonic
+        self.started = None
+        self.stopped = None
+
+        # a maze saved with a collectible on the entrance hands it over
+        # before the first move
+        self.collect()
+
+    def start_clock(self):
+        # start timing the game, if it is not already being timed
+        if self.started is None:
+            self.started = self.clock()
+
+    def stop_clock(self):
+        # stop the clock, so the summary reads the same however long it
+        # is left on screen
+        if self.started is not None and self.stopped is None:
+            self.stopped = self.clock()
+
+    def elapsed(self):
+        # how long the game has been running
+        #
+        # Returns:
+        #     float: Seconds since the clock started, frozen at whatever
+        #     it read when the game ended. Zero before the game begins
+
+        if self.started is None:
+            return 0.0
+
+        now = self.stopped if self.stopped is not None else self.clock()
+        return now - self.started
+
+    def status(self):
+        # the running tally drawn under the maze
+        #
+        # Returns:
+        #     str: The elapsed time, the moves taken and, when the maze
+        #     holds collectibles, how many have been picked up
+
+        return status_line(self.elapsed(), self.moves,
+                           self.collected, self.total_collectibles)
+
+    def summary(self):
+        # the end-of-game summary
+        #
+        # Returns:
+        #     list: One string per line of the summary
+
+        return summary_lines(self.elapsed(), self.moves,
+                             self.collected, self.total_collectibles)
+
+    def print_summary(self):
+        # print the end-of-game summary under a blank line
+        print()
+        for line in self.summary():
+            print(line)
+
     def render(self):
-        # render the maze with the player, and any hint being shown
+        # render the maze with the player, the collectibles left to pick
+        # up and any hint being shown, over the running tally
         self.clear_screen()
         print_maze(self.maze, [
             (PLAYER_MARKER, {(self.player_x, self.player_y)}),
             (HINT_MARKER, self.hint_cells),
+            (COLLECTIBLE_MARKER, self.collectibles),
         ])
+        print(self.status())
         print("\nUse arrow keys or WASD to move. "
               "Press 'h' for a hint, 'q' to quit.")
 
@@ -461,8 +801,26 @@ class MazeGame:
         self.hint_cells = set()
         return steps
 
+    def collect(self):
+        # pick up whatever is on the cell the player is standing on
+        #
+        # Returns:
+        #     True if a collectible was picked up, False otherwise
+
+        cell = (self.player_x, self.player_y)
+        if cell not in self.collectibles:
+            return False
+
+        self.collectibles.discard(cell)
+        self.collected += 1
+        return True
+
     def move_player(self, dx, dy):
         # move player by dx, dy if the destination is not a wall
+        #
+        # A step that lands on a collectible picks it up, and only a step
+        # that went somewhere is counted, so walking into a wall costs
+        # nothing but the time it took
         #
         # Args:
         #     dx: Change in x position
@@ -479,6 +837,8 @@ class MazeGame:
             not self.maze[new_y][new_x]):
             self.player_x = new_x
             self.player_y = new_y
+            self.moves += 1
+            self.collect()
             return True
         return False
 
@@ -561,6 +921,7 @@ class MazeGame:
 
     # main game loop
     def play(self):
+        self.start_clock()
         self.render()
 
         try:
@@ -568,7 +929,9 @@ class MazeGame:
                 key = self.get_key()
 
                 if key == 'q':
+                    self.stop_clock()
                     print("\nThanks for playing!")
+                    self.print_summary()
                     break
                 elif key in ['w', 'up']:
                     self.move_player(0, -1)
@@ -586,8 +949,10 @@ class MazeGame:
                 self.render()
 
                 if self.check_win():
+                    self.stop_clock()
                     print("\n🎉 Congratulations! You solved the maze! 🎉")
-                    print("Press any key to exit...")
+                    self.print_summary()
+                    print("\nPress any key to exit...")
                     self.get_key()
                     break
         except KeyboardInterrupt:
@@ -621,6 +986,32 @@ def maze_dimension(value):
             % (MIN_DIMENSION, cells))
 
     return cells
+
+
+def collectible_count(value):
+    # argparse type for --collectibles
+    #
+    # Args:
+    #     value: Raw command-line string for the option
+    #
+    # Returns:
+    #     int: How many collectibles to scatter
+    #
+    # Raises:
+    #     argparse.ArgumentTypeError: If the value is not a whole number
+    #     of nought or more
+
+    try:
+        count = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "'%s' is not a whole number of collectibles" % value)
+
+    if count < 0:
+        raise argparse.ArgumentTypeError(
+            "the number of collectibles cannot be negative, got %d" % count)
+
+    return count
 
 
 def maze_seed(value):
@@ -782,6 +1173,20 @@ def build_parser():
                         help="Seed for the maze generator, so the same maze "
                              "can be generated again. One is drawn at random, "
                              "and reported, when this is not given")
+    parser.add_argument("--collectibles", "-c", type=collectible_count,
+                        default=0, metavar="COUNT",
+                        help="Scatter COUNT collectibles (%s) through the "
+                             "maze for the player to pick up, tallied in the "
+                             "end-of-game summary (default: 0)"
+                             % COLLECTIBLE_MARKER)
+    parser.add_argument("--save", "-o", default=None, metavar="FILE",
+                        help="Write the maze, and any collectibles, to FILE "
+                             "so it can be played again with --load")
+    parser.add_argument("--load", "-l", default=None, metavar="FILE",
+                        help="Play the maze saved in FILE instead of "
+                             "generating one. The maze comes from the file, "
+                             "so the size, seed and collectible options do "
+                             "not apply")
     parser.add_argument("--solve", "-S", action="store_true",
                         help="Print the solution path overlaid on the maze")
     parser.add_argument("--animate", "-a", action="store_true",
@@ -804,11 +1209,28 @@ def read_response():
     return sys.stdin.read(1).lower()
 
 
-# Main entry point for py_maze command.
-def main():
+def build_maze(args):
+    # settle on the maze this run plays: loaded from a file, or generated
+    #
+    # Args:
+    #     args: Parsed command-line arguments
+    #
+    # Returns:
+    #     tuple: (grid, collectibles, seed). The seed is None for a loaded
+    #     maze whose save file does not record one
+    #
+    # Raises:
+    #     OSError: If a maze was to be loaded and the file cannot be read
+    #     SaveFileError: If the file is not a maze this build can read
+
+    if args.load:
+        print("Loading maze...")
+        # the maze comes from the file exactly as it was saved, so it is
+        # neither resized nor re-seeded here
+        return read_save(args.load)
+
     # use the difficulty preset and any width and height overrides,
     # capped to whatever the terminal can actually show
-    args = build_parser().parse_args()
     width, height = fit_to_terminal(*resolve_dimensions(args))
 
     # a seed is always chosen, and always reported, so any maze that was
@@ -821,6 +1243,26 @@ def main():
     generator = MazeGenerator(width, height, seed=seed)
     maze_grid = generator.generate()
 
+    # drawing the places from the generator's own random numbers keeps
+    # the collectibles wherever the seed put them last time
+    collectibles = place_collectibles(maze_grid, args.collectibles,
+                                      generator.random)
+
+    return maze_grid, collectibles, seed
+
+
+# Main entry point for py_maze command.
+def main():
+    args = build_parser().parse_args()
+
+    try:
+        maze_grid, collectibles, seed = build_maze(args)
+
+        if args.save:
+            write_save(args.save, maze_grid, collectibles, seed)
+    except (SaveFileError, OSError) as error:
+        sys.exit("py_maze: %s" % error)
+
     # animating needs a terminal to draw over; with the output piped or
     # redirected there is nothing to animate, so the maze is just solved
     solution = None
@@ -829,10 +1271,15 @@ def main():
     elif args.animate or args.solve:
         solution = solve_maze(maze_grid)
 
-    # display the maze
+    # display the maze, with the collectibles drawn over the solution so
+    # a solved maze still shows what there is to pick up along the way
     print()
-    print_maze(maze_grid, solution_overlay(solution))
-    print("seed: %s" % seed)
+    print_maze(maze_grid, collectible_overlay(collectibles) +
+               solution_overlay(solution))
+    if seed is not None:
+        print("seed: %s" % seed)
+    if args.save:
+        print("saved: %s" % args.save)
     print()
 
     # ask if user wants to play
@@ -843,7 +1290,7 @@ def main():
         print(response)
 
         if response == 'y':
-            game = MazeGame(maze_grid)
+            game = MazeGame(maze_grid, collectibles)
             game.play()
         else:
             print(GOODBYE_MESSAGE)

@@ -7,15 +7,7 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add a timer and move counter displayed during play and summarized
-  on the win screen
-  - From: Gameplay Enhancements
-- [ ] Add collectibles scattered on the path that are tallied in the
-  end-of-game summary
-  - From: Gameplay Enhancements
-- [ ] Add a save/load feature: write the current maze to a file and
-  replay a saved maze via a `--load <file>` option
-  - From: Gameplay Enhancements
+No items are queued for the next run: every roadmap section below is empty.
 
 ## Fixes and Hardening
 
@@ -36,12 +28,7 @@ No items are currently queued in this section.
 New player-facing features from the README's future-enhancements list.
 Completing items in this section is a minor version update.
 
-- [ ] Add a timer and move counter displayed during play and summarized
-  on the win screen
-- [ ] Add a save/load feature: write the current maze to a file and
-  replay a saved maze via a `--load <file>` option
-- [ ] Add collectibles scattered on the path that are tallied in the
-  end-of-game summary
+No items are currently queued in this section.
 
 ## Maze Solver and Visualization
 
@@ -103,3 +90,12 @@ No items are currently queued in this section.
 - [x] Add an animated solver visualization mode that steps through the
   search frontier in the terminal
   - From: Maze Solver and Visualization
+- [x] Add a timer and move counter displayed during play and summarized
+  on the win screen
+  - From: Gameplay Enhancements
+- [x] Add collectibles scattered on the path that are tallied in the
+  end-of-game summary
+  - From: Gameplay Enhancements
+- [x] Add a save/load feature: write the current maze to a file and
+  replay a saved maze via a `--load <file>` option
+  - From: Gameplay Enhancements
