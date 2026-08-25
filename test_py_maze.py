@@ -5,15 +5,33 @@
 import argparse
 import collections
 import contextlib
+import importlib
+import inspect
 import io
 import os
 import random
 import re
+import shutil
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
 import py_maze
+
+# the checkout the tests run against, so a subprocess started by one can
+# find the package without depending on the working directory
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# every module of the package, and the one that is allowed a terminal
+PACKAGE_MODULES = ('cli', 'game', 'generation', 'grid', 'keys', 'rendering',
+                   'saves', 'solving', 'version')
+TERMINAL_FREE_MODULES = ('generation', 'grid', 'rendering', 'saves', 'solving')
+
+# the platform machinery that used to sit at the top of the flat module
+TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
 
 
 # A clock that only moves when a test moves it, so timings are exact.
@@ -40,6 +58,25 @@ def terminal_size(columns, lines):
     #     os.terminal_size: The same type shutil.get_terminal_size returns
 
     return os.terminal_size((columns, lines))
+
+
+@contextlib.contextmanager
+def measuring(size):
+    # tell every module that measures the terminal what the screen looks like
+    #
+    # main() measures it to decide whether there is anything to animate
+    # over, and fit_to_terminal measures it again to cap the maze, so a
+    # run driven end to end has to answer both.
+    #
+    # Args:
+    #     size: The terminal size both should see, or None for output
+    #         that has been piped or redirected
+
+    with mock.patch.object(py_maze.cli, 'terminal_size',
+                           return_value=size), \
+            mock.patch.object(py_maze.rendering, 'terminal_size',
+                              return_value=size):
+        yield
 
 
 def grid_from_strings(rows):
@@ -174,7 +211,7 @@ class TestMazeGenerator(unittest.TestCase):
         # the entrance must reach the exit, for a spread of sizes and seeds
         for width, height in [(2, 2), (3, 7), (9, 11), (12, 4)]:
             for seed in range(5):
-                py_maze.random.seed(seed)
+                random.seed(seed)
                 grid = py_maze.MazeGenerator(width, height).generate()
                 reachable = find_open_cells(grid, 1, 0)
 
@@ -262,7 +299,7 @@ class TestMazeGame(unittest.TestCase):
         self.assertTrue(self.game.check_win())
 
     def test_generated_maze_is_walkable_end_to_end(self):
-        py_maze.random.seed(7)
+        random.seed(7)
         grid = py_maze.MazeGenerator(4, 4).generate()
         game = py_maze.MazeGame(grid)
         reachable = find_open_cells(grid, game.player_x, game.player_y)
@@ -281,8 +318,8 @@ class TestWindowsInput(unittest.TestCase):
         #     tuple: (key returned by the game, fake msvcrt, sleep mock)
 
         fake = FakeMsvcrt(keys, idle_polls)
-        with mock.patch.object(py_maze, 'msvcrt', fake, create=True), \
-                mock.patch.object(py_maze.time, 'sleep') as sleep:
+        with mock.patch.object(py_maze.keys, 'msvcrt', fake, create=True), \
+                mock.patch.object(time, 'sleep') as sleep:
             return self.game.get_key_windows(), fake, sleep
 
     def test_plain_key_is_lowercased(self):
@@ -345,9 +382,9 @@ class TestPosixInput(unittest.TestCase):
         #     tuple: (key returned by the game, fake tty module)
 
         tty = mock.Mock()
-        with mock.patch.object(py_maze, 'termios', self.termios, create=True), \
-                mock.patch.object(py_maze, 'tty', tty, create=True), \
-                mock.patch.object(py_maze.sys, 'stdin', FakeStdin(keys)):
+        with mock.patch.object(py_maze.keys, 'termios', self.termios, create=True), \
+                mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
+                mock.patch.object(sys, 'stdin', FakeStdin(keys)):
             return self.game.get_key_posix(), tty
 
     def test_plain_key_is_lowercased(self):
@@ -524,7 +561,8 @@ class TestFitToTerminal(unittest.TestCase):
 
     def test_a_redirected_stream_is_not_measured(self):
         # piping the maze to a file means there is no terminal to fit
-        with mock.patch.object(py_maze, 'terminal_size', return_value=None):
+        with mock.patch.object(py_maze.rendering, 'terminal_size',
+                               return_value=None):
             self.assertEqual(py_maze.fit_to_terminal(500, 500), (500, 500))
 
 
@@ -534,24 +572,24 @@ class TestTerminalSize(unittest.TestCase):
         # whatever the test runner has done with the real one
         stdout = mock.Mock()
         stdout.fileno.return_value = 1
-        return mock.patch.object(py_maze.sys, 'stdout', stdout)
+        return mock.patch.object(sys, 'stdout', stdout)
 
     def test_a_terminal_is_measured(self):
         size = terminal_size(100, 30)
         with self.stdout_with_descriptor(), \
-                mock.patch.object(py_maze.os, 'isatty', return_value=True), \
-                mock.patch.object(py_maze.shutil, 'get_terminal_size',
+                mock.patch.object(os, 'isatty', return_value=True), \
+                mock.patch.object(shutil, 'get_terminal_size',
                                   return_value=size):
             self.assertEqual(py_maze.terminal_size(), size)
 
     def test_a_redirected_stream_has_no_size(self):
         with self.stdout_with_descriptor(), \
-                mock.patch.object(py_maze.os, 'isatty', return_value=False):
+                mock.patch.object(os, 'isatty', return_value=False):
             self.assertIsNone(py_maze.terminal_size())
 
     def test_a_stream_without_a_descriptor_has_no_size(self):
         # io.StringIO raises when asked for a file descriptor
-        with mock.patch.object(py_maze.sys, 'stdout', io.StringIO()):
+        with mock.patch.object(sys, 'stdout', io.StringIO()):
             self.assertIsNone(py_maze.terminal_size())
 
 
@@ -730,18 +768,18 @@ class TestSeed(unittest.TestCase):
 
     def test_a_seeded_generator_leaves_the_shared_random_alone(self):
         # seeding the module would make every later maze repeat as well
-        py_maze.random.seed(11)
-        expected = py_maze.random.random()
+        random.seed(11)
+        expected = random.random()
 
-        py_maze.random.seed(11)
+        random.seed(11)
         self.generate(2024)
 
-        self.assertEqual(py_maze.random.random(), expected)
+        self.assertEqual(random.random(), expected)
 
     def test_without_a_seed_the_shared_random_is_used(self):
-        py_maze.random.seed(3)
+        random.seed(3)
         first = py_maze.MazeGenerator(5, 6).generate()
-        py_maze.random.seed(3)
+        random.seed(3)
         second = py_maze.MazeGenerator(5, 6).generate()
 
         self.assertEqual(first, second)
@@ -844,7 +882,7 @@ class TestSolveMaze(unittest.TestCase):
             [(1, 0), (1, 1), (2, 1), (3, 1), (3, 2), (3, 3), (3, 4)])
 
     def test_every_step_is_open_and_adjacent(self):
-        py_maze.random.seed(5)
+        random.seed(5)
         grid = py_maze.MazeGenerator(7, 9).generate()
         path = py_maze.solve_maze(grid)
 
@@ -1128,7 +1166,7 @@ class TestHint(unittest.TestCase):
 
         stdout = io.StringIO()
         with mock.patch.object(self.game, 'clear_screen'), \
-                mock.patch.object(py_maze.time, 'sleep') as sleep, \
+                mock.patch.object(time, 'sleep') as sleep, \
                 contextlib.redirect_stdout(stdout):
             steps = self.game.show_hint()
 
@@ -1179,7 +1217,7 @@ class TestHint(unittest.TestCase):
         with mock.patch.object(self.game, 'clear_screen'), \
                 mock.patch.object(self.game, 'get_key',
                                   side_effect=['h', 'q']), \
-                mock.patch.object(py_maze.time, 'sleep'), \
+                mock.patch.object(time, 'sleep'), \
                 contextlib.redirect_stdout(stdout):
             self.game.play()
 
@@ -1313,7 +1351,7 @@ class TestMoveCounter(unittest.TestCase):
 
     def test_a_hint_is_not_a_move(self):
         with mock.patch.object(self.game, 'clear_screen'), \
-                mock.patch.object(py_maze.time, 'sleep'), \
+                mock.patch.object(time, 'sleep'), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.game.show_hint()
 
@@ -1699,12 +1737,11 @@ class MainRunner:
 
         stdout = io.StringIO()
         size = terminal_size(200, 80) if terminal else None
-        with mock.patch.object(py_maze.sys, 'argv', ['py_maze'] + list(argv)), \
-                mock.patch.object(py_maze, 'terminal_size',
-                                  return_value=size), \
-                mock.patch.object(py_maze, 'read_response',
+        with mock.patch.object(sys, 'argv', ['py_maze'] + list(argv)), \
+                measuring(size), \
+                mock.patch.object(py_maze.cli, 'read_response',
                                   side_effect=[response]), \
-                mock.patch.object(py_maze, 'animate_search',
+                mock.patch.object(py_maze.cli, 'animate_search',
                                   return_value=[(1, 0)]) as animate, \
                 contextlib.redirect_stdout(stdout):
             py_maze.main()
@@ -1779,7 +1816,7 @@ class TestMain(MainRunner, unittest.TestCase):
         self.assertLess(int(reported.group(1)), py_maze.MAX_SEED)
 
     def test_answering_yes_starts_the_game(self):
-        with mock.patch.object(py_maze, 'MazeGame') as game:
+        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
             self.run_main(response='y')
 
         game.return_value.play.assert_called_once_with()
@@ -1814,7 +1851,7 @@ class TestMain(MainRunner, unittest.TestCase):
         self.assertIn(py_maze.SOLUTION_MARKER, maze)
 
     def test_the_game_is_handed_the_collectibles(self):
-        with mock.patch.object(py_maze, 'MazeGame') as game:
+        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
             self.run_main(['-c', '3', '--seed', '2024'], response='y')
 
         _, collectibles = game.call_args[0]
@@ -1863,7 +1900,7 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
 
     def test_a_loaded_maze_keeps_its_collectibles(self):
         self.run_main(['--save', self.path, '-c', '4', '--seed', '2024'])
-        with mock.patch.object(py_maze, 'MazeGame') as game:
+        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
             self.run_main(['--load', self.path], response='y')
 
         _, collectibles = game.call_args[0]
@@ -1904,15 +1941,353 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
 class TestMainInterrupt(unittest.TestCase):
     def test_an_interrupt_at_the_prompt_says_goodbye(self):
         stdout = io.StringIO()
-        with mock.patch.object(py_maze.sys, 'argv', ['py_maze']), \
-                mock.patch.object(py_maze, 'terminal_size',
-                                  return_value=terminal_size(200, 80)), \
-                mock.patch.object(py_maze, 'read_response',
+        with mock.patch.object(sys, 'argv', ['py_maze']), \
+                measuring(terminal_size(200, 80)), \
+                mock.patch.object(py_maze.cli, 'read_response',
                                   side_effect=KeyboardInterrupt), \
                 contextlib.redirect_stdout(stdout):
             py_maze.main()
 
         self.assertIn(py_maze.GOODBYE_MESSAGE, stdout.getvalue())
+
+
+def public_members(namespace):
+    # the functions and classes of a namespace a caller can reach
+    #
+    # Args:
+    #     namespace: A module carrying an __all__
+    #
+    # Yields:
+    #     tuple: (name, member) for each public function and class. The
+    #     constants in __all__ are skipped, having nothing to document
+
+    for name in namespace.__all__:
+        member = getattr(namespace, name)
+        if inspect.isfunction(member) or inspect.isclass(member):
+            yield name, member
+
+
+def run_python(code):
+    # run a snippet in a fresh interpreter against this checkout
+    #
+    # Args:
+    #     code: Source for the interpreter to run with -c
+    #
+    # Returns:
+    #     subprocess.CompletedProcess: The finished run, with its output
+    #     decoded as text
+
+    return subprocess.run(
+        [sys.executable, '-c', code], cwd=PROJECT_ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+
+class TestPackageSurface(unittest.TestCase):
+    def modules(self):
+        # Yields:
+        #     tuple: (name, module) for every module of the package
+        for name in PACKAGE_MODULES:
+            yield name, importlib.import_module('py_maze.%s' % name)
+
+    def test_every_module_declares_what_it_exports(self):
+        # __all__ is what help() and "from py_maze.x import *" read
+        for name, module in self.modules():
+            if name == 'version':
+                # the version module holds one string and no surface
+                continue
+
+            self.assertTrue(getattr(module, '__all__', None),
+                            "py_maze.%s declares no __all__" % name)
+
+    def test_every_module_has_a_docstring(self):
+        for name, module in self.modules():
+            self.assertTrue((module.__doc__ or '').strip(),
+                            "py_maze.%s has no docstring" % name)
+
+    def test_the_package_has_a_docstring(self):
+        self.assertTrue((py_maze.__doc__ or '').strip())
+
+    def test_the_package_re_exports_every_module_surface(self):
+        # import py_maze has to keep reaching everything the split moved
+        for name, module in self.modules():
+            missing = set(getattr(module, '__all__', ())) - set(py_maze.__all__)
+
+            self.assertEqual(missing, set(),
+                             "py_maze does not re-export %s from py_maze.%s"
+                             % (sorted(missing), name))
+
+    def test_every_exported_name_is_reachable(self):
+        for name in py_maze.__all__:
+            self.assertTrue(hasattr(py_maze, name),
+                            "py_maze.__all__ names %s, which is not there"
+                            % name)
+
+    def test_the_export_list_has_no_duplicates(self):
+        self.assertEqual(sorted(py_maze.__all__),
+                         sorted(set(py_maze.__all__)))
+
+    def test_every_public_function_and_class_has_a_docstring(self):
+        # help(py_maze.solve_maze) is the point of the exercise
+        for name, member in public_members(py_maze):
+            self.assertTrue((member.__doc__ or '').strip(),
+                            "py_maze.%s has no docstring" % name)
+
+    def test_every_public_method_has_a_docstring(self):
+        for name, member in public_members(py_maze):
+            if not inspect.isclass(member):
+                continue
+
+            for method_name, method in vars(member).items():
+                if not inspect.isfunction(method):
+                    continue
+                if method_name.startswith('_') and method_name != '__init__':
+                    continue
+
+                self.assertTrue(
+                    (method.__doc__ or '').strip(),
+                    "py_maze.%s.%s has no docstring" % (name, method_name))
+
+    def test_the_flat_module_is_gone(self):
+        # the package replaces it, and leaving both behind would make
+        # which one runs depend on the import machinery
+        self.assertFalse(os.path.exists(os.path.join(PROJECT_ROOT,
+                                                     'py_maze.py')))
+
+
+class TestTerminalImports(unittest.TestCase):
+    # the generator and the solver are worth importing on their own, and
+    # a program that only wants a maze should not be handed a terminal
+
+    def terminal_modules_after(self, imports):
+        # load package modules with the re-exporting __init__ left out
+        #
+        # A stub package with nothing but a __path__ is enough for the
+        # import machinery to find the modules under it, which is what
+        # measures their own dependencies rather than the package's.
+        #
+        # Args:
+        #     imports: Modules to import, without the package prefix
+        #
+        # Returns:
+        #     set: Which of TERMINAL_MODULES the imports pulled in
+
+        result = run_python(
+            "import sys, types\n"
+            "stub = types.ModuleType('py_maze')\n"
+            "stub.__path__ = ['py_maze']\n"
+            "sys.modules['py_maze'] = stub\n"
+            "import %s\n"
+            "print(' '.join(sorted(m for m in %r if m in sys.modules)))"
+            % (', '.join('py_maze.%s' % name for name in imports),
+               TERMINAL_MODULES))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return set(result.stdout.split())
+
+    def test_the_generator_and_the_solver_leave_the_terminal_alone(self):
+        self.assertEqual(
+            self.terminal_modules_after(TERMINAL_FREE_MODULES), set())
+
+    def test_the_key_reader_is_where_the_terminal_is_imported(self):
+        loaded = self.terminal_modules_after(['keys'])
+
+        if sys.platform == 'win32':
+            self.assertEqual(loaded, {'msvcrt'})
+        else:
+            self.assertEqual(loaded, {'termios', 'tty'})
+
+    def test_no_other_module_imports_the_terminal_itself(self):
+        # game and cli reach the keyboard through py_maze.keys, so the
+        # imports stay in one file however the package grows
+        for name in TERMINAL_FREE_MODULES + ('game', 'cli'):
+            module = importlib.import_module('py_maze.%s' % name)
+            source = inspect.getsource(module)
+
+            for terminal in TERMINAL_MODULES:
+                self.assertNotIn(
+                    'import %s' % terminal, source,
+                    "py_maze.%s imports %s itself" % (name, terminal))
+
+
+class TestModuleEntryPoint(unittest.TestCase):
+    # python -m py_maze is how a source checkout is run now that the
+    # flat py_maze.py is gone
+
+    def test_the_package_runs_as_a_module(self):
+        result = run_python(
+            "import runpy, sys\n"
+            "sys.argv = ['py_maze', '--version']\n"
+            "runpy.run_module('py_maze', run_name='__main__')")
+
+        self.assertIn(py_maze.__version__, result.stdout)
+
+    def test_the_main_module_calls_the_command_line(self):
+        entry = importlib.import_module('py_maze.__main__')
+
+        self.assertIs(entry.main, py_maze.cli.main)
+
+    def test_the_windows_launcher_runs_the_module(self):
+        with open(os.path.join(PROJECT_ROOT, 'py_maze.bat'),
+                  encoding='utf-8') as launcher:
+            script = launcher.read()
+
+        self.assertIn('-m py_maze', script)
+        self.assertNotIn('py_maze.py', script)
+
+    def test_the_posix_launcher_runs_the_module(self):
+        with open(os.path.join(PROJECT_ROOT, 'py_maze.sh'),
+                  encoding='utf-8') as launcher:
+            script = launcher.read()
+
+        self.assertIn('-m py_maze', script)
+        self.assertNotIn('py_maze.py', script)
+
+    def test_the_console_script_points_at_the_command_line(self):
+        with open(os.path.join(PROJECT_ROOT, 'pyproject.toml'),
+                  encoding='utf-8') as manifest:
+            content = manifest.read()
+
+        self.assertIn('py_maze = "py_maze.cli:main"', content)
+        self.assertIn('packages = ["py_maze"]', content)
+
+
+class TestGridInterchange(unittest.TestCase):
+    # the grid - a list of rows of booleans, True for a wall - is the one
+    # type every module passes around. These pin it, so the package can
+    # be reorganized later without the format moving with it
+
+    MAZE = [
+        "* ***",
+        "*   *",
+        "*** *",
+        "*   *",
+        "*** *",
+    ]
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def assert_is_a_grid(self, grid, where):
+        # every row is a list of booleans, and they are all the same length
+        self.assertIsInstance(grid, list, "%s is not a list of rows" % where)
+        self.assertTrue(grid, "%s is empty" % where)
+
+        for y, row in enumerate(grid):
+            self.assertIsInstance(row, list,
+                                  "%s row %d is not a list" % (where, y))
+            self.assertEqual(len(row), len(grid[0]),
+                             "%s row %d is a different length" % (where, y))
+            for x, cell in enumerate(row):
+                self.assertIsInstance(
+                    cell, bool,
+                    "%s cell (%d, %d) is %r, not a boolean" % (where, x, y,
+                                                               cell))
+
+    def test_the_generator_hands_back_a_grid(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+
+        self.assert_is_a_grid(grid, "a generated maze")
+
+    def test_a_loaded_maze_is_the_same_type(self):
+        grid, _, _ = py_maze.parse_save(
+            "%s\n%s\n" % (py_maze.SAVE_HEADER, '\n'.join(self.MAZE)))
+
+        self.assert_is_a_grid(grid, "a loaded maze")
+
+    def test_true_is_a_wall_and_false_is_a_path(self):
+        grid = py_maze.MazeGenerator(5, 5, seed=2024).generate()
+        entrance_x, entrance_y = py_maze.find_entrance(grid)
+
+        self.assertTrue(grid[1][0], "the left border should be a wall")
+        self.assertFalse(grid[entrance_y][entrance_x],
+                         "the entrance should be a path")
+
+    def test_a_maze_of_w_by_h_cells_is_a_grid_of_w2_plus_1_by_h2_plus_1(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+
+        self.assertEqual(len(grid), 7 * 2 + 1)
+        self.assertEqual(len(grid[0]), 6 * 2 + 1)
+
+    def test_a_grid_survives_the_picture_it_is_drawn_as(self):
+        # maze_lines writes the picture and parse_save reads it back, so
+        # the two have to agree on every character
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        text = "%s\n%s\n" % (py_maze.SAVE_HEADER,
+                             '\n'.join(py_maze.maze_lines(grid)))
+        loaded, _, _ = py_maze.parse_save(text)
+
+        self.assertEqual(loaded, grid)
+        self.assert_is_a_grid(loaded, "a maze read back from its picture")
+
+    def test_a_grid_survives_a_file(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        collectibles = py_maze.place_collectibles(grid, 5, random.Random(1))
+        py_maze.write_save(self.path, grid, collectibles, 2024)
+        loaded, loaded_collectibles, seed = py_maze.read_save(self.path)
+
+        self.assertEqual(loaded, grid)
+        self.assertEqual(loaded_collectibles, collectibles)
+        self.assertEqual(seed, 2024)
+
+    def test_a_grid_survives_a_second_round_trip_unchanged(self):
+        # saving what was loaded has to produce the file it was loaded
+        # from, or a maze passed between tools would drift
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        collectibles = py_maze.place_collectibles(grid, 5, random.Random(1))
+
+        first = py_maze.save_lines(grid, collectibles, 2024)
+        loaded, loaded_collectibles, seed = py_maze.parse_save(
+            '\n'.join(first))
+        second = py_maze.save_lines(loaded, loaded_collectibles, seed)
+
+        self.assertEqual(second, first)
+
+    def test_a_loaded_grid_solves_to_the_same_path(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        py_maze.write_save(self.path, grid)
+        loaded, _, _ = py_maze.read_save(self.path)
+
+        self.assertEqual(py_maze.solve_maze(loaded), py_maze.solve_maze(grid))
+
+    def test_a_loaded_grid_draws_the_same_picture(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        py_maze.write_save(self.path, grid)
+        loaded, _, _ = py_maze.read_save(self.path)
+
+        self.assertEqual(py_maze.maze_lines(loaded), py_maze.maze_lines(grid))
+
+    def test_the_entrance_and_the_exit_are_where_they_were(self):
+        grid = py_maze.MazeGenerator(6, 7, seed=2024).generate()
+        py_maze.write_save(self.path, grid)
+        loaded, _, _ = py_maze.read_save(self.path)
+
+        self.assertEqual(py_maze.find_entrance(loaded),
+                         py_maze.find_entrance(grid))
+        self.assertEqual(py_maze.find_exit(loaded), py_maze.find_exit(grid))
+
+    def test_the_game_leaves_the_grid_it_was_handed_alone(self):
+        # MazeGame copies, so a caller can play a maze and still save the
+        # one it started from
+        grid = py_maze.MazeGenerator(4, 4, seed=2024).generate()
+        before = [row[:] for row in grid]
+        game = py_maze.MazeGame(grid)
+        game.move_player(0, 1)
+
+        self.assertEqual(grid, before)
+        self.assert_is_a_grid(game.maze, "the grid the game plays on")
+
+    def test_a_hand_written_grid_is_accepted_everywhere(self):
+        # nothing in the package requires a maze to have come from the
+        # generator, which is what makes the grid an interchange type
+        grid = grid_from_strings(self.MAZE)
+
+        self.assert_is_a_grid(grid, "a hand-written maze")
+        self.assertEqual(py_maze.solve_maze(grid)[0],
+                         py_maze.find_entrance(grid))
+        self.assertEqual(py_maze.save_lines(grid)[1:], self.MAZE)
 
 
 if __name__ == '__main__':

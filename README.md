@@ -15,6 +15,8 @@ A command-line maze generator and game written in Python. Generate random, solva
 - ⏱️ **Timer and Move Counter**: Both run while you play and are summarized when you finish
 - 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
 - 💾 **Save and Load**: Keep a maze in a file and play it again later
+- 📦 **Importable Package**: Generate, solve and draw mazes from your own
+  code, with the terminal machinery kept out of the way
 
 ## Installation
 
@@ -33,15 +35,28 @@ py_maze
 
 ### Option 2: Run directly with Python
 
+From the folder holding the `py_maze` package:
+
 ```bash
-python py_maze.py
+python -m py_maze
 ```
 
 or set custom width and height for the maze like:
 
 ```bash
-python py_maze.py -w 20 -H 30
+python -m py_maze -w 20 -H 30
 ```
+
+The `py_maze.bat` and `py_maze.sh` launchers do the same thing from
+anywhere, adding their own folder to `PYTHONPATH` first so no install is
+needed.
+
+> **Upgrading from 1.x:** py_maze is a package now rather than a single
+> `py_maze.py` file, so `python py_maze.py` has become `python -m py_maze`.
+> The installed `py_maze` command, every option and the save file format
+> are all unchanged, and `import py_maze` still reaches every name it did
+> before. See [The Package Layout](#the-package-layout) for where each one
+> now lives.
 
 ## Command-Line Options
 
@@ -71,17 +86,17 @@ Values below 2 cells cannot produce a maze with an interior path, so they
 are rejected:
 
 ```bash
-python py_maze.py -w 1
+python -m py_maze -w 1
 ```
 
 **Output:**
 
 ```
-usage: py_maze.py [-h] [--width WIDTH] [--height HEIGHT]
-                  [--difficulty {easy,normal,hard}] [--seed SEED]
-                  [--collectibles COUNT] [--save FILE] [--load FILE] [--solve]
-                  [--animate] [--version]
-py_maze.py: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
+usage: py_maze [-h] [--width WIDTH] [--height HEIGHT]
+               [--difficulty {easy,normal,hard}] [--seed SEED]
+               [--collectibles COUNT] [--save FILE] [--load FILE] [--solve]
+               [--animate] [--version]
+py_maze: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
 
 ### Difficulty Presets
@@ -96,7 +111,7 @@ Each preset is just a maze size, so picking one is a shorter way of passing
 | `hard` | 16 by 20 | 33 by 41 characters |
 
 ```bash
-python py_maze.py --difficulty hard
+python -m py_maze --difficulty hard
 ```
 
 `normal` is the size py_maze has always generated, so a run with no options
@@ -105,7 +120,7 @@ overrides that half of the preset:
 
 ```bash
 # a hard maze, but only 8 cells tall
-python py_maze.py -d hard -H 8
+python -m py_maze -d hard -H 8
 ```
 
 ### Repeating a Maze
@@ -120,13 +135,13 @@ Passing that seed back generates exactly the same maze, so a maze worth
 keeping does not have to be planned for in advance:
 
 ```bash
-python py_maze.py --seed 2024
+python -m py_maze --seed 2024
 ```
 
 A seed can be a number or a word, whichever is easier to remember:
 
 ```bash
-python py_maze.py --seed winter
+python -m py_maze --seed winter
 ```
 
 The same seed only reproduces the same maze at the same size, since the size
@@ -139,7 +154,7 @@ or with `--width` and `--height`, to get the identical maze back.
 player to pick up on the way past:
 
 ```bash
-python py_maze.py -d easy --seed 2024 --collectibles 4
+python -m py_maze -d easy --seed 2024 --collectibles 4
 ```
 
 **Output:**
@@ -184,7 +199,7 @@ the maze while the game is played, and the final one is part of the
 `--save` writes the maze, and any collectibles, to a file:
 
 ```bash
-python py_maze.py -d easy --seed 2024 -c 4 --save maze.txt
+python -m py_maze -d easy --seed 2024 -c 4 --save maze.txt
 ```
 
 **`maze.txt`:**
@@ -215,7 +230,7 @@ so a note about the maze can be kept alongside it.
 `--load` plays a saved maze back:
 
 ```bash
-python py_maze.py --load maze.txt
+python -m py_maze --load maze.txt
 ```
 
 The maze comes from the file as it was saved, so the options that generate one
@@ -239,7 +254,7 @@ A file that is not a maze this build can read is refused rather than guessed
 at, with a message naming what was wrong:
 
 ```bash
-python py_maze.py --load notes.txt
+python -m py_maze --load notes.txt
 ```
 
 **Output:**
@@ -261,7 +276,7 @@ requested size does not fit, it is capped to the largest one that does and a
 warning explains the change:
 
 ```bash
-python py_maze.py -w 60 -H 60
+python -m py_maze -w 60 -H 60
 ```
 
 **Output (on an 80 by 24 terminal):**
@@ -284,7 +299,7 @@ Two limits apply to the capping:
   terminal to fit. Writing a large maze to a file works exactly as before:
 
 ```bash
-python py_maze.py -w 60 -H 60 > maze.txt
+python -m py_maze -w 60 -H 60 > maze.txt
 ```
 
 A difficulty preset is capped the same way, so `--difficulty hard` on a small
@@ -296,7 +311,7 @@ terminal generates the largest hard-ish maze that fits.
 `.` markers laid over the maze:
 
 ```bash
-python py_maze.py -d easy --seed 2024 --solve
+python -m py_maze -d easy --seed 2024 --solve
 ```
 
 **Output:**
@@ -330,7 +345,7 @@ between any two points anyway, which makes the shortest route the only route.
 is printed. Each frame is one wave further from the entrance:
 
 ```bash
-python py_maze.py -d easy --seed 2024 --animate
+python -m py_maze -d easy --seed 2024 --animate
 ```
 
 **One frame partway through:**
@@ -363,7 +378,7 @@ there is nothing to animate, so the maze is solved without the frames and only
 the solved maze is written:
 
 ```bash
-python py_maze.py --animate > solved.txt
+python -m py_maze --animate > solved.txt
 ```
 
 ## How to Play
@@ -511,7 +526,7 @@ The project structure:
 
 ```
 py_maze/
-├── py_maze.py          # Main game module
+├── py_maze/            # The package itself
 ├── test_py_maze.py     # Unit tests
 ├── pyproject.toml      # Packaging and project metadata
 ├── .gitignore          # Ignored build, cache and editor artifacts
@@ -519,10 +534,42 @@ py_maze/
 └── README.md           # This file
 ```
 
+### The Package Layout
+
+Each module owns one job, and `__init__.py` re-exports every public name, so
+`import py_maze` reaches all of them whichever module they live in:
+
+```
+py_maze/
+├── __init__.py         # Re-exports the public names
+├── __main__.py         # python -m py_maze
+├── grid.py             # The grid, and the helpers that read it
+├── generation.py       # Carving a maze, and scattering its pickups
+├── solving.py          # Breadth-first search over a grid
+├── rendering.py        # Drawing a maze, and measuring the terminal
+├── saves.py            # Reading and writing save files
+├── keys.py             # Single keypresses, and the terminal imports
+├── game.py             # Playing a maze at the terminal
+├── cli.py              # The options, the parser and main()
+└── version.py          # The version number, on its own
+```
+
+One type is passed between them all: a maze is a **grid**, a list of rows of
+booleans with `True` for a wall and `False` for a cell the player can stand
+on, addressed as `grid[y][x]`. A maze carved by `generation` is the same
+object `solving` walks, `rendering` draws and `saves` writes out, so nothing
+is converted along the way. Every module and public name carries a docstring,
+so `help(py_maze)` and `help(py_maze.solve_maze)` describe the surface.
+
+`keys.py` is the only module that imports terminal machinery, so `msvcrt`,
+`tty` and `termios` stay out of the way of anything that only wants to
+generate or solve a maze.
+
 ### The Version Number
 
-The version lives in one place, `__version__` in `py_maze.py`. The manifest
-reads it from there, so a release only ever changes the module:
+The version lives in one place, `__version__` in `py_maze/version.py`, which
+`py_maze/__init__.py` re-exports as `py_maze.__version__`. The manifest reads
+it from there, so a release only ever changes that one string:
 
 ```toml
 # pyproject.toml

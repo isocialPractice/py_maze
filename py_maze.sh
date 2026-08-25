@@ -1,3 +1,5 @@
 #!/bin/bash
 
-python3 py_maze.py $@
+# run the package from this folder, so a checkout needs no install
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHONPATH="$here:$PYTHONPATH" python3 -m py_maze "$@"

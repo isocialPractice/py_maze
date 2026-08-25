@@ -37,10 +37,10 @@ Changelog = "https://github.com/isocialPractice/py_maze/blob/main/CHANGELOG.md"
 Issues = "https://github.com/isocialPractice/py_maze/issues"
 
 [project.scripts]
-py_maze = "py_maze:main"
+py_maze = "py_maze.cli:main"
 
 [tool.setuptools]
-py-modules = ["py_maze"]
+packages = ["py_maze"]
 
 [tool.setuptools.dynamic]
 version = { attr = "py_maze.__version__" }

@@ -5,6 +5,57 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-25
+
+### Added
+
+- `python -m py_maze`, so a source checkout runs the same way an installed
+  copy does. `py_maze.bat` and `py_maze.sh` now put their own folder on
+  `PYTHONPATH` and run the module, so neither needs the game installed and
+  neither depends on the working directory.
+- An `__all__` and a docstring on every module and every public function and
+  class, so `help(py_maze)`, `help(py_maze.solve_maze)` and any generated
+  reference describe the surface rather than an empty signature. Internal
+  helpers keep the existing comment style, which is what marks them internal.
+- Round-trip tests pinning the grid as the interchange type: that it is a
+  list of rows of booleans with `True` for a wall, that a maze survives
+  being drawn and read back, that saving what was loaded reproduces the file
+  it came from, and that a loaded maze solves and draws exactly as the
+  generated one did. Tests also pin the package surface, the module entry
+  point and the fact that the generator and the solver pull in no terminal
+  machinery.
+
+### Changed
+
+- **BREAKING**: `py_maze.py` is now a `py_maze/` package, with the grid
+  helpers, generation, solving, rendering, save files, keyboard input, the
+  game and the command line each in their own module. `python py_maze.py`
+  no longer works and becomes `python -m py_maze`. Nothing else about the
+  command changes: every option, every message and the save file format are
+  as they were, and `import py_maze` still reaches every public name,
+  because `__init__.py` re-exports all of them.
+- The `msvcrt`, `tty` and `termios` imports moved out of the import path and
+  into `py_maze.keys`, the one module that reads a keypress. Importing the
+  generator, the solver, the renderer or the save files no longer pulls in
+  terminal machinery, so a program that only wants a maze is not handed a
+  terminal to go with it. `MazeGame.get_key`, `get_key_windows` and
+  `get_key_posix` are unchanged and now delegate to that module.
+- `__version__` lives in `py_maze/version.py` and is re-exported as
+  `py_maze.__version__`, so the manifest, the `--version` flag and the
+  changelog still read one string. A module of its own means the package and
+  the command line can both read it without one importing the other.
+- The usage line and the argument errors now name the program `py_maze`
+  rather than the file argparse happened to be started from, so they read
+  the same however the game was launched.
+- The console script points at `py_maze.cli:main` and the manifest ships a
+  package rather than a single module. Installing with `pip install -e .`
+  and running `py_maze` are unchanged.
+
+### Removed
+
+- `py_maze.py`. The package replaces it; leaving both in place would have
+  made which one runs depend on the import machinery.
+
 ## [1.2.0] - 2026-08-21
 
 ### Added
