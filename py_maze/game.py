@@ -8,19 +8,25 @@ is the same grid the generator, the solver and the save files all pass
 around.
 """
 
+import sys
 import time
 
 from .grid import find_entrance, find_exit
 from .keys import read_key, read_key_posix, read_key_windows
 from .rendering import (COLLECTIBLE_MARKER, HINT_MARKER, PLAYER_MARKER,
-                        clear_screen, print_maze, status_line, summary_lines)
+                        ansi_enabled, can_encode, clear_screen, frame_text,
+                        maze_lines, status_line, summary_lines)
 from .solving import solve_maze
 
 __all__ = [
+    'CONTROLS_LINE',
     'GOODBYE_MESSAGE',
     'HINT_SECONDS',
     'HINT_STEPS',
+    'PLAIN_WIN_BANNER',
+    'WIN_BANNER',
     'MazeGame',
+    'win_banner',
 ]
 
 # steps of the solution path an in-game hint lights up
@@ -31,6 +37,33 @@ HINT_SECONDS = 0.6
 
 # parting message for a quit or an interrupted game
 GOODBYE_MESSAGE = "Goodbye!"
+
+# the keys the player has, printed under the maze
+CONTROLS_LINE = ("Use arrow keys or WASD to move. "
+                 "Press 'h' for a hint, 'q' to quit.")
+
+# the banner shown when the maze is solved, and the plain text a console
+# that cannot carry the party poppers gets instead
+WIN_BANNER = ("\N{PARTY POPPER} Congratulations! You solved the maze! "
+              "\N{PARTY POPPER}")
+PLAIN_WIN_BANNER = "Congratulations! You solved the maze!"
+
+
+def win_banner(stream=None):
+    """Build the banner shown when the maze is solved.
+
+    Args:
+        stream: Where the banner will be printed, defaulting to
+            standard output
+
+    Returns:
+        str: The congratulations, with the party poppers when the
+        output encoding can carry them and without when it cannot, so a
+        console on a legacy code page reads the message rather than
+        being handed a UnicodeEncodeError instead of it
+    """
+
+    return WIN_BANNER if can_encode(WIN_BANNER, stream) else PLAIN_WIN_BANNER
 
 
 class MazeGame:
@@ -69,6 +102,10 @@ class MazeGame:
 
         # steps taken, counting only the ones that moved the player
         self.moves = 0
+
+        # whether a frame has been drawn yet, so the first one wipes the
+        # screen and every one after it draws over its predecessor
+        self.drawn = False
 
         # the clock runs from the first render to the end of the game, so
         # the summary reports how long the maze took rather than how long
@@ -137,25 +174,63 @@ class MazeGame:
         for line in self.summary():
             print(line)
 
-    def render(self):
-        """Draw the maze with the player, the collectibles left to pick up
-        and any hint being shown, over the running tally.
+    def frame(self):
+        """Build the play screen, one string per line.
+
+        Returns:
+            list: The maze between its start and end markers, drawn
+            with the player, the collectibles left to pick up and any
+            hint being shown, then the running tally, a blank spacer
+            and the controls line
         """
 
-        self.clear_screen()
-        print_maze(self.maze, [
+        overlays = [
             (PLAYER_MARKER, {(self.player_x, self.player_y)}),
             (HINT_MARKER, self.hint_cells),
             (COLLECTIBLE_MARKER, self.collectibles),
-        ])
-        print(self.status())
-        print("\nUse arrow keys or WASD to move. "
-              "Press 'h' for a hint, 'q' to quit.")
+        ]
 
-    def clear_screen(self):
-        """Clear the terminal screen."""
+        return (["start"] + maze_lines(self.maze, overlays) +
+                ["end", self.status(), "", CONTROLS_LINE])
 
-        clear_screen()
+    def render(self, stream=None):
+        """Draw the play screen over the frame already on it.
+
+        The whole frame goes out in a single write, and the cursor is
+        put back at the top left rather than the screen being wiped, so
+        the player never sees the screen stand empty between one move
+        and the next.
+
+        Args:
+            stream: Where the frame is written, defaulting to standard
+                output
+        """
+
+        if stream is None:
+            stream = sys.stdout
+
+        homed = ansi_enabled(stream)
+
+        # the first frame wipes whatever the run printed before the game
+        # started. Where the cursor cannot be moved there is no way to
+        # draw over the last frame either, so the screen is wiped for
+        # every one, as it always was
+        if not homed or not self.drawn:
+            self.clear_screen(stream)
+            self.drawn = True
+
+        stream.write(frame_text(self.frame(), home=homed))
+        stream.flush()
+
+    def clear_screen(self, stream=None):
+        """Clear the terminal screen.
+
+        Args:
+            stream: Where the escape that clears it is written,
+                defaulting to standard output
+        """
+
+        clear_screen(stream)
 
     def show_hint(self):
         """Light up the next step of the solution for a moment.
@@ -306,7 +381,7 @@ class MazeGame:
 
                 if self.check_win():
                     self.stop_clock()
-                    print("\n🎉 Congratulations! You solved the maze! 🎉")
+                    print("\n" + win_banner())
                     self.print_summary()
                     print("\nPress any key to exit...")
                     self.get_key()

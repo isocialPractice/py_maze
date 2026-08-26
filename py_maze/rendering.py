@@ -20,6 +20,9 @@ from .grid import MIN_DIMENSION
 from .solving import search_frames
 
 __all__ = [
+    'ANSI_CLEAR',
+    'ANSI_CLEAR_LINE',
+    'ANSI_HOME',
     'COLLECTIBLE_MARKER',
     'FRAME_DELAY',
     'FRONTIER_MARKER',
@@ -31,11 +34,14 @@ __all__ = [
     'VISITED_MARKER',
     'WALL_MARKER',
     'animate_search',
+    'ansi_enabled',
+    'can_encode',
     'clear_screen',
     'collectible_overlay',
     'fit_dimension',
     'fit_to_terminal',
     'format_duration',
+    'frame_text',
     'maze_lines',
     'print_maze',
     'solution_overlay',
@@ -59,9 +65,26 @@ COLLECTIBLE_MARKER = '$'
 # seconds each frame of the animated solver stays on screen
 FRAME_DELAY = 0.05
 
-# lines render() prints around the maze itself: the "start" marker, the
-# "end" marker, the status line, the blank spacer and the controls line
+# lines a play screen carries around the maze itself: the "start"
+# marker, the "end" marker, the status line, the blank spacer and the
+# controls line
 RENDER_ROW_OVERHEAD = 5
+
+# ANSI escape sequences: wipe the screen and put the cursor back at the
+# top left, put the cursor there without wiping anything, and wipe the
+# rest of the line the cursor is on
+ANSI_CLEAR = '\x1b[2J\x1b[H'
+ANSI_HOME = '\x1b[H'
+ANSI_CLEAR_LINE = '\x1b[K'
+
+# console mode flag that makes a Windows console read an escape sequence
+# rather than print it, and the handle of the device to set it on
+ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+STD_OUTPUT_HANDLE = -11
+
+# what enable_windows_ansi() last answered, so the console mode is asked
+# for and set once rather than once a frame
+_windows_ansi = None
 
 
 def maze_lines(grid, overlays=()):
@@ -110,10 +133,177 @@ def print_maze(grid, overlays=(), stream=None):
     print("end", file=stream)
 
 
-def clear_screen():
-    """Clear the terminal screen."""
+def is_a_terminal(stream):
+    # Report whether a stream is a terminal that can be drawn over.
+    #
+    # Args:
+    #     stream: The stream to ask about
+    #
+    # Returns:
+    #     True when the stream is a terminal, False when it has been
+    #     piped or redirected, or replaced with something that has no
+    #     file descriptor to ask about
+
+    try:
+        return os.isatty(stream.fileno())
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def enable_windows_ansi():
+    # Switch a Windows console over to reading escape sequences.
+    #
+    # Virtual terminal processing is off by default on Windows and is
+    # turned on per process, so the answer is worked out once and kept:
+    # a console that took the mode keeps it for the rest of the run.
+    #
+    # Returns:
+    #     True when the console honours escape sequences, False when it
+    #     refused the mode or there is no console to set it on
+
+    global _windows_ansi
+
+    if _windows_ansi is None:
+        try:
+            import ctypes
+
+            # a library object of its own, so declaring the signatures
+            # below cannot change them for anything else in the process.
+            # A handle is pointer-wide, and the default return type
+            # would cut a 64-bit one in half
+            kernel32 = ctypes.WinDLL('kernel32')
+            kernel32.GetStdHandle.restype = ctypes.c_void_p
+            kernel32.GetStdHandle.argtypes = (ctypes.c_int,)
+            kernel32.GetConsoleMode.argtypes = (
+                ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+            kernel32.SetConsoleMode.argtypes = (ctypes.c_void_p,
+                                                ctypes.c_ulong)
+
+            handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                _windows_ansi = bool(kernel32.SetConsoleMode(
+                    handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING))
+            else:
+                # a pipe or a file behind standard output, with no
+                # console mode to read
+                _windows_ansi = False
+        except (AttributeError, ImportError, OSError, ValueError):
+            # no ctypes, no kernel32, or a call that would not go through
+            _windows_ansi = False
+
+    return _windows_ansi
+
+
+def ansi_enabled(stream=None):
+    """Report whether escape sequences written to a stream are honoured.
+
+    Args:
+        stream: The stream the escapes would be written to, defaulting
+            to standard output
+
+    Returns:
+        True when the stream is a terminal that reads an escape
+        sequence as an instruction, False when the escape would be
+        printed, written into a file or sent down a pipe
+    """
+
+    if stream is None:
+        stream = sys.stdout
+
+    # a terminal that calls itself dumb means it
+    if os.environ.get('TERM') == 'dumb':
+        return False
+
+    if not is_a_terminal(stream):
+        return False
+
+    if sys.platform == 'win32':
+        return enable_windows_ansi()
+
+    return True
+
+
+def can_encode(text, stream=None):
+    """Report whether a stream's encoding can carry the given text.
+
+    Args:
+        text: The text that is about to be written
+        stream: The stream it would be written to, defaulting to
+            standard output
+
+    Returns:
+        True when the text can be written as it stands, False when the
+        encoding would raise rather than carry it. A stream that names
+        no encoding, such as one collecting text in memory, takes
+        anything
+    """
+
+    if stream is None:
+        stream = sys.stdout
+
+    encoding = getattr(stream, 'encoding', None)
+    if not encoding:
+        return True
+
+    try:
+        text.encode(encoding)
+    except (LookupError, UnicodeEncodeError):
+        return False
+
+    return True
+
+
+def clear_screen(stream=None):
+    """Clear the terminal screen.
+
+    The screen is wiped with an escape sequence wherever one is
+    honoured, so an animated run writes to the terminal it already has
+    rather than spawning a shell for every frame.
+
+    Args:
+        stream: Where the escape is written, defaulting to standard
+            output. Ignored on a terminal that does not honour it,
+            which is cleared by the shell as before
+    """
+
+    if stream is None:
+        stream = sys.stdout
+
+    if ansi_enabled(stream):
+        stream.write(ANSI_CLEAR)
+        stream.flush()
+        return
 
     os.system('cls' if sys.platform == 'win32' else 'clear')
+
+
+def frame_text(lines, home=None, stream=None):
+    """Join the lines of a screen into the one string that draws it.
+
+    Args:
+        lines: The lines of the frame, in the order they are drawn
+        home: True to put the cursor back at the top left and draw over
+            the frame already on screen, False to write the lines where
+            the cursor stands. Defaults to whether the stream honours
+            escape sequences
+        stream: The stream the frame is headed for, used to work out
+            the default for home
+
+    Returns:
+        str: The whole frame, ready to be written in a single call so
+        the screen never stands part-drawn
+    """
+
+    if home is None:
+        home = ansi_enabled(stream)
+
+    if not home:
+        return ''.join(line + '\n' for line in lines)
+
+    # each line wipes whatever it lands on rather than the screen being
+    # wiped first, so there is no moment where the screen is empty
+    return ANSI_HOME + ''.join(line + ANSI_CLEAR_LINE + '\n' for line in lines)
 
 
 def solution_overlay(path):
@@ -222,7 +412,10 @@ def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
     if stream is None:
         stream = sys.stdout
     if clear is None:
-        clear = clear_screen
+        # the escape that wipes the screen goes to the stream being
+        # animated rather than to whatever standard output happens to be
+        def clear():
+            clear_screen(stream)
     if pause is None:
         pause = time.sleep
 
@@ -290,12 +483,7 @@ def terminal_size():
         terminal to fit the maze to
     """
 
-    try:
-        if not os.isatty(sys.stdout.fileno()):
-            return None
-    except (AttributeError, ValueError, OSError):
-        # stdout has been replaced with something that has no file
-        # descriptor, so treat it as "not a terminal"
+    if not is_a_terminal(sys.stdout):
         return None
 
     # COLUMNS and LINES override the measured size when they are set

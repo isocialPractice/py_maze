@@ -7,30 +7,24 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Clear the screen with an ANSI escape sequence rather than
-  `os.system('cls')` or `os.system('clear')`, falling back to the current
-  call where the escape is not honoured, so `--animate` stops spawning a
-  shell for every frame
+- [ ] Raise `requires-python` off the end-of-life 3.6 and add the Python 3.12
+  and 3.13 classifiers the suite already passes on
   - From: Runtime and Portability Fixes
-- [ ] Redraw the play screen without the flicker a player sees on every move:
-  `render` blanks the whole terminal and then writes the maze, the status
-  line and the key legend a line at a time, so the screen stands empty
-  between the clear and the last row. Home the cursor instead of clearing,
-  and write the frame in a single call
-  - From: Runtime and Portability Fixes
-- [ ] Read a single keypress at the "would you like to play" prompt on POSIX
-  as `read_response` already does on Windows: it sets no raw mode, so
-  `sys.stdin.read(1)` waits for Enter and leaves the rest of the line in the
-  buffer, contrary to what the function says it does
-  - From: Runtime and Portability Fixes
-- [ ] Print the win banner without the emoji when the output encoding cannot
-  carry it, so a console on a legacy code page shows the congratulations
-  instead of raising `UnicodeEncodeError`
-  - From: Runtime and Portability Fixes
-- [ ] Carve from a fresh grid when `MazeGenerator.generate()` is called a
-  second time on the same instance, instead of carving on top of the maze it
-  already made
-  - From: Runtime and Portability Fixes
+- [ ] Add a `LICENSE` file carrying the MIT text that `README.md` and
+  `pyproject.toml` both declare and the repository does not include
+  - From: version.control = null
+- [ ] Add a GitHub Actions workflow running `python -m unittest discover` on
+  Windows, Linux and macOS across the supported Python versions, so the
+  cross-platform promise is checked rather than asserted
+  - From: version.control = null
+- [ ] Add `CONTRIBUTING.md` covering the test command, the comment and
+  docstring convention, and how the version is single-sourced from
+  `__version__`
+  - From: version.control = null
+- [ ] Write `docs/save-format.md` specifying the save file - the header, the
+  seed comment, the markers, the ragged-line rule and what a reader must
+  refuse - so another tool can write a file py_maze will load
+  - From: version.control = null
 
 ## Fixes and Hardening
 
@@ -115,25 +109,6 @@ unchanged, so completing items in this section is a minor version update.
 Faults found while evaluating the finished project, none of which change an
 interface. Completing items in this section is a patch version update.
 
-- [ ] Redraw the play screen without the flicker a player sees on every move:
-  `render` blanks the whole terminal and then writes the maze, the status
-  line and the key legend a line at a time, so the screen stands empty
-  between the clear and the last row. Home the cursor instead of clearing,
-  and write the frame in a single call
-- [ ] Read a single keypress at the "would you like to play" prompt on POSIX
-  as `read_response` already does on Windows: it sets no raw mode, so
-  `sys.stdin.read(1)` waits for Enter and leaves the rest of the line in the
-  buffer, contrary to what the function says it does
-- [ ] Print the win banner without the emoji when the output encoding cannot
-  carry it, so a console on a legacy code page shows the congratulations
-  instead of raising `UnicodeEncodeError`
-- [ ] Clear the screen with an ANSI escape sequence rather than
-  `os.system('cls')` or `os.system('clear')`, falling back to the current
-  call where the escape is not honoured, so `--animate` stops spawning a
-  shell for every frame
-- [ ] Carve from a fresh grid when `MazeGenerator.generate()` is called a
-  second time on the same instance, instead of carving on top of the maze it
-  already made
 - [ ] Raise `requires-python` off the end-of-life 3.6 and add the Python 3.12
   and 3.13 classifiers the suite already passes on
 
@@ -247,3 +222,27 @@ None of these move the version.
   documented interchange type, and add the round-trip tests that pin it, so
   the package can be reorganized later without moving the format
   - From: Library Packaging and Public API
+- [x] Clear the screen with an ANSI escape sequence rather than
+  `os.system('cls')` or `os.system('clear')`, falling back to the current
+  call where the escape is not honoured, so `--animate` stops spawning a
+  shell for every frame
+  - From: Runtime and Portability Fixes
+- [x] Redraw the play screen without the flicker a player sees on every move:
+  `render` blanks the whole terminal and then writes the maze, the status
+  line and the key legend a line at a time, so the screen stands empty
+  between the clear and the last row. Home the cursor instead of clearing,
+  and write the frame in a single call
+  - From: Runtime and Portability Fixes
+- [x] Read a single keypress at the "would you like to play" prompt on POSIX
+  as `read_response` already does on Windows: it sets no raw mode, so
+  `sys.stdin.read(1)` waits for Enter and leaves the rest of the line in the
+  buffer, contrary to what the function says it does
+  - From: Runtime and Portability Fixes
+- [x] Print the win banner without the emoji when the output encoding cannot
+  carry it, so a console on a legacy code page shows the congratulations
+  instead of raising `UnicodeEncodeError`
+  - From: Runtime and Portability Fixes
+- [x] Carve from a fresh grid when `MazeGenerator.generate()` is called a
+  second time on the same instance, instead of carving on top of the maze it
+  already made
+  - From: Runtime and Portability Fixes

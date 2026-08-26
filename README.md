@@ -385,7 +385,8 @@ python -m py_maze --animate > solved.txt
 
 1. Run `py_maze` from your terminal
 2. A random maze will be generated and displayed
-3. Choose whether you want to play (press 'y' for yes, 'n' for no)
+3. Choose whether you want to play (press 'y' for yes, 'n' for no). The
+   answer is a single keypress on every platform: there is no Enter to press
 4. If you choose to play:
    - Use **arrow keys** or **WASD** to move your character (`o`)
    - Navigate from the **start** (top) to the **end** (bottom)
@@ -431,6 +432,31 @@ The clock stops the moment the maze is won, so the summary reads the same
 however long it is left on screen. Quitting with `q` prints the summary for
 the game so far, and the `Collected` line is left out of a maze that had no
 collectibles in it.
+
+A console whose code page cannot draw the party poppers gets the plain
+congratulations instead, so the message arrives whatever the terminal can
+encode:
+
+```
+Congratulations! You solved the maze!
+```
+
+### Redrawing the Screen
+
+Each move redraws the whole screen. The cursor is put back at the top left
+with an ANSI escape sequence and the new frame is written over the old one in
+a single call, so the maze, the status line and the controls are replaced
+together and the screen never stands empty part-way through a redraw.
+
+Terminals that read escape sequences are drawn on this way, which is every
+terminal on Linux and macOS and every Windows console that takes virtual
+terminal processing (Windows 10 and later). Where the escapes would be
+printed as text instead, py_maze falls back to clearing the screen through
+`cls` or `clear`, exactly as it always did. Setting `TERM=dumb` forces the
+fallback.
+
+The same escape wipes the screen between the frames of `--animate`, so an
+animated search no longer starts a shell for every frame it draws.
 
 ### Hints
 
@@ -481,10 +507,15 @@ end
 - **Ctrl+C**: Interrupt the game
 
 While the game is running, the terminal is put into raw mode so single
-keypresses can be read without waiting for Enter. Raw mode also means Ctrl+C
-arrives as an ordinary keypress rather than as an interrupt signal, so the
-game handles it itself: the terminal is restored to its normal mode and the
-game exits with a goodbye message instead of a traceback.
+keypresses can be read without waiting for Enter. The same goes for the
+"would you like to play" prompt, which takes one keypress and leaves nothing
+behind in the input buffer. Raw mode also means Ctrl+C arrives as an ordinary
+keypress rather than as an interrupt signal, so the game handles it itself:
+the terminal is restored to its normal mode and the game exits with a goodbye
+message instead of a traceback.
+
+An answer piped in rather than typed has no terminal mode to set, so the
+prompt reads it straight from the pipe.
 
 ## Requirements
 
@@ -507,6 +538,11 @@ The maze generator uses the **recursive backtracking algorithm**:
 7. Continue until all cells have been visited
 
 This algorithm ensures that every maze generated has exactly one path between any two points, making it both challenging and always solvable!
+
+Each call to `generate()` starts from step 1 again: the grid goes back to
+solid wall and a seeded generator goes back to the same random numbers, so
+one generator asked for its maze twice hands back the same maze twice rather
+than carving further into the one it already made.
 
 The solver behind `--solve`, `--animate` and the in-game hints is a
 **breadth-first search**: it spreads out from the start one step at a time,
@@ -543,7 +579,7 @@ Each module owns one job, and `__init__.py` re-exports every public name, so
 py_maze/
 ├── __init__.py         # Re-exports the public names
 ├── __main__.py         # python -m py_maze
-├── grid.py             # The grid, and the helpers that read it
+├── grid.py             # The grid, and the helpers that build and read it
 ├── generation.py       # Carving a maze, and scattering its pickups
 ├── solving.py          # Breadth-first search over a grid
 ├── rendering.py        # Drawing a maze, and measuring the terminal

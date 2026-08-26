@@ -5,6 +5,62 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-08-26
+
+### Fixed
+
+- The play screen no longer flickers on every move. `render` wiped the whole
+  terminal and then wrote the maze, the status line and the key legend a line
+  at a time, so the screen stood empty between the clear and the last row.
+  The cursor is now put back at the top left and the whole frame goes out in
+  a single write, over the frame it replaces. Only the first frame of a game
+  wipes the screen, to clear what the run printed before play started.
+- The screen is cleared with an ANSI escape sequence rather than
+  `os.system('cls')` or `os.system('clear')`, so `--animate` no longer starts
+  a shell for every frame it draws. Windows consoles are switched to virtual
+  terminal processing once per run rather than once per frame. Where the
+  escapes are not honoured, including under `TERM=dumb`, the shell call is
+  still there as the fallback and the behaviour is exactly what it was.
+- The "would you like to play" prompt reads a single keypress on POSIX, as it
+  already did on Windows. It set no raw mode, so `sys.stdin.read(1)` waited
+  for Enter and left the rest of the line in the buffer, contrary to what the
+  function said it did. Ctrl+C at the prompt raises a `KeyboardInterrupt` on
+  both platforms now, and an answer piped in rather than typed is read
+  straight from the pipe, there being no terminal mode to set.
+- The win banner drops the party poppers when the output encoding cannot
+  carry them, so a console on a legacy code page shows the congratulations
+  instead of raising `UnicodeEncodeError` in place of it.
+- `MazeGenerator.generate()` carves from a fresh grid every time. A second
+  call on the same generator carved into the maze the first call had already
+  made, leaving a grid with more ways through than a maze has. A seeded
+  generator also goes back to the same random numbers, so it makes the same
+  maze, and scatters the same collectibles, however many times it is asked.
+
+### Added
+
+- `py_maze.ansi_enabled`, `py_maze.clear_screen` and `py_maze.frame_text` for
+  drawing over a terminal: whether escape sequences are honoured, wiping the
+  screen with one, and joining the lines of a screen into the single string
+  that draws it. `ANSI_CLEAR`, `ANSI_HOME` and `ANSI_CLEAR_LINE` are the
+  sequences themselves.
+- `py_maze.can_encode`, reporting whether a stream's encoding can carry a
+  piece of text, and `py_maze.win_banner`, which uses it to choose between
+  `WIN_BANNER` and `PLAIN_WIN_BANNER`.
+- `py_maze.walled_grid`, the solid block of wall a maze is carved out of, and
+  `MazeGame.frame`, the play screen as a list of lines. `CONTROLS_LINE` is
+  the key legend that frame ends with.
+- Tests covering all of the above: that a frame is one write and homes the
+  cursor, that only the first frame wipes the screen, that no shell is
+  spawned for an animated search, that the prompt takes one keypress and
+  restores the terminal, that a legacy console is given the plain banner, and
+  that a generator asked twice hands back the same maze.
+
+### Changed
+
+- `clear_screen`, `MazeGame.clear_screen` and `MazeGame.render` take an
+  optional stream, defaulting to standard output as before. `animate_search`
+  clears the stream it was given rather than standard output.
+
 ## [2.0.0] - 2026-08-25
 
 ### Added

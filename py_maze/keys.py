@@ -102,6 +102,65 @@ def read_key_windows():
     return key.decode('utf-8', errors='ignore').lower()
 
 
+def in_raw_mode(read):
+    # Run a read with the terminal in raw mode, and put the terminal
+    # back however the read turns out.
+    #
+    # Raw mode is what makes a single keypress arrive on its own: a
+    # terminal in its usual cooked mode holds the line back until Enter
+    # is pressed and leaves everything else typed in the buffer.
+    #
+    # Args:
+    #     read: Callable taking no arguments that reads from stdin
+    #
+    # Returns:
+    #     Whatever read returned
+
+    try:
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+    except (AttributeError, ValueError, OSError, termios.error):
+        # standard input is a pipe, a file or something with no file
+        # descriptor at all, so there is no terminal mode to set and
+        # the read needs none
+        return read()
+
+    try:
+        tty.setraw(fd)
+        return read()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def read_key_sequence():
+    # Read one keypress from a terminal that is already in raw mode.
+    #
+    # Returns:
+    #     str: 'up', 'down', 'left' or 'right' for an arrow key,
+    #     otherwise the lowercased character that was typed
+    #
+    # Raises:
+    #     KeyboardInterrupt: If Ctrl+C was pressed
+
+    key = sys.stdin.read(1)
+    # raw mode disables the interrupt signal, so Ctrl+C shows up
+    # here as a byte and has to be raised by hand
+    if key == INTERRUPT_KEY:
+        raise KeyboardInterrupt
+    # handle arrow keys (they come as escape sequences)
+    if key == '\x1b':
+        key += sys.stdin.read(2)
+        if key == '\x1b[A':
+            return 'up'
+        elif key == '\x1b[B':
+            return 'down'
+        elif key == '\x1b[D':
+            return 'left'
+        elif key == '\x1b[C':
+            return 'right'
+    return key.lower()
+
+
 def read_key_posix():
     """Wait for a keypress on unix/linux/mac.
 
@@ -114,29 +173,7 @@ def read_key_posix():
         out of raw mode before it propagates
     """
 
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(sys.stdin.fileno())
-        key = sys.stdin.read(1)
-        # raw mode disables the interrupt signal, so Ctrl+C shows up
-        # here as a byte and has to be raised by hand
-        if key == INTERRUPT_KEY:
-            raise KeyboardInterrupt
-        # handle arrow keys (they come as escape sequences)
-        if key == '\x1b':
-            key += sys.stdin.read(2)
-            if key == '\x1b[A':
-                return 'up'
-            elif key == '\x1b[B':
-                return 'down'
-            elif key == '\x1b[D':
-                return 'left'
-            elif key == '\x1b[C':
-                return 'right'
-        return key.lower()
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return in_raw_mode(read_key_sequence)
 
 
 def read_response():
@@ -144,8 +181,24 @@ def read_response():
 
     Returns:
         str: The lowercased character that was typed
+
+    Raises:
+        KeyboardInterrupt: If Ctrl+C was pressed. The terminal is taken
+        out of raw mode before it propagates
     """
 
     if sys.platform == 'win32':
-        return msvcrt.getch().decode('utf-8', errors='ignore').lower()
-    return sys.stdin.read(1).lower()
+        key = msvcrt.getch().decode('utf-8', errors='ignore')
+    else:
+        # the terminal goes into raw mode for the read, as it does for a
+        # keypress in the game, so the answer arrives on its own rather
+        # than the whole line being held back until Enter and the rest
+        # of it left in the buffer afterwards
+        key = in_raw_mode(lambda: sys.stdin.read(1))
+
+    # neither reader is handed Ctrl+C as the signal that would raise on
+    # its own, so it arrives as a character and is raised here
+    if key == INTERRUPT_KEY:
+        raise KeyboardInterrupt
+
+    return key.lower()

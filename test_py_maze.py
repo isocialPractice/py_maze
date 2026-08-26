@@ -142,14 +142,52 @@ class FakeTermios:
     TCSADRAIN = 'tcsadrain'
     SETTINGS = 'saved-terminal-settings'
 
-    def __init__(self):
+    # the real termios raises this when asked about a standard input
+    # that is not a terminal
+    class error(Exception):
+        pass
+
+    def __init__(self, terminal=True):
+        # Args:
+        #     terminal: False to stand in for a standard input that is
+        #     a pipe or a file, which has no mode to read or set
+
         self.restored = []
+        self.terminal = terminal
 
     def tcgetattr(self, fd):
+        if not self.terminal:
+            raise self.error("not a terminal")
         return self.SETTINGS
 
     def tcsetattr(self, fd, when, settings):
         self.restored.append((fd, when, settings))
+
+
+# Stream recording each write on its own, for counting them.
+class RecordingStream:
+    def __init__(self):
+        self.writes = []
+
+    def write(self, text):
+        self.writes.append(text)
+        return len(text)
+
+    def flush(self):
+        pass
+
+    def getvalue(self):
+        return ''.join(self.writes)
+
+
+# A console on a code page that cannot carry every character, which
+# raises rather than writing what it cannot encode.
+class LegacyConsole(io.StringIO):
+    encoding = 'cp437'
+
+    def write(self, text):
+        text.encode(self.encoding)
+        return io.StringIO.write(self, text)
 
 
 # Fake msvcrt module used to drive the Windows keyboard branch on any platform.
@@ -423,6 +461,96 @@ class TestPosixInput(unittest.TestCase):
             [(0, FakeTermios.TCSADRAIN, FakeTermios.SETTINGS)])
 
 
+class TestPromptResponse(unittest.TestCase):
+    # the "would you like to play" prompt takes one keypress, and the
+    # POSIX branch is exercised directly so these tests run anywhere
+
+    def respond(self, keys, terminal=True):
+        # Args:
+        #     keys: The characters the fake terminal delivers
+        #     terminal: False to stand in for an answer piped in
+        #
+        # Returns:
+        #     tuple: (the answer, fake tty, fake termios, fake stdin)
+
+        tty = mock.Mock()
+        termios = FakeTermios(terminal=terminal)
+        stdin = FakeStdin(keys)
+        with mock.patch.object(sys, 'platform', 'linux'), \
+                mock.patch.object(py_maze.keys, 'termios', termios,
+                                  create=True), \
+                mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
+                mock.patch.object(sys, 'stdin', stdin):
+            return py_maze.read_response(), tty, termios, stdin
+
+    def respond_on_windows(self, keys):
+        # Returns:
+        #     str: The answer read from the console
+
+        with mock.patch.object(sys, 'platform', 'win32'), \
+                mock.patch.object(py_maze.keys, 'msvcrt', FakeMsvcrt(keys),
+                                  create=True):
+            return py_maze.read_response()
+
+    def test_the_answer_is_a_single_keypress(self):
+        # the fault: without raw mode the read waited for Enter and left
+        # the rest of the line in the buffer for whatever read next
+        answer, _, _, stdin = self.respond('yes\n')
+
+        self.assertEqual(answer, 'y')
+        self.assertEqual(stdin.position, 1,
+                         "only the one keypress should be taken")
+
+    def test_the_terminal_is_put_in_raw_mode_and_put_back(self):
+        _, tty, termios, _ = self.respond('y')
+
+        tty.setraw.assert_called_once()
+        self.assertEqual(termios.restored,
+                         [(0, FakeTermios.TCSADRAIN, FakeTermios.SETTINGS)])
+
+    def test_an_uppercase_answer_is_lowercased(self):
+        answer, _, _, _ = self.respond('Y')
+
+        self.assertEqual(answer, 'y')
+
+    def test_ctrl_c_at_the_prompt_raises_a_keyboard_interrupt(self):
+        # raw mode disables the interrupt signal, so Ctrl+C arrives as a
+        # character and has to be raised on its own
+        with self.assertRaises(KeyboardInterrupt):
+            self.respond(py_maze.INTERRUPT_KEY)
+
+    def test_the_terminal_is_restored_before_the_interrupt_escapes(self):
+        termios = FakeTermios()
+        tty = mock.Mock()
+        with mock.patch.object(sys, 'platform', 'linux'), \
+                mock.patch.object(py_maze.keys, 'termios', termios,
+                                  create=True), \
+                mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
+                mock.patch.object(sys, 'stdin',
+                                  FakeStdin(py_maze.INTERRUPT_KEY)):
+            with self.assertRaises(KeyboardInterrupt):
+                py_maze.read_response()
+
+        self.assertEqual(termios.restored,
+                         [(0, FakeTermios.TCSADRAIN, FakeTermios.SETTINGS)])
+
+    def test_an_answer_piped_in_needs_no_raw_mode(self):
+        # a pipe has no terminal mode to read, which must not be an error
+        answer, tty, termios, _ = self.respond('y\n', terminal=False)
+
+        self.assertEqual(answer, 'y')
+        self.assertEqual(tty.setraw.call_count, 0)
+        self.assertEqual(termios.restored, [])
+
+    def test_windows_reads_the_answer_from_the_console(self):
+        self.assertEqual(self.respond_on_windows([b'Y']), 'y')
+
+    def test_ctrl_c_on_windows_raises_a_keyboard_interrupt(self):
+        # getch() hands Ctrl+C over as a byte rather than raising
+        with self.assertRaises(KeyboardInterrupt):
+            self.respond_on_windows([py_maze.WINDOWS_INTERRUPT_KEY])
+
+
 class TestInterruptedGame(unittest.TestCase):
     def setUp(self):
         self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
@@ -591,6 +719,209 @@ class TestTerminalSize(unittest.TestCase):
         # io.StringIO raises when asked for a file descriptor
         with mock.patch.object(sys, 'stdout', io.StringIO()):
             self.assertIsNone(py_maze.terminal_size())
+
+
+class TestAnsiEnabled(unittest.TestCase):
+    def ask(self, stream, isatty=True, platform='linux', term=None):
+        # Returns:
+        #     bool: Whether escapes written to the stream are honoured
+
+        environment = {} if term is None else {'TERM': term}
+        with mock.patch.object(os, 'isatty', return_value=isatty), \
+                mock.patch.object(sys, 'platform', platform), \
+                mock.patch.dict(os.environ, environment, clear=True):
+            return py_maze.ansi_enabled(stream)
+
+    def a_stream(self):
+        # a stand-in for a stream os.isatty can be asked about
+        stream = mock.Mock()
+        stream.fileno.return_value = 1
+        return stream
+
+    def test_a_terminal_honours_escape_sequences(self):
+        self.assertTrue(self.ask(self.a_stream()))
+
+    def test_a_redirected_stream_does_not(self):
+        # an escape written to a file is a character in the file
+        self.assertFalse(self.ask(self.a_stream(), isatty=False))
+
+    def test_a_stream_without_a_descriptor_does_not(self):
+        self.assertFalse(self.ask(io.StringIO()))
+
+    def test_a_terminal_that_calls_itself_dumb_is_believed(self):
+        self.assertFalse(self.ask(self.a_stream(), term='dumb'))
+
+    def test_a_named_terminal_is_taken_at_its_word(self):
+        self.assertTrue(self.ask(self.a_stream(), term='xterm-256color'))
+
+    def test_a_windows_console_is_asked_for_its_mode(self):
+        for enabled in (True, False):
+            with mock.patch.object(py_maze.rendering, 'enable_windows_ansi',
+                                   return_value=enabled):
+                self.assertEqual(
+                    self.ask(self.a_stream(), platform='win32'), enabled)
+
+    def test_standard_output_is_the_default_stream(self):
+        with mock.patch.object(sys, 'stdout', io.StringIO()):
+            self.assertFalse(py_maze.ansi_enabled())
+
+
+class TestWindowsConsoleMode(unittest.TestCase):
+    def test_a_console_mode_that_cannot_be_read_is_not_honoured(self):
+        # no ctypes means no way to switch virtual terminal processing
+        # on, so the escapes would be printed rather than read
+        with mock.patch.object(py_maze.rendering, '_windows_ansi', None), \
+                mock.patch.dict(sys.modules, {'ctypes': None}):
+            self.assertFalse(py_maze.rendering.enable_windows_ansi())
+
+    def test_the_console_mode_is_only_asked_for_once(self):
+        # the mode is set for the whole process, so a frame does not pay
+        # for the question every time it is drawn
+        with mock.patch.object(py_maze.rendering, '_windows_ansi', True), \
+                mock.patch.dict(sys.modules, {'ctypes': None}):
+            self.assertTrue(py_maze.rendering.enable_windows_ansi())
+
+
+class TestClearScreen(unittest.TestCase):
+    def clear(self, honoured):
+        # Returns:
+        #     tuple: (what was written to the stream, the patched
+        #     os.system the shell would have been spawned through)
+
+        stream = io.StringIO()
+        with mock.patch.object(py_maze.rendering, 'ansi_enabled',
+                               return_value=honoured), \
+                mock.patch.object(os, 'system') as system:
+            py_maze.clear_screen(stream)
+
+        return stream.getvalue(), system
+
+    def test_a_terminal_is_cleared_with_an_escape_sequence(self):
+        written, system = self.clear(honoured=True)
+
+        self.assertEqual(written, py_maze.ANSI_CLEAR)
+        self.assertEqual(system.call_count, 0, "no shell should be spawned")
+
+    def test_a_terminal_that_prints_escapes_is_cleared_by_the_shell(self):
+        written, system = self.clear(honoured=False)
+
+        self.assertEqual(written, '')
+        self.assertEqual(system.call_count, 1)
+
+    def test_the_shell_command_matches_the_platform(self):
+        for platform, command in [('win32', 'cls'), ('linux', 'clear'),
+                                  ('darwin', 'clear')]:
+            with mock.patch.object(sys, 'platform', platform):
+                _, system = self.clear(honoured=False)
+
+            system.assert_called_once_with(command)
+
+    def test_animating_spawns_no_shell_for_any_of_its_frames(self):
+        # the fault this fixes: --animate ran cls or clear once a frame
+        stream = io.StringIO()
+        with mock.patch.object(py_maze.rendering, 'ansi_enabled',
+                               return_value=True), \
+                mock.patch.object(os, 'system') as system:
+            py_maze.animate_search(grid_from_strings(TestMazeGame.MAZE),
+                                   stream=stream, pause=lambda delay: None)
+
+        self.assertEqual(system.call_count, 0)
+        self.assertIn(py_maze.ANSI_CLEAR, stream.getvalue())
+
+
+class TestFrameText(unittest.TestCase):
+    LINES = ['first', 'second', 'third']
+
+    def test_a_frame_that_cannot_home_is_plain_lines(self):
+        self.assertEqual(py_maze.frame_text(self.LINES, home=False),
+                         'first\nsecond\nthird\n')
+
+    def test_a_homed_frame_starts_at_the_top_left(self):
+        self.assertTrue(
+            py_maze.frame_text(self.LINES, home=True).startswith(
+                py_maze.ANSI_HOME))
+
+    def test_every_line_wipes_what_it_lands_on(self):
+        frame = py_maze.frame_text(self.LINES, home=True)
+
+        for line in self.LINES:
+            self.assertIn(line + py_maze.ANSI_CLEAR_LINE, frame)
+
+    def test_the_lines_are_all_there_whichever_way_it_is_drawn(self):
+        for home in (True, False):
+            frame = py_maze.frame_text(self.LINES, home=home)
+
+            self.assertEqual(len(frame.splitlines()), len(self.LINES))
+
+    def test_the_stream_decides_when_home_is_not_given(self):
+        # a frame headed for a file carries no escapes to be read as text
+        self.assertEqual(py_maze.frame_text(self.LINES, stream=io.StringIO()),
+                         'first\nsecond\nthird\n')
+
+
+class TestRenderFrame(unittest.TestCase):
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def render(self, homed=True, times=1, stream=None):
+        # Returns:
+        #     tuple: (the stream drawn on, how often it was wiped)
+
+        if stream is None:
+            stream = RecordingStream()
+        with mock.patch.object(py_maze.game, 'ansi_enabled',
+                               return_value=homed), \
+                mock.patch.object(self.game, 'clear_screen') as wipe:
+            for _ in range(times):
+                self.game.render(stream)
+
+        return stream, wipe.call_count
+
+    def test_the_whole_frame_goes_out_in_a_single_write(self):
+        # the flicker was the screen standing empty while the maze, the
+        # tally and the controls went out a line at a time
+        stream, _ = self.render()
+
+        self.assertEqual(len(stream.writes), 1)
+
+    def test_the_screen_is_wiped_once_and_drawn_over_after_that(self):
+        _, wipes = self.render(times=4)
+
+        self.assertEqual(wipes, 1, "only the first frame wipes the screen")
+
+    def test_every_frame_puts_the_cursor_back_at_the_top_left(self):
+        stream, _ = self.render(times=3)
+
+        self.assertEqual(stream.getvalue().count(py_maze.ANSI_HOME), 3)
+
+    def test_a_terminal_that_prints_escapes_is_wiped_for_every_frame(self):
+        stream, wipes = self.render(homed=False, times=3)
+
+        self.assertEqual(wipes, 3)
+        self.assertNotIn('\x1b', stream.getvalue())
+
+    def test_the_frame_holds_the_maze_the_tally_and_the_controls(self):
+        lines = self.game.frame()
+
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(lines[len(TestMazeGame.MAZE) + 1], 'end')
+        self.assertEqual(lines[-1], py_maze.CONTROLS_LINE)
+        self.assertIn('moves 0', lines[-3])
+        self.assertEqual(lines[-2], '')
+
+    def test_the_frame_draws_the_player_where_it_stands(self):
+        self.game.move_player(0, 1)
+        maze = self.game.frame()[1:len(TestMazeGame.MAZE) + 1]
+
+        self.assertEqual(maze[1][1], py_maze.PLAYER_MARKER)
+
+    def test_the_frame_is_the_same_height_every_time(self):
+        # homing the cursor only draws over the last frame while the
+        # frames are the same shape
+        first = len(self.game.frame())
+        self.game.move_player(0, 1)
+
+        self.assertEqual(len(self.game.frame()), first)
 
 
 class TestVersion(unittest.TestCase):
@@ -783,6 +1114,84 @@ class TestSeed(unittest.TestCase):
         second = py_maze.MazeGenerator(5, 6).generate()
 
         self.assertEqual(first, second)
+
+
+class TestRegenerating(unittest.TestCase):
+    # generate() used to carve into whatever the last call had left in
+    # the grid, so a second maze from the same generator was the first
+    # one with more walls knocked out of it
+
+    def openings(self, grid):
+        # Returns:
+        #     int: How many cells of the grid can be stood on
+        return len(list(py_maze.open_cells(grid)))
+
+    def test_a_seeded_generator_carves_the_same_maze_again(self):
+        generator = py_maze.MazeGenerator(6, 6, seed=2024)
+        first = [row[:] for row in generator.generate()]
+
+        self.assertEqual(generator.generate(), first)
+
+    def test_each_call_hands_back_a_grid_of_its_own(self):
+        # the caller's maze must not change under it when another is made
+        generator = py_maze.MazeGenerator(4, 4, seed=7)
+        first = generator.generate()
+        second = generator.generate()
+
+        self.assertIsNot(first, second)
+
+    def test_an_unseeded_generator_carves_a_whole_maze_every_time(self):
+        # a maze carved over the last one has more open cells than a
+        # maze of that size has, whatever the random numbers did
+        expected = self.openings(py_maze.MazeGenerator(8, 8).generate())
+        generator = py_maze.MazeGenerator(8, 8)
+
+        for _ in range(3):
+            self.assertEqual(self.openings(generator.generate()), expected)
+
+    def test_a_regenerated_maze_is_still_solvable(self):
+        generator = py_maze.MazeGenerator(8, 8)
+        generator.generate()
+        grid = generator.generate()
+
+        self.assertIsNotNone(py_maze.solve_maze(grid))
+
+    def test_the_pickups_land_where_the_seed_put_them_last_time(self):
+        # place_collectibles draws from the generator's own numbers, so
+        # rewinding them for the maze rewinds them for the pickups too
+        generator = py_maze.MazeGenerator(6, 6, seed=99)
+        grid = generator.generate()
+        first = py_maze.place_collectibles(grid, 5, generator.random)
+        grid = generator.generate()
+        second = py_maze.place_collectibles(grid, 5, generator.random)
+
+        self.assertEqual(first, second)
+
+    def test_an_unseeded_generator_is_not_rewound(self):
+        # there is no seed to go back to, and the shared random module
+        # is nobody's to reset
+        generator = py_maze.MazeGenerator(6, 6)
+        generator.generate()
+
+        self.assertIs(generator.random, random)
+
+
+class TestWalledGrid(unittest.TestCase):
+    def test_a_new_grid_is_solid_wall(self):
+        self.assertTrue(all(all(row) for row in py_maze.walled_grid(4, 5)))
+
+    def test_the_grid_is_the_size_the_maze_needs(self):
+        grid = py_maze.walled_grid(4, 5)
+
+        self.assertEqual(len(grid), 5 * 2 + 1)
+        self.assertEqual(len(grid[0]), 4 * 2 + 1)
+
+    def test_no_row_is_shared_with_another(self):
+        # a grid of repeated rows would carve every row at once
+        grid = py_maze.walled_grid(3, 3)
+        grid[0][0] = False
+
+        self.assertTrue(all(row[0] for row in grid[1:]))
 
 
 class TestMazeSeed(unittest.TestCase):
@@ -1587,6 +1996,86 @@ class TestEndOfGameSummary(unittest.TestCase):
         output, _ = self.play(['s', 'q'], {(1, 1), (3, 3)})
 
         self.assertIn('collected 1/2', output)
+
+
+class TestWinBanner(unittest.TestCase):
+    def banner(self, encoding):
+        # Returns:
+        #     str: The banner a console with that encoding is given
+
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return py_maze.win_banner(stream)
+
+    def test_a_console_that_can_carry_the_emoji_gets_it(self):
+        self.assertEqual(self.banner('utf-8'), py_maze.WIN_BANNER)
+
+    def test_a_legacy_code_page_gets_the_plain_banner(self):
+        for encoding in ('cp437', 'cp1252', 'ascii', 'latin-1'):
+            self.assertEqual(self.banner(encoding), py_maze.PLAIN_WIN_BANNER)
+
+    def test_an_encoding_python_does_not_know_is_not_risked(self):
+        self.assertEqual(self.banner('no-such-encoding'),
+                         py_maze.PLAIN_WIN_BANNER)
+
+    def test_a_stream_that_names_no_encoding_takes_anything(self):
+        self.assertEqual(py_maze.win_banner(io.StringIO()),
+                         py_maze.WIN_BANNER)
+
+    def test_both_banners_congratulate_the_player(self):
+        self.assertIn('Congratulations', py_maze.WIN_BANNER)
+        self.assertIn('Congratulations', py_maze.PLAIN_WIN_BANNER)
+
+    def test_the_plain_banner_is_plain_ascii(self):
+        # the point of it: every code page can carry every character
+        self.assertEqual(
+            py_maze.PLAIN_WIN_BANNER.encode('ascii').decode('ascii'),
+            py_maze.PLAIN_WIN_BANNER)
+
+    def test_the_emoji_banner_is_what_a_legacy_console_choked_on(self):
+        # without the fallback this is the UnicodeEncodeError the player
+        # was handed instead of the congratulations
+        with self.assertRaises(UnicodeEncodeError):
+            py_maze.WIN_BANNER.encode('cp437')
+
+    def test_winning_on_a_legacy_console_prints_the_congratulations(self):
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+        console = LegacyConsole()
+        with mock.patch.object(game, 'clear_screen'), \
+                mock.patch.object(game, 'get_key',
+                                  side_effect=['s', 'd', 'd', 's', 's', 's',
+                                               'x']), \
+                contextlib.redirect_stdout(console):
+            game.play()
+
+        self.assertIn(py_maze.PLAIN_WIN_BANNER, console.getvalue())
+        self.assertNotIn(py_maze.WIN_BANNER, console.getvalue())
+
+
+class TestCanEncode(unittest.TestCase):
+    def stream_with(self, encoding):
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return stream
+
+    def test_text_the_encoding_carries_is_allowed(self):
+        self.assertTrue(py_maze.can_encode('plain text',
+                                           self.stream_with('ascii')))
+
+    def test_text_the_encoding_cannot_carry_is_refused(self):
+        self.assertFalse(py_maze.can_encode('\N{PARTY POPPER}',
+                                            self.stream_with('ascii')))
+
+    def test_an_unknown_encoding_is_refused(self):
+        self.assertFalse(py_maze.can_encode('plain text',
+                                            self.stream_with('not-real')))
+
+    def test_a_stream_with_no_encoding_takes_anything(self):
+        self.assertTrue(py_maze.can_encode('\N{PARTY POPPER}', io.StringIO()))
+
+    def test_standard_output_is_the_default_stream(self):
+        with mock.patch.object(sys, 'stdout', io.StringIO()):
+            self.assertTrue(py_maze.can_encode('\N{PARTY POPPER}'))
 
 
 class TestCollectibleCount(unittest.TestCase):

@@ -12,7 +12,7 @@ The carved maze is the grid described in :mod:`py_maze.grid`.
 
 import random
 
-from .grid import find_entrance, find_exit, open_cells
+from .grid import find_entrance, find_exit, open_cells, walled_grid
 from .rendering import maze_lines, solution_overlay
 
 __all__ = [
@@ -94,16 +94,32 @@ class MazeGenerator:
         self.random = random if seed is None else random.Random(seed)
 
         # create grid with all walls (True = wall, False = path)
-        self.grid = [[True for _ in range(width * 2 + 1)] for _ in range(height * 2 + 1)]
+        self.grid = walled_grid(width, height)
 
     def generate(self):
         """Carve a solvable maze with the recursive backtracking algorithm.
+
+        Calling this a second time on the same generator makes the maze
+        again rather than carving over the one it already made: the
+        grid goes back to solid wall, and a seeded generator goes back
+        to the same random numbers, so the same seed gives the same
+        maze however many times it is asked for it.
 
         Returns:
             list: The carved grid, a list of rows of booleans with True
             for a wall, with the entrance opened at the top and the exit
             at the bottom
         """
+
+        # carve out of solid wall every time, so nothing survives from
+        # the maze the last call made
+        self.grid = walled_grid(self.width, self.height)
+
+        # a seeded generator draws the same numbers it drew last time.
+        # An unseeded one shares the random module, which is nobody's
+        # to rewind
+        if self.seed is not None:
+            self.random = random.Random(self.seed)
 
         # start from top-left cell (1, 1)
         start_x, start_y = 1, 1

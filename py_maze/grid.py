@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The maze grid and the helpers that read it.
+"""The maze grid, the block of wall it starts as and the helpers that read it.
 
 A maze is a grid: a list of rows, each row a list of booleans, with ``True``
 for a wall and ``False`` for a cell the player can stand on. ``grid[y][x]``
@@ -23,6 +23,7 @@ __all__ = [
     'find_exit',
     'open_cells',
     'open_neighbors',
+    'walled_grid',
 ]
 
 # smallest maze that still has an interior path
@@ -30,6 +31,22 @@ MIN_DIMENSION = 2
 
 # the four moves a player, and the solver, can make
 MOVES = ((0, -1), (1, 0), (0, 1), (-1, 0))
+
+
+def walled_grid(width, height):
+    """Build the solid block of wall a maze is carved out of.
+
+    Args:
+        width: Number of cells wide
+        height: Number of cells tall
+
+    Returns:
+        list: A grid of height * 2 + 1 rows of width * 2 + 1 booleans,
+        every one of them True, with no row shared with any other
+    """
+
+    return [[True for _ in range(width * 2 + 1)]
+            for _ in range(height * 2 + 1)]
 
 
 def find_entrance(grid):
