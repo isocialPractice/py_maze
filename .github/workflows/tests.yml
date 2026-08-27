@@ -1,0 +1,44 @@
+# Runs the unit tests on every platform and Python version the project
+# claims to support. The versions here are the ones pyproject.toml lists
+# as classifiers, and the floor is its requires-python, so a version that
+# is promised in the manifest is a version that is actually tested.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # one failing combination should not hide the others: the point of
+      # the matrix is knowing which platforms and versions are affected
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Report the interpreter under test
+        run: python -c "import sys; print(sys.version)"
+
+      # the suite uses only the standard library, so there is nothing to
+      # install: it runs against the checkout as it stands
+      - name: Run the test suite
+        run: python -m unittest discover -v

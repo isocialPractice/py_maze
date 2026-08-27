@@ -28,6 +28,10 @@ env/
 # Local scratch space
 .tmp/
 
+# GitHub's own folder, which the global ignore file's dot-file rule would
+# otherwise keep out of the repository along with everything under it
+!.github/
+
 # Editor and OS noise
 .vscode/
 .idea/
