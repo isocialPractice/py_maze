@@ -268,6 +268,10 @@ The same goes for a ragged maze (`notes.txt: line 3 is 4 characters, expected
 (`notes.txt: unexpected character '.' on line 2`), and a file written by a
 newer build (`notes.txt: save format 2 is not supported, this build reads 1`).
 
+The format is specified in [docs/save-format.md](docs/save-format.md): the
+header, the seed comment, the markers, the ragged-line rule and what a reader
+refuses, so another tool can write a file py_maze will load.
+
 ### Fitting the Terminal
 
 A maze larger than the screen scrolls out of view and cannot be played, so
@@ -519,11 +523,17 @@ prompt reads it straight from the pipe.
 
 ## Requirements
 
-- Python 3.6 or higher
+- Python 3.10 or higher
 - No external dependencies required! (Uses only standard library)
 
 Building or installing from source additionally needs pip with setuptools 61
 or newer, which is what reads `pyproject.toml`.
+
+`requires-python` in `pyproject.toml` is that floor, and the classifiers
+beside it list every version the suite is run on: 3.10, 3.11, 3.12 and 3.13.
+Each of them is tested on Windows, Linux and macOS by the workflow in
+`.github/workflows/tests.yml`, so the versions the manifest promises are the
+versions that are actually checked.
 
 ## How It Works
 
@@ -631,13 +641,21 @@ The suite runs on any platform. Both the Windows and the POSIX keyboard
 branches are exercised through fake terminals, so neither is skipped for
 running on the other operating system.
 
+That same command is what CI runs. `.github/workflows/tests.yml` runs it on
+Windows, Linux and macOS across every supported Python version on each push
+and pull request, so the cross-platform promise is checked rather than
+asserted.
+
 ## License
 
-MIT License - Feel free to use and modify as you wish!
+MIT License - Feel free to use and modify as you wish! The full text is in
+[LICENSE](LICENSE).
 
 ## Contributing
 
 Contributions are welcome! Feel free to submit issues or pull requests.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the test command, the comment and
+docstring convention and how the version is single-sourced.
 
 ## Future Enhancements
 

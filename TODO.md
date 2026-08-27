@@ -7,23 +7,12 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Raise `requires-python` off the end-of-life 3.6 and add the Python 3.12
-  and 3.13 classifiers the suite already passes on
-  - From: Runtime and Portability Fixes
-- [ ] Add a `LICENSE` file carrying the MIT text that `README.md` and
-  `pyproject.toml` both declare and the repository does not include
+- [ ] Write a "Using py_maze as a Library" section in `README.md` covering
+  the importable names, the grid format and a worked example that generates,
+  solves and renders a maze without playing it
   - From: version.control = null
-- [ ] Add a GitHub Actions workflow running `python -m unittest discover` on
-  Windows, Linux and macOS across the supported Python versions, so the
-  cross-platform promise is checked rather than asserted
-  - From: version.control = null
-- [ ] Add `CONTRIBUTING.md` covering the test command, the comment and
-  docstring convention, and how the version is single-sourced from
-  `__version__`
-  - From: version.control = null
-- [ ] Write `docs/save-format.md` specifying the save file - the header, the
-  seed comment, the markers, the ragged-line rule and what a reader must
-  refuse - so another tool can write a file py_maze will load
+- [ ] Refresh the `Development` file tree in `README.md`, which lists neither
+  `TODO.md`, the launcher scripts nor `.github/`
   - From: version.control = null
 
 ## Fixes and Hardening
@@ -109,32 +98,16 @@ unchanged, so completing items in this section is a minor version update.
 Faults found while evaluating the finished project, none of which change an
 interface. Completing items in this section is a patch version update.
 
-- [ ] Raise `requires-python` off the end-of-life 3.6 and add the Python 3.12
-  and 3.13 classifiers the suite already passes on
+No items are currently queued in this section.
 
 ## Documentation and Chores
 
 Files the project is expected to carry and the prose the library half needs.
 None of these move the version.
 
-- [ ] Add a `LICENSE` file carrying the MIT text that `README.md` and
-  `pyproject.toml` both declare and the repository does not include
-  - From: version.control = null
-- [ ] Add a GitHub Actions workflow running `python -m unittest discover` on
-  Windows, Linux and macOS across the supported Python versions, so the
-  cross-platform promise is checked rather than asserted
-  - From: version.control = null
 - [ ] Write a "Using py_maze as a Library" section in `README.md` covering
   the importable names, the grid format and a worked example that generates,
   solves and renders a maze without playing it
-  - From: version.control = null
-- [ ] Write `docs/save-format.md` specifying the save file - the header, the
-  seed comment, the markers, the ragged-line rule and what a reader must
-  refuse - so another tool can write a file py_maze will load
-  - From: version.control = null
-- [ ] Add `CONTRIBUTING.md` covering the test command, the comment and
-  docstring convention, and how the version is single-sourced from
-  `__version__`
   - From: version.control = null
 - [ ] Refresh the `Development` file tree in `README.md`, which lists neither
   `TODO.md`, the launcher scripts nor `.github/`
@@ -246,3 +219,21 @@ None of these move the version.
   second time on the same instance, instead of carving on top of the maze it
   already made
   - From: Runtime and Portability Fixes
+- [x] Raise `requires-python` off the end-of-life 3.6 and add the Python 3.12
+  and 3.13 classifiers the suite already passes on
+  - From: Runtime and Portability Fixes
+- [x] Add a `LICENSE` file carrying the MIT text that `README.md` and
+  `pyproject.toml` both declare and the repository does not include
+  - From: version.control = null
+- [x] Add a GitHub Actions workflow running `python -m unittest discover` on
+  Windows, Linux and macOS across the supported Python versions, so the
+  cross-platform promise is checked rather than asserted
+  - From: version.control = null
+- [x] Add `CONTRIBUTING.md` covering the test command, the comment and
+  docstring convention, and how the version is single-sourced from
+  `__version__`
+  - From: version.control = null
+- [x] Write `docs/save-format.md` specifying the save file - the header, the
+  seed comment, the markers, the ragged-line rule and what a reader must
+  refuse - so another tool can write a file py_maze will load
+  - From: version.control = null

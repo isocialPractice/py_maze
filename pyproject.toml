@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "py_maze"
 description = "A command-line maze generator and game"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "John Haugabook", email = "johnhaugabook@gmail.com" },
@@ -14,14 +14,14 @@ authors = [
 keywords = [
     "maze", "game", "terminal", "console", "puzzle", "solver", "collectibles",
 ]
+# every version listed is one the suite is run on: see
+# .github/workflows/tests.yml, which builds its matrix from this list
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Environment :: Console",

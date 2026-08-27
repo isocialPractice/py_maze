@@ -33,6 +33,80 @@ TERMINAL_FREE_MODULES = ('generation', 'grid', 'rendering', 'saves', 'solving')
 # the platform machinery that used to sit at the top of the flat module
 TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
 
+# the files the repository carries beside the package, each of which
+# states something the package has to agree with
+CONTRIBUTING_PATH = os.path.join(PROJECT_ROOT, 'CONTRIBUTING.md')
+LICENSE_PATH = os.path.join(PROJECT_ROOT, 'LICENSE')
+MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'pyproject.toml')
+README_PATH = os.path.join(PROJECT_ROOT, 'README.md')
+SAVE_FORMAT_PATH = os.path.join(PROJECT_ROOT, 'docs', 'save-format.md')
+WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
+                             'tests.yml')
+
+
+def read_project_file(path):
+    # read one of the repository's own files
+    #
+    # Args:
+    #     path: Absolute path to the file
+    #
+    # Returns:
+    #     str: Its contents
+
+    with open(path, encoding='utf-8') as handle:
+        return handle.read()
+
+
+def version_pair(text):
+    # read a Python version such as "3.10" as numbers, so versions compare
+    # by number rather than as text, where "3.9" sorts above "3.10"
+    #
+    # Args:
+    #     text: Version as it is written in the manifest or the workflow
+    #
+    # Returns:
+    #     tuple: (major, minor)
+
+    major, minor = text.split('.')[:2]
+    return int(major), int(minor)
+
+
+def manifest_python_floor():
+    # the oldest Python the manifest supports, from requires-python
+    #
+    # Returns:
+    #     tuple: (major, minor)
+
+    floor = re.search(r'requires-python\s*=\s*">=\s*(\d+\.\d+)"',
+                      read_project_file(MANIFEST_PATH))
+    return version_pair(floor.group(1))
+
+
+def manifest_python_versions():
+    # every Python version the manifest claims, from its classifiers. The
+    # bare "Python :: 3" classifier names no release, so it is not one
+    #
+    # Returns:
+    #     list: (major, minor) pairs, in the order they are listed
+
+    listed = re.findall(r'Programming Language :: Python :: (\d+\.\d+)',
+                        read_project_file(MANIFEST_PATH))
+    return [version_pair(version) for version in listed]
+
+
+def workflow_matrix(name):
+    # read one inline list out of the workflow's build matrix
+    #
+    # Args:
+    #     name: Key of the matrix entry, such as 'os'
+    #
+    # Returns:
+    #     list: The values, with any surrounding quotes taken off
+
+    entry = re.search(r'^\s*%s:\s*\[([^\]]*)\]' % re.escape(name),
+                      read_project_file(WORKFLOW_PATH), re.MULTILINE)
+    return [value.strip().strip('\'"') for value in entry.group(1).split(',')]
+
 
 # A clock that only moves when a test moves it, so timings are exact.
 class FakeClock:
@@ -2777,6 +2851,280 @@ class TestGridInterchange(unittest.TestCase):
         self.assertEqual(py_maze.solve_maze(grid)[0],
                          py_maze.find_entrance(grid))
         self.assertEqual(py_maze.save_lines(grid)[1:], self.MAZE)
+
+
+class TestSupportedPythonVersions(unittest.TestCase):
+    # the manifest is the one place the supported versions are declared,
+    # and the CI matrix and the README both have to agree with it
+
+    # Python 3.6 reached end of life in December 2021, and the floor sat
+    # there until the versions were reviewed
+    END_OF_LIFE_FLOOR = (3, 6)
+
+    def test_requires_python_is_off_the_end_of_life_release(self):
+        self.assertGreater(manifest_python_floor(), self.END_OF_LIFE_FLOOR)
+
+    def test_the_classifiers_cover_the_newer_releases(self):
+        versions = manifest_python_versions()
+
+        self.assertIn((3, 12), versions)
+        self.assertIn((3, 13), versions)
+
+    def test_no_classifier_claims_a_version_below_the_floor(self):
+        # a classifier under requires-python promises an install that pip
+        # would refuse
+        floor = manifest_python_floor()
+        for version in manifest_python_versions():
+            self.assertGreaterEqual(
+                version, floor,
+                "Python %d.%d is classified but below requires-python"
+                % version)
+
+    def test_the_classifiers_start_at_the_floor(self):
+        self.assertEqual(min(manifest_python_versions()),
+                         manifest_python_floor())
+
+    def test_the_classifiers_run_without_a_gap(self):
+        # a missing version between two listed ones would be supported
+        # without being tested
+        versions = sorted(manifest_python_versions())
+        for earlier, later in zip(versions, versions[1:]):
+            self.assertEqual(later, (earlier[0], earlier[1] + 1),
+                             "nothing is claimed between %d.%d and %d.%d"
+                             % (earlier + later))
+
+    def test_the_suite_is_running_on_a_supported_interpreter(self):
+        self.assertGreaterEqual(sys.version_info[:2], manifest_python_floor())
+
+    def test_the_readme_states_the_same_floor(self):
+        self.assertIn("Python %d.%d or higher" % manifest_python_floor(),
+                      read_project_file(README_PATH))
+
+
+class TestContinuousIntegration(unittest.TestCase):
+    # the workflow is what turns "the suite runs on any platform" into
+    # something checked rather than asserted
+
+    def workflow(self):
+        return read_project_file(WORKFLOW_PATH)
+
+    def test_the_workflow_is_where_actions_looks_for_it(self):
+        self.assertTrue(os.path.isfile(WORKFLOW_PATH),
+                        ".github/workflows/tests.yml is missing")
+
+    def test_the_workflow_runs_the_documented_test_command(self):
+        self.assertIn('python -m unittest discover', self.workflow())
+
+    def test_the_workflow_runs_on_the_three_platforms(self):
+        systems = ' '.join(workflow_matrix('os'))
+        for platform in ('ubuntu', 'windows', 'macos'):
+            self.assertIn(platform, systems)
+
+    def test_the_matrix_is_the_versions_the_manifest_claims(self):
+        tested = [version_pair(value)
+                  for value in workflow_matrix('python-version')]
+
+        self.assertEqual(sorted(tested), sorted(manifest_python_versions()))
+
+    def test_the_workflow_runs_on_a_push_and_a_pull_request(self):
+        self.assertIn('push:', self.workflow())
+        self.assertIn('pull_request:', self.workflow())
+
+    def test_one_failing_combination_does_not_cancel_the_others(self):
+        self.assertIn('fail-fast: false', self.workflow())
+
+    def test_the_workflow_installs_nothing(self):
+        # the suite is standard library only, so an install step in the
+        # workflow would mean that had stopped being true
+        self.assertNotIn('pip install', self.workflow())
+
+
+class TestLicenseFile(unittest.TestCase):
+    # README.md and pyproject.toml both declare MIT, so the repository
+    # has to carry the text they are declaring
+
+    def test_the_license_file_is_there(self):
+        self.assertTrue(os.path.isfile(LICENSE_PATH), 'LICENSE is missing')
+
+    def test_the_license_is_the_mit_text(self):
+        license_text = read_project_file(LICENSE_PATH)
+
+        self.assertIn('MIT License', license_text)
+        self.assertIn('Permission is hereby granted, free of charge',
+                      license_text)
+        self.assertIn('THE SOFTWARE IS PROVIDED "AS IS"', license_text)
+        self.assertIn('WITHOUT WARRANTY OF ANY KIND', license_text)
+
+    def test_the_license_carries_a_copyright_line(self):
+        self.assertRegex(read_project_file(LICENSE_PATH),
+                         r'Copyright \(c\) \d{4}')
+
+    def test_the_manifest_declares_the_same_licence(self):
+        manifest = read_project_file(MANIFEST_PATH)
+
+        self.assertIn('license = { text = "MIT" }', manifest)
+        self.assertIn('License :: OSI Approved :: MIT License', manifest)
+
+    def test_the_readme_points_at_the_file(self):
+        self.assertIn('[LICENSE](LICENSE)', read_project_file(README_PATH))
+
+
+class TestContributingGuide(unittest.TestCase):
+    # what a contributor is told has to be what the project does
+
+    def guide(self):
+        return read_project_file(CONTRIBUTING_PATH)
+
+    def test_the_guide_is_there(self):
+        self.assertTrue(os.path.isfile(CONTRIBUTING_PATH),
+                        'CONTRIBUTING.md is missing')
+
+    def test_the_guide_gives_the_test_command(self):
+        self.assertIn('python -m unittest discover', self.guide())
+
+    def test_the_guide_covers_the_docstring_convention(self):
+        guide = self.guide()
+
+        self.assertIn('docstring', guide.lower())
+        self.assertIn('__all__', guide)
+
+    def test_the_guide_explains_the_single_sourced_version(self):
+        guide = self.guide()
+
+        self.assertIn('py_maze/version.py', guide)
+        self.assertIn('version = { attr = "py_maze.__version__" }', guide)
+
+    def test_the_guide_names_the_supported_floor(self):
+        self.assertIn("Python %d.%d and newer" % manifest_python_floor(),
+                      self.guide())
+
+    def test_the_readme_points_at_the_guide(self):
+        self.assertIn('[CONTRIBUTING.md](CONTRIBUTING.md)',
+                      read_project_file(README_PATH))
+
+
+class TestSaveFormatDocument(unittest.TestCase):
+    # docs/save-format.md specifies the file another tool has to write,
+    # so everything it specifies is checked against the reader itself
+
+    # every refusal the document tables, as the file that causes it and
+    # the message the reader gives for it
+    REFUSALS = (
+        ('no header at all', "*   *\n"),
+        ('a maze above the header', "*   *\n# py_maze save 1\n"),
+        ('a format this build does not read', "# py_maze save 2\n*   *\n"),
+        ('a marker only drawn on screen', "# py_maze save 1\n*.*\n"),
+        ('a ragged maze', "# py_maze save 1\n*****\n*  *\n"),
+        ('a header and nothing else', "# py_maze save 1\n"),
+    )
+
+    def document(self):
+        return read_project_file(SAVE_FORMAT_PATH)
+
+    def documented_save(self):
+        # the whole example save file, out of the fenced block that draws
+        # it
+        #
+        # Returns:
+        #     str: The file exactly as the document shows it
+
+        shown = re.search(r'^```\n(#\s*py_maze save.*?)^```$',
+                          self.document(), re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(shown, 'the document shows no example file')
+        return shown.group(1)
+
+    def test_the_document_is_there(self):
+        self.assertTrue(os.path.isfile(SAVE_FORMAT_PATH),
+                        'docs/save-format.md is missing')
+
+    def test_the_example_is_a_file_the_reader_accepts(self):
+        grid, collectibles, seed = py_maze.parse_save(self.documented_save())
+
+        self.assertEqual((len(grid), len(grid[0])), (13, 13))
+        self.assertEqual(seed, 2024)
+        self.assertEqual(sorted(collectibles),
+                         [(5, 7), (6, 9), (7, 7), (7, 9)])
+
+    def test_the_example_is_what_the_command_above_it_writes(self):
+        # the document draws the output of a --save run, so the run has
+        # to still produce it
+        generator = py_maze.MazeGenerator(6, 6, seed=2024)
+        grid = generator.generate()
+        collectibles = py_maze.place_collectibles(grid, 4, generator.random)
+
+        self.assertEqual(py_maze.save_lines(grid, collectibles, 2024),
+                         self.documented_save().splitlines())
+
+    def test_the_document_names_the_format_this_build_reads(self):
+        document = self.document()
+
+        self.assertIn(py_maze.SAVE_HEADER, document)
+        self.assertIn('this build reads %d' % py_maze.SAVE_FORMAT, document)
+
+    def test_the_document_lists_every_marker_a_file_may_carry(self):
+        document = self.document()
+        for marker in py_maze.SAVE_CHARS:
+            if marker == py_maze.OPEN_MARKER:
+                # a space is described in words, there being nothing to
+                # draw between the backticks
+                continue
+            self.assertIn('`%s`' % marker, document)
+
+    def test_the_document_rules_out_the_markers_drawn_on_screen(self):
+        document = self.document()
+        for marker in (py_maze.PLAYER_MARKER, py_maze.SOLUTION_MARKER):
+            self.assertIn('`%s`' % marker, document)
+
+    def test_every_documented_refusal_is_one_the_reader_makes(self):
+        document = self.document()
+        for description, text in self.REFUSALS:
+            with self.subTest(refusal=description):
+                with self.assertRaises(py_maze.SaveFileError) as caught:
+                    py_maze.parse_save(text)
+
+                self.assertIn(str(caught.exception), document)
+
+    def test_the_line_numbers_count_the_comments_and_the_blanks(self):
+        text = "# py_maze save 1\n# seed: 2024\n\n***\n*.*\n"
+
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save(text)
+
+        self.assertIn('on line 5', str(caught.exception))
+
+    def test_a_maze_with_no_way_through_is_loaded_all_the_same(self):
+        # the document says the reader checks the file, not the maze
+        grid, _, _ = py_maze.parse_save("# py_maze save 1\n* *\n***\n* *\n")
+
+        self.assertIsNone(py_maze.solve_maze(grid))
+
+    def test_a_line_of_open_cells_is_read_as_a_blank_line(self):
+        # the document warns that a row of nothing but open cells
+        # disappears, a whitespace-only line being skipped
+        grid, _, _ = py_maze.parse_save("# py_maze save 1\n***\n   \n***\n")
+
+        self.assertEqual(len(grid), 2)
+
+    def test_a_stripped_trailing_space_leaves_a_ragged_file(self):
+        # the document warns that trailing spaces are open cells, so an
+        # editor that strips them breaks the file
+        py_maze.parse_save("# py_maze save 1\n****\n*   \n****\n")
+
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("# py_maze save 1\n****\n*\n****\n")
+
+        self.assertIn('expected 4', str(caught.exception))
+
+    def test_the_document_names_the_public_reader_and_writer(self):
+        document = self.document()
+        for name in ('read_save', 'parse_save', 'write_save', 'save_lines',
+                     'SaveFileError', 'SAVE_CHARS', 'SAVE_FORMAT',
+                     'SAVE_HEADER'):
+            self.assertIn('py_maze.%s' % name, document)
+            self.assertIn(name, py_maze.__all__)
+
+    def test_the_readme_points_at_the_document(self):
+        self.assertIn('docs/save-format.md', read_project_file(README_PATH))
 
 
 if __name__ == '__main__':

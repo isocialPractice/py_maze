@@ -5,6 +5,46 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-08-27
+
+### Changed
+
+- The supported Python versions are the ones that are still supported
+  upstream. `requires-python` was `>=3.6`, a release that reached end of life
+  in December 2021, and the classifiers stopped at 3.11. The floor is now
+  `>=3.10` and the classifiers list 3.10, 3.11, 3.12 and 3.13, every one of
+  which the suite is run on. Nothing in the package changes: it is written
+  against the standard library alone and uses no syntax newer than the floor
+  it declared before.
+
+### Added
+
+- A `LICENSE` file carrying the MIT text that `README.md` and
+  `pyproject.toml` have both declared since the first release, so the
+  declaration rests on something.
+- A GitHub Actions workflow, `.github/workflows/tests.yml`, running
+  `python -m unittest discover` on Windows, Linux and macOS across every
+  supported Python version on each push and pull request. The cross-platform
+  promise is checked now rather than asserted, and the matrix is the
+  classifier list, so a version the manifest promises is a version that is
+  tested. Nothing is installed to run it: the suite is standard library only.
+- `CONTRIBUTING.md`, covering the test command, the comment and docstring
+  convention (docstrings on public names, the existing comment style on
+  internal helpers), how the version is single-sourced from `__version__`,
+  and the grid as the type new code is expected to read and write.
+- `docs/save-format.md`, specifying the save file so another tool can write
+  one py_maze will load: the header and what it is for, the seed comment, the
+  three markers and the on-screen markers that are not part of the format,
+  the ragged-line rule and the two ways whitespace catches a writer out, the
+  entrance and exit convention, every refusal the reader makes with the
+  message it gives, and the two things it deliberately does not refuse.
+- Tests covering all of the above: that no classifier falls below
+  `requires-python` and the list runs without a gap, that the CI matrix is
+  that same list, that the licence the manifest declares is the text the
+  repository carries, that the contributing guide gives the command the
+  workflow runs, and that the save format document agrees with the reader on
+  every marker, every refusal message and the example file it draws.
+
 ## [2.0.1] - 2026-08-26
 
 ### Fixed
