@@ -5,6 +5,7 @@
 import argparse
 import collections
 import contextlib
+import doctest
 import importlib
 import inspect
 import io
@@ -42,6 +43,13 @@ README_PATH = os.path.join(PROJECT_ROOT, 'README.md')
 SAVE_FORMAT_PATH = os.path.join(PROJECT_ROOT, 'docs', 'save-format.md')
 WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                              'tests.yml')
+
+# the box-drawing characters the README draws its project structure with,
+# built from their code points so this file stays ASCII
+TREE_BRANCH = chr(0x251C) + chr(0x2500) * 2 + ' '  # an entry, more below it
+TREE_LAST = chr(0x2514) + chr(0x2500) * 2 + ' '    # the last at its level
+TREE_TRUNK = chr(0x2502) + ' ' * 3                 # the line running down
+TREE_GAP = ' ' * 4                                 # where that line ended
 
 
 def read_project_file(path):
@@ -3125,6 +3133,204 @@ class TestSaveFormatDocument(unittest.TestCase):
 
     def test_the_readme_points_at_the_document(self):
         self.assertIn('docs/save-format.md', read_project_file(README_PATH))
+
+
+class TestLibrarySection(unittest.TestCase):
+    # the README's library section is what a caller reads before importing
+    # the package, so everything it shows is checked against the package
+
+    HEADING = '## Using py_maze as a Library'
+
+    # the modules whose whole public surface the section tables, so a name
+    # added to one of them is a name the section has to grow a row for
+    TABLED_MODULES = ('generation', 'grid', 'saves', 'solving')
+
+    def section(self):
+        # the library section, from its heading to the next level 2 one
+        #
+        # Returns:
+        #     str: The section, its heading included
+
+        readme = read_project_file(README_PATH)
+        start = readme.find(self.HEADING)
+        self.assertNotEqual(start, -1, 'the README has no library section')
+
+        end = readme.find('\n## ', start + len(self.HEADING))
+        return readme[start:] if end == -1 else readme[start:end]
+
+    def tabled_names(self):
+        # every name the section's tables give a row of their own, taken
+        # from the first column of each row
+        #
+        # Returns:
+        #     set: The names, without the arguments each is shown with
+
+        names = set()
+        for row in re.findall(r'^\|(.+?)\|', self.section(), re.MULTILINE):
+            for shown in re.findall(r'`([^`]+)`', row):
+                # a row shows the call, so the name is what comes before
+                # the arguments
+                name = shown.split('(')[0].strip()
+                if name.isidentifier():
+                    names.add(name)
+
+        return names
+
+    def grid_example(self):
+        # the >>> block showing the shape of a grid, taken out of the fence
+        # drawing it so the fence is not read as part of the output
+        #
+        # Returns:
+        #     str: The block, ready for doctest
+
+        shown = re.search(r'```python\n(>>>.*?)```', self.section(), re.DOTALL)
+        self.assertIsNotNone(shown, 'the section shows no >>> example')
+        return shown.group(1)
+
+    def worked_example(self):
+        # the code under "A Worked Example", and the output it shows
+        #
+        # Returns:
+        #     tuple: (code, output) exactly as the section writes them
+
+        shown = re.search(r'### A Worked Example\n.*?```python\n(.*?)```'
+                          r'.*?\*\*Output:\*\*\n\n```\n(.*?)```',
+                          self.section(), re.DOTALL)
+        self.assertIsNotNone(shown, 'the section shows no worked example')
+        return shown.group(1), shown.group(2)
+
+    def test_the_section_is_there(self):
+        self.assertIn(self.HEADING, read_project_file(README_PATH))
+
+    def test_the_worked_example_prints_what_the_readme_shows(self):
+        # the example is run as it is written, so prose that drifts from
+        # the package fails here rather than in a reader's terminal
+        code, shown = self.worked_example()
+
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            exec(compile(code, README_PATH, 'exec'), {})
+
+        self.assertEqual(printed.getvalue(), shown)
+
+    def test_the_worked_example_needs_no_terminal(self):
+        # the section promises an example with no game and no keyboard in
+        # it, so every name it reaches for has to be one the modules that
+        # leave the terminal alone export
+        code, _ = self.worked_example()
+
+        terminal_free = set()
+        for module in TERMINAL_FREE_MODULES:
+            terminal_free.update(
+                importlib.import_module('py_maze.%s' % module).__all__)
+
+        reached = set(re.findall(r'py_maze\.(\w+)', code))
+        self.assertTrue(reached, 'the worked example calls nothing')
+        for name in sorted(reached):
+            self.assertIn(name, terminal_free,
+                          '%s is not one of the names that leave the '
+                          'terminal alone' % name)
+
+    def test_the_grid_example_holds(self):
+        # the >>> block showing the shape of a grid is run as it is written
+        parsed = doctest.DocTestParser().get_doctest(
+            self.grid_example(), {'py_maze': py_maze}, 'README',
+            README_PATH, 0)
+        self.assertTrue(parsed.examples, 'the section shows no >>> example')
+
+        reported = io.StringIO()
+        result = doctest.DocTestRunner(verbose=False).run(
+            parsed, out=reported.write)
+
+        self.assertEqual(result.failed, 0, reported.getvalue())
+
+    def test_every_name_it_tables_is_one_the_package_exports(self):
+        tabled = self.tabled_names()
+
+        self.assertTrue(tabled, 'the section tables no names')
+        for name in sorted(tabled):
+            self.assertIn(name, py_maze.__all__,
+                          '%s is in the README but not exported' % name)
+            self.assertTrue(hasattr(py_maze, name))
+
+    def test_it_tables_the_whole_surface_of_the_modules_it_covers(self):
+        tabled = self.tabled_names()
+
+        for module in self.TABLED_MODULES:
+            imported = importlib.import_module('py_maze.%s' % module)
+            for name in imported.__all__:
+                self.assertIn(name, tabled,
+                              '%s is exported by py_maze.%s but the README '
+                              'does not table it' % (name, module))
+
+    def test_it_names_every_marker_a_maze_is_drawn_with(self):
+        section = self.section()
+
+        markers = [name for name in py_maze.__all__ if name.endswith('MARKER')]
+        self.assertTrue(markers, 'the package exports no markers')
+        for name in markers:
+            self.assertIn('`%s`' % name, section)
+
+
+class TestDevelopmentFileTree(unittest.TestCase):
+    # the tree under Development is the map of the repository: an entry it
+    # draws has to exist, and a file the repository carries has to be on it
+
+    # what a reader is expected to find on the map, whether or not the
+    # rest of the suite already reads it
+    EXPECTED = ('py_maze/', 'docs/', '.github/', 'py_maze.bat', 'py_maze.sh',
+                'test_py_maze.py', 'pyproject.toml', '.gitignore',
+                'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'TODO.md',
+                'README.md')
+
+    def tree(self):
+        # the fenced block drawing the project structure
+        #
+        # Returns:
+        #     str: The tree, without the fences around it
+
+        drawn = re.search(r'The project structure:\n\n```\n(.*?)^```$',
+                          read_project_file(README_PATH),
+                          re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(drawn, 'the README draws no project structure')
+        return drawn.group(1)
+
+    def test_it_lists_the_files_the_repository_carries(self):
+        tree = self.tree()
+
+        for name in self.EXPECTED:
+            self.assertIn(name, tree,
+                          '%s is not on the project structure map' % name)
+
+    def test_every_entry_it_draws_is_really_there(self):
+        # each level is indented four characters, either the line running
+        # down past an entry or the blank left where that line has ended
+        entry = re.compile(r'((?:%s|%s)*)(?:%s|%s)(\S+)'
+                           % (re.escape(TREE_TRUNK), TREE_GAP,
+                              re.escape(TREE_BRANCH), re.escape(TREE_LAST)))
+
+        parents = []
+        drawn = 0
+        for line in self.tree().splitlines():
+            found = entry.match(line)
+            if found is None:
+                continue
+
+            # an entry sits under the entry one level shallower than it,
+            # so the path to it is every parent above it on the map
+            depth = len(found.group(1)) // len(TREE_GAP)
+            name = found.group(2).rstrip('/')
+            parents = parents[:depth]
+
+            self.assertTrue(
+                os.path.exists(os.path.join(PROJECT_ROOT, *parents, name)),
+                '%s is on the project structure map but not in the '
+                'repository' % '/'.join(parents + [name]))
+
+            parents.append(name)
+            drawn += 1
+
+        self.assertGreaterEqual(drawn, len(self.EXPECTED))
 
 
 if __name__ == '__main__':

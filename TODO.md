@@ -7,13 +7,27 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Write a "Using py_maze as a Library" section in `README.md` covering
-  the importable names, the grid format and a worked example that generates,
-  solves and renders a maze without playing it
-  - From: version.control = null
-- [ ] Refresh the `Development` file tree in `README.md`, which lists neither
-  `TODO.md`, the launcher scripts nor `.github/`
-  - From: version.control = null
+- [ ] Put the generators behind one interface - a size and a seeded random
+  generator in, a carved grid out - so a new algorithm is one module and one
+  name in an option rather than a change to `MazeGenerator`
+  - From: Generation Algorithms
+- [ ] Add an `--algorithm`/`-A` option choosing the generator, defaulting to
+  recursive backtracking so a bare run is unchanged
+  - From: Generation Algorithms
+- [ ] Add Prim's algorithm as a second generator, which carves shorter dead
+  ends and a more open maze than backtracking does
+  - From: Generation Algorithms
+- [ ] Add recursive division as a third generator, which carves long straight
+  corridors and rooms rather than a winding single route
+  - From: Generation Algorithms
+- [ ] Add a `--braid` option removing a share of the dead ends, so the maze
+  has more than one way through and the breadth-first solver picks a shortest
+  path rather than the only path
+  - From: Generation Algorithms
+
+### Create and Deploy GitHub Pages Override
+
+- Line count over 1500
 
 ## Fixes and Hardening
 
@@ -105,13 +119,7 @@ No items are currently queued in this section.
 Files the project is expected to carry and the prose the library half needs.
 None of these move the version.
 
-- [ ] Write a "Using py_maze as a Library" section in `README.md` covering
-  the importable names, the grid format and a worked example that generates,
-  solves and renders a maze without playing it
-  - From: version.control = null
-- [ ] Refresh the `Development` file tree in `README.md`, which lists neither
-  `TODO.md`, the launcher scripts nor `.github/`
-  - From: version.control = null
+No items are currently queued in this section.
 
 ## Complete
 
@@ -236,4 +244,11 @@ None of these move the version.
 - [x] Write `docs/save-format.md` specifying the save file - the header, the
   seed comment, the markers, the ragged-line rule and what a reader must
   refuse - so another tool can write a file py_maze will load
+  - From: version.control = null
+- [x] Write a "Using py_maze as a Library" section in `README.md` covering
+  the importable names, the grid format and a worked example that generates,
+  solves and renders a maze without playing it
+  - From: version.control = null
+- [x] Refresh the `Development` file tree in `README.md`, which lists neither
+  `TODO.md`, the launcher scripts nor `.github/`
   - From: version.control = null

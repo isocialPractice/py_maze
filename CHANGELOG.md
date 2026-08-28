@@ -5,6 +5,38 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Documentation only, so the version is unchanged and nothing in the package
+moved.
+
+### Added
+
+- A "Using py_maze as a Library" section in `README.md`, covering the half of
+  the project that is not the game: the grid every name reads and writes and
+  the shape it takes, a worked example that generates a maze, solves it and
+  draws the solution with no game and no keyboard involved, a second showing
+  the collectibles and the save file round trip, and a table of every
+  importable name under the module it lives in. The section describes what
+  the package already did, so no behaviour changes with it.
+- Tests holding that section to the package. The worked example is run as it
+  is written and what it prints is compared to the output the README shows,
+  the `>>>` block is run as a doctest, every name the tables give a row is
+  checked against `__all__`, every name the worked example reaches for is
+  checked to come from a module that leaves the terminal alone, and the whole
+  public surface of the grid, generation, solving and save file modules is
+  checked to have a row, so a name added to one of them fails the suite until
+  the README shows it.
+
+### Changed
+
+- The `Development` file tree in `README.md` lists what the repository
+  carries. It named neither `TODO.md`, the two launcher scripts nor
+  `.github/`, and nothing for `docs/`, `CONTRIBUTING.md` or `LICENSE`, each
+  of which arrived after the tree was last written. A test now resolves
+  every entry the tree draws against the repository and checks each expected
+  file is drawn, so the map and the repository cannot drift apart again.
+
 ## [2.0.2] - 2026-08-27
 
 ### Changed
