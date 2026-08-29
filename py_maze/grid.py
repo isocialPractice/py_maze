@@ -22,6 +22,7 @@ __all__ = [
     'find_entrance',
     'find_exit',
     'open_cells',
+    'open_ends',
     'open_neighbors',
     'walled_grid',
 ]
@@ -47,6 +48,29 @@ def walled_grid(width, height):
 
     return [[True for _ in range(width * 2 + 1)]
             for _ in range(height * 2 + 1)]
+
+
+def open_ends(grid):
+    """Cut the entrance and the exit into a carved maze.
+
+    Every carving algorithm finishes with this, so a maze is entered at
+    the top left and left at the bottom right whichever way it was
+    carved, and :func:`find_entrance` and :func:`find_exit` have
+    something to find.
+
+    Args:
+        grid: 2D list of booleans (True = wall, False = path). It is
+            modified in place
+
+    Returns:
+        list: The same grid, with the entrance opened in the top row and
+        the exit in the bottom row
+    """
+
+    grid[0][1] = False    # entrance at the top
+    grid[-1][-2] = False  # exit at the bottom
+
+    return grid
 
 
 def find_entrance(grid):

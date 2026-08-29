@@ -27,9 +27,13 @@ import py_maze
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # every module of the package, and the one that is allowed a terminal
-PACKAGE_MODULES = ('cli', 'game', 'generation', 'grid', 'keys', 'rendering',
-                   'saves', 'solving', 'version')
-TERMINAL_FREE_MODULES = ('generation', 'grid', 'rendering', 'saves', 'solving')
+PACKAGE_MODULES = ('algorithms', 'algorithms.backtracker',
+                   'algorithms.division', 'algorithms.prim', 'cli', 'game',
+                   'generation', 'grid', 'keys', 'rendering', 'saves',
+                   'solving', 'version')
+TERMINAL_FREE_MODULES = ('algorithms', 'algorithms.backtracker',
+                         'algorithms.division', 'algorithms.prim',
+                         'generation', 'grid', 'rendering', 'saves', 'solving')
 
 # the platform machinery that used to sit at the top of the flat module
 TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
@@ -1047,7 +1051,8 @@ class TestMazeDimension(unittest.TestCase):
         self.assertIn('whole number', str(caught.exception))
 
 
-class TestBuildParser(unittest.TestCase):
+# Reads a command line the way main() does, without running anything.
+class ParserRunner:
     def parse(self, argv):
         return py_maze.build_parser().parse_args(argv)
 
@@ -1063,6 +1068,8 @@ class TestBuildParser(unittest.TestCase):
         self.assertEqual(caught.exception.code, 2)
         return stderr.getvalue()
 
+
+class TestBuildParser(ParserRunner, unittest.TestCase):
     def test_defaults(self):
         # the size now comes from the difficulty preset, so the options
         # themselves default to "not given"
@@ -1158,6 +1165,63 @@ class TestBuildParser(unittest.TestCase):
             self.assertEqual(caught.exception.code, 0)
             self.assertIn(py_maze.__version__, stdout.getvalue())
             self.assertIn('py_maze', stdout.getvalue())
+
+
+class TestAlgorithmOption(ParserRunner, unittest.TestCase):
+    def test_it_defaults_to_recursive_backtracking(self):
+        # a bare run carves the maze it has always carved
+        self.assertEqual(self.parse([]).algorithm, py_maze.DEFAULT_ALGORITHM)
+
+    def test_either_flag_chooses_an_algorithm(self):
+        for flag in ['--algorithm', '-A']:
+            for name in py_maze.ALGORITHMS:
+                self.assertEqual(self.parse([flag, name]).algorithm, name)
+
+    def test_an_unknown_algorithm_is_rejected(self):
+        message = self.parse_error(['-A', 'spiral'])
+
+        self.assertIn('spiral', message)
+
+    def test_the_summary_names_every_algorithm_and_what_it_carves(self):
+        summary = py_maze.algorithm_summary()
+
+        for name, note in py_maze.ALGORITHM_NOTES.items():
+            self.assertIn(name, summary)
+            self.assertIn(note, summary)
+
+    def test_the_help_describes_the_algorithms(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            with self.assertRaises(SystemExit):
+                self.parse(['-h'])
+
+        for name in py_maze.ALGORITHMS:
+            self.assertIn(name, stdout.getvalue())
+
+
+class TestBraidOption(ParserRunner, unittest.TestCase):
+    def test_no_dead_ends_are_opened_until_the_option_is_given(self):
+        self.assertEqual(self.parse([]).braid, 0.0)
+
+    def test_the_bare_flag_opens_all_of_them(self):
+        for flag in ['--braid', '-b']:
+            self.assertEqual(self.parse([flag]).braid, 1.0)
+
+    def test_a_share_is_read_as_a_number(self):
+        self.assertEqual(self.parse(['--braid', '0.25']).braid, 0.25)
+        self.assertEqual(self.parse(['-b', '1']).braid, 1.0)
+        self.assertEqual(self.parse(['-b', '0']).braid, 0.0)
+
+    def test_a_share_outside_none_to_all_is_rejected(self):
+        for value in ['-0.5', '1.5', '2']:
+            message = self.parse_error(['--braid', value])
+
+            self.assertIn('from 0 to 1', message)
+
+    def test_a_share_that_is_not_a_number_is_rejected(self):
+        message = self.parse_error(['--braid', 'most'])
+
+        self.assertIn('share of the dead ends', message)
 
 
 class TestSeed(unittest.TestCase):
@@ -1256,6 +1320,397 @@ class TestRegenerating(unittest.TestCase):
         generator.generate()
 
         self.assertIs(generator.random, random)
+
+
+def passage_count(grid):
+    # how many pairs of neighbouring squares a player can step between
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #
+    # Returns:
+    #     int: The number of steps there are to take, counted once each
+
+    return sum(1 for x, y in py_maze.open_cells(grid)
+               for _ in py_maze.open_neighbors(grid, x, y)) // 2
+
+
+def dead_end_count(grid):
+    # how many squares of a maze have one way in and no way on
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #
+    # Returns:
+    #     int: The number of dead ends inside the maze, the entrance and
+    #     the exit on its border left out
+
+    return sum(1 for x, y in py_maze.open_cells(grid)
+               if 0 < x < len(grid[0]) - 1 and 0 < y < len(grid) - 1
+               and sum(1 for _ in py_maze.open_neighbors(grid, x, y)) == 1)
+
+
+def spanning_wall(grid):
+    # whether a row or a column of the maze is wall but for one square
+    #
+    # That is the wall recursive division builds first: it runs the whole
+    # way across and has a single gap to cross it by.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #
+    # Returns:
+    #     bool: True when the maze has such a row or column
+
+    lines = [row[1:-1] for row in grid[1:-1]]
+    lines.extend([grid[y][x] for y in range(1, len(grid) - 1)]
+                 for x in range(1, len(grid[0]) - 1))
+
+    return any(sum(1 for square in line if not square) == 1 for line in lines)
+
+
+class TestAlgorithmRegistry(unittest.TestCase):
+    # one name in the registry is what an algorithm costs, so a maze can
+    # be carved a new way without MazeGenerator learning anything about it
+
+    def test_the_default_is_the_algorithm_py_maze_has_always_carved_with(self):
+        self.assertEqual(py_maze.DEFAULT_ALGORITHM, 'backtracker')
+        self.assertIs(py_maze.ALGORITHMS[py_maze.DEFAULT_ALGORITHM],
+                      py_maze.carve_backtracker)
+
+    def test_the_registry_holds_the_three_algorithms(self):
+        self.assertEqual(sorted(py_maze.ALGORITHMS),
+                         ['backtracker', 'division', 'prim'])
+
+    def test_carver_looks_an_algorithm_up_by_name(self):
+        for name, carve in py_maze.ALGORITHMS.items():
+            self.assertIs(py_maze.carver(name), carve)
+
+    def test_an_unknown_name_is_refused_and_the_message_lists_them(self):
+        with self.assertRaises(ValueError) as caught:
+            py_maze.carver('spiral')
+
+        self.assertIn('spiral', str(caught.exception))
+        for name in py_maze.ALGORITHMS:
+            self.assertIn(name, str(caught.exception))
+
+    def test_the_generator_refuses_an_unknown_name_when_it_is_built(self):
+        # rather than at the first generate(), which could be much later
+        with self.assertRaises(ValueError):
+            py_maze.MazeGenerator(4, 4, algorithm='spiral')
+
+    def test_the_generator_records_the_algorithm_it_carves_with(self):
+        self.assertEqual(py_maze.MazeGenerator(4, 4).algorithm,
+                         py_maze.DEFAULT_ALGORITHM)
+        self.assertEqual(
+            py_maze.MazeGenerator(4, 4, algorithm='prim').algorithm, 'prim')
+
+    def test_every_algorithm_has_a_note_for_the_help_text(self):
+        self.assertEqual(sorted(py_maze.ALGORITHM_NOTES),
+                         sorted(py_maze.ALGORITHMS))
+        for name, note in py_maze.ALGORITHM_NOTES.items():
+            self.assertTrue(note.strip(), '%s has no note' % name)
+
+    def test_the_default_carves_the_maze_it_has_always_carved(self):
+        # a bare run must not change under a caller because the carving
+        # moved into a module of its own
+        grid = py_maze.MazeGenerator(3, 3, seed=1).generate()
+
+        self.assertEqual(py_maze.maze_lines(grid),
+                         ['* *****',
+                          '*     *',
+                          '***** *',
+                          '*   * *',
+                          '* *** *',
+                          '*     *',
+                          '***** *'])
+
+
+class TestCarvingAlgorithms(unittest.TestCase):
+    # every algorithm answers the same question - a size and a random
+    # number generator in, a carved grid out - so what a maze promises is
+    # checked against all of them rather than against the default alone
+
+    SIZES = ((2, 2), (3, 7), (9, 11), (12, 4))
+
+    def carve(self, algorithm, width=9, height=11, seed=0):
+        # Returns:
+        #     list: The grid the named algorithm carves for that seed
+        return py_maze.MazeGenerator(width, height, seed=seed,
+                                     algorithm=algorithm).generate()
+
+    def test_a_carver_takes_a_size_and_a_generator_and_returns_a_grid(self):
+        # the interface itself: nothing is carried between calls, so the
+        # function on its own is enough to carve with
+        for name, carve in py_maze.ALGORITHMS.items():
+            with self.subTest(algorithm=name):
+                grid = carve(4, 5, random.Random(1))
+
+                self.assertEqual(len(grid), 5 * 2 + 1)
+                for row in grid:
+                    self.assertEqual(len(row), 4 * 2 + 1)
+                self.assertEqual(grid, carve(4, 5, random.Random(1)))
+
+    def test_every_algorithm_carves_a_maze_of_the_size_asked_for(self):
+        for name in py_maze.ALGORITHMS:
+            for width, height in self.SIZES:
+                with self.subTest(algorithm=name, size=(width, height)):
+                    grid = self.carve(name, width, height)
+
+                    self.assertEqual(len(grid), height * 2 + 1)
+                    for row in grid:
+                        self.assertEqual(len(row), width * 2 + 1)
+
+    def test_every_algorithm_carves_a_solvable_maze(self):
+        for name in py_maze.ALGORITHMS:
+            for width, height in self.SIZES:
+                for seed in range(4):
+                    with self.subTest(algorithm=name, size=(width, height),
+                                      seed=seed):
+                        grid = self.carve(name, width, height, seed)
+
+                        self.assertIsNotNone(py_maze.solve_maze(grid))
+
+    def test_every_algorithm_opens_the_entrance_and_the_exit(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                grid = self.carve(name, 5, 5)
+
+                self.assertFalse(grid[0][1], 'the entrance is walled')
+                self.assertFalse(grid[-1][-2], 'the exit is walled')
+
+    def test_every_algorithm_seals_the_border(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                grid = self.carve(name, 5, 5)
+                top, bottom = grid[0], grid[-1]
+
+                self.assertTrue(
+                    all(square for x, square in enumerate(top) if x != 1))
+                self.assertTrue(
+                    all(square for x, square in enumerate(bottom)
+                        if x != len(bottom) - 2))
+                for row in grid:
+                    self.assertTrue(row[0] and row[-1])
+
+    def test_every_algorithm_leaves_every_cell_standable(self):
+        width, height = 6, 5
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                grid = self.carve(name, width, height)
+                reachable = find_open_cells(grid, 1, 0)
+
+                for cell_y in range(1, height * 2, 2):
+                    for cell_x in range(1, width * 2, 2):
+                        self.assertFalse(grid[cell_y][cell_x])
+                        self.assertIn((cell_x, cell_y), reachable)
+
+    def test_every_algorithm_leaves_one_route_between_any_two_squares(self):
+        # a connected maze with one fewer passage than it has squares is
+        # a tree: there is exactly one way from anywhere to anywhere
+        for name in py_maze.ALGORITHMS:
+            for width, height in self.SIZES:
+                for seed in range(4):
+                    with self.subTest(algorithm=name, size=(width, height),
+                                      seed=seed):
+                        grid = self.carve(name, width, height, seed)
+                        squares = len(list(py_maze.open_cells(grid)))
+
+                        self.assertEqual(passage_count(grid), squares - 1)
+
+    def test_no_algorithm_leaves_four_open_squares_in_a_block(self):
+        # an open corner where four walls meet draws the maze as a blob
+        # and lets the solver cut the corner between two corridors
+        for name in py_maze.ALGORITHMS:
+            for seed in range(4):
+                with self.subTest(algorithm=name, seed=seed):
+                    grid = self.carve(name, 8, 8, seed)
+
+                    for y in range(len(grid) - 1):
+                        for x in range(len(grid[0]) - 1):
+                            self.assertTrue(
+                                grid[y][x] or grid[y][x + 1] or
+                                grid[y + 1][x] or grid[y + 1][x + 1],
+                                'four open squares at (%d, %d)' % (x, y))
+
+    def test_the_same_seed_carves_the_same_maze_whichever_algorithm(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                self.assertEqual(self.carve(name, 6, 6, 2024),
+                                 self.carve(name, 6, 6, 2024))
+
+    def test_different_seeds_carve_different_mazes(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                self.assertNotEqual(self.carve(name, 8, 8, 2024),
+                                    self.carve(name, 8, 8, 2025))
+
+    def test_the_algorithms_carve_differently_from_one_another(self):
+        # an option that made no difference would not be worth having
+        carved = [self.carve(name, 8, 8, 2024) for name in py_maze.ALGORITHMS]
+
+        for first in range(len(carved)):
+            for second in range(first + 1, len(carved)):
+                self.assertNotEqual(carved[first], carved[second])
+
+
+class TestPrimsAlgorithm(unittest.TestCase):
+    def test_it_leaves_more_dead_ends_than_backtracking(self):
+        # growing from the whole edge at once branches often and stops
+        # short, where a backtracking walk wanders a long way before it
+        # has to turn round: the same cells, cut up into more, shorter
+        # dead ends and a maze that reads as more open
+        for seed in range(5):
+            with self.subTest(seed=seed):
+                prim = py_maze.MazeGenerator(10, 10, seed=seed,
+                                             algorithm='prim').generate()
+                backtracker = py_maze.MazeGenerator(10, 10,
+                                                    seed=seed).generate()
+
+                self.assertGreater(dead_end_count(prim),
+                                   dead_end_count(backtracker))
+
+
+class TestRecursiveDivision(unittest.TestCase):
+    def test_it_walls_the_maze_in_two_before_anything_else(self):
+        # the first wall runs the whole way across with a single gap in
+        # it, which is what dividing is. The straight corridors and the
+        # squared-off rooms follow from doing that over and over
+        for width, height in [(2, 2), (5, 5), (9, 11), (12, 4)]:
+            for seed in range(4):
+                with self.subTest(size=(width, height), seed=seed):
+                    grid = py_maze.MazeGenerator(
+                        width, height, seed=seed,
+                        algorithm='division').generate()
+
+                    self.assertTrue(spanning_wall(grid),
+                                    'no wall runs the whole way across')
+
+
+class TestBraiding(unittest.TestCase):
+    def carve(self, seed=5, width=10, height=10, algorithm='backtracker'):
+        # Returns:
+        #     list: A freshly carved maze, with no braiding done to it
+        return py_maze.MazeGenerator(width, height, seed=seed,
+                                     algorithm=algorithm).generate()
+
+    def test_no_share_leaves_the_maze_exactly_as_it_was(self):
+        grid = self.carve()
+        expected = [row[:] for row in grid]
+
+        self.assertEqual(py_maze.braid_maze(grid, 0.0, random.Random(1)),
+                         expected)
+
+    def test_it_hands_back_the_grid_it_was_given(self):
+        grid = self.carve()
+
+        self.assertIs(py_maze.braid_maze(grid, 0.5, random.Random(1)), grid)
+
+    def test_a_full_share_opens_every_dead_end(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                grid = self.carve(algorithm=name)
+                self.assertGreater(dead_end_count(grid), 0)
+
+                py_maze.braid_maze(grid, 1.0, random.Random(7))
+
+                self.assertEqual(dead_end_count(grid), 0)
+
+    def test_half_a_share_opens_about_half_of_them(self):
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                grid = self.carve(seed=seed)
+                before = dead_end_count(grid)
+
+                py_maze.braid_maze(grid, 0.5, random.Random(seed))
+                after = dead_end_count(grid)
+
+                self.assertLess(after, before)
+                self.assertAlmostEqual(after / before, 0.5, delta=0.15)
+
+    def test_a_braided_maze_has_more_than_one_way_through(self):
+        # a carved maze is a tree, one passage short of its squares. Every
+        # dead end opened adds a passage without adding a square, so the
+        # maze stops being a tree and starts having a route to choose
+        grid = self.carve()
+        py_maze.braid_maze(grid, 1.0, random.Random(5))
+        squares = len(list(py_maze.open_cells(grid)))
+
+        self.assertGreater(passage_count(grid), squares - 1)
+
+    def test_the_solver_picks_a_shortest_route_rather_than_the_only_one(self):
+        # the whole point of the option: braiding can only shorten the
+        # way through, and on most mazes it does
+        shortened = 0
+        for seed in range(6):
+            carved = self.carve(seed=seed)
+            braided = self.carve(seed=seed)
+            py_maze.braid_maze(braided, 1.0, random.Random(seed))
+
+            through = len(py_maze.solve_maze(carved))
+            shortcut = len(py_maze.solve_maze(braided))
+
+            self.assertLessEqual(shortcut, through)
+            shortened += shortcut < through
+
+        self.assertGreater(shortened, 0)
+
+    def test_a_braided_maze_is_still_solvable(self):
+        for name in py_maze.ALGORITHMS:
+            for seed in range(4):
+                with self.subTest(algorithm=name, seed=seed):
+                    grid = self.carve(seed=seed, algorithm=name)
+                    py_maze.braid_maze(grid, 1.0, random.Random(seed))
+
+                    self.assertIsNotNone(py_maze.solve_maze(grid))
+
+    def test_it_never_breaches_the_border(self):
+        # the entrance and the exit are the only ways in and out however
+        # much of the maze is opened up
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                grid = self.carve(seed=seed)
+                py_maze.braid_maze(grid, 1.0, random.Random(seed))
+                top, bottom = grid[0], grid[-1]
+
+                self.assertTrue(
+                    all(square for x, square in enumerate(top) if x != 1))
+                self.assertTrue(
+                    all(square for x, square in enumerate(bottom)
+                        if x != len(bottom) - 2))
+                for row in grid:
+                    self.assertTrue(row[0] and row[-1])
+
+    def test_it_only_ever_opens_walls(self):
+        # braiding takes walls out; a square that could be stood on
+        # before must still be there afterwards
+        grid = self.carve()
+        before = set(py_maze.open_cells(grid))
+
+        py_maze.braid_maze(grid, 1.0, random.Random(5))
+
+        self.assertTrue(before.issubset(set(py_maze.open_cells(grid))))
+
+    def test_the_same_numbers_braid_the_same_maze(self):
+        def braid():
+            grid = self.carve()
+            return py_maze.braid_maze(grid, 0.5, random.Random(42))
+
+        self.assertEqual(braid(), braid())
+
+    def test_different_numbers_braid_it_differently(self):
+        def braid(seed):
+            grid = self.carve()
+            return py_maze.braid_maze(grid, 0.5, random.Random(seed))
+
+        self.assertNotEqual(braid(1), braid(2))
+
+    def test_it_falls_back_to_the_shared_random_module(self):
+        random.seed(4)
+        grid = self.carve()
+        py_maze.braid_maze(grid, 1.0)
+
+        self.assertEqual(dead_end_count(grid), 0)
 
 
 class TestWalledGrid(unittest.TestCase):
@@ -2326,6 +2781,11 @@ class MainRunner:
         return '\n'.join(
             lines[lines.index('start') + 1:lines.index('end')])
 
+    def grid_of(self, output):
+        # Returns:
+        #     list: The maze main printed, read back as a grid
+        return grid_from_strings(self.maze_of(output).splitlines())
+
 
 class TestMain(MainRunner, unittest.TestCase):
     def test_a_plain_run_prints_an_unsolved_maze(self):
@@ -2507,6 +2967,83 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
             self.run_main(['--save', unwritable])
 
         self.assertIn('py_maze:', str(caught.exception))
+
+
+class TestMainAlgorithmAndBraid(MainRunner, unittest.TestCase):
+    # the two options end to end, against the maze the library carves for
+    # the same seed, so the command line and the package cannot disagree
+
+    def carved(self, algorithm=None, seed=2024):
+        # Returns:
+        #     str: The maze py_maze.MazeGenerator carves for that seed
+        generator = py_maze.MazeGenerator(
+            6, 6, seed=seed,
+            algorithm=algorithm or py_maze.DEFAULT_ALGORITHM)
+        return '\n'.join(py_maze.maze_lines(generator.generate()))
+
+    def test_a_bare_run_still_carves_by_backtracking(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024'])
+
+        self.assertEqual(self.maze_of(output), self.carved())
+
+    def test_each_algorithm_prints_the_maze_it_carves(self):
+        for name in py_maze.ALGORITHMS:
+            with self.subTest(algorithm=name):
+                output, _ = self.run_main(
+                    ['-d', 'easy', '--seed', '2024', '--algorithm', name])
+
+                self.assertEqual(self.maze_of(output), self.carved(name))
+
+    def test_the_short_flag_carves_the_same_maze_as_the_long_one(self):
+        short, _ = self.run_main(['-d', 'easy', '-s', '2024', '-A', 'prim'])
+        long, _ = self.run_main(
+            ['-d', 'easy', '-s', '2024', '--algorithm', 'prim'])
+
+        self.assertEqual(self.maze_of(short), self.maze_of(long))
+
+    def test_braiding_opens_the_dead_ends_of_the_printed_maze(self):
+        plain, _ = self.run_main(['--seed', '2024'])
+        braided, _ = self.run_main(['--seed', '2024', '--braid'])
+
+        self.assertEqual(dead_end_count(self.grid_of(braided)), 0)
+        self.assertGreater(dead_end_count(self.grid_of(plain)), 0)
+
+    def test_a_braided_run_is_repeatable_from_its_seed(self):
+        first, _ = self.run_main(['--seed', '2024', '--braid', '0.5'])
+        second, _ = self.run_main(['--seed', '2024', '--braid', '0.5'])
+
+        self.assertEqual(self.maze_of(first), self.maze_of(second))
+
+    def test_braiding_leaves_the_pickups_alone_when_it_is_not_asked_for(self):
+        # braiding draws no random numbers at a share of none, so the
+        # pickups fall where the seed has always put them
+        without, _ = self.run_main(['--seed', '2024', '-c', '5'])
+        generator = py_maze.MazeGenerator(9, 11, seed=2024)
+        grid = generator.generate()
+        expected = py_maze.place_collectibles(grid, 5, generator.random)
+
+        self.assertEqual(
+            self.maze_of(without),
+            '\n'.join(py_maze.maze_lines(
+                grid, py_maze.collectible_overlay(expected))))
+
+    def test_a_braided_maze_can_be_solved_from_the_command_line(self):
+        output, _ = self.run_main(['--seed', '2024', '--braid', '-S'])
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+    def test_a_braided_maze_saves_and_loads_as_it_stands(self):
+        # the save file is the picture of the maze, so nothing about it
+        # has to know the maze was braided or which algorithm carved it
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = os.path.join(directory.name, 'braided.txt')
+
+        saved, _ = self.run_main(
+            ['--seed', '2024', '-A', 'prim', '--braid', '-o', path])
+        loaded, _ = self.run_main(['--load', path])
+
+        self.assertEqual(self.maze_of(loaded), self.maze_of(saved))
 
 
 class TestMainInterrupt(unittest.TestCase):
@@ -2720,7 +3257,9 @@ class TestModuleEntryPoint(unittest.TestCase):
             content = manifest.read()
 
         self.assertIn('py_maze = "py_maze.cli:main"', content)
-        self.assertIn('packages = ["py_maze"]', content)
+        # the algorithms are a subpackage, which setuptools installs only
+        # when it is listed beside the package itself
+        self.assertIn('packages = ["py_maze", "py_maze.algorithms"]', content)
 
 
 class TestGridInterchange(unittest.TestCase):
@@ -3143,7 +3682,9 @@ class TestLibrarySection(unittest.TestCase):
 
     # the modules whose whole public surface the section tables, so a name
     # added to one of them is a name the section has to grow a row for
-    TABLED_MODULES = ('generation', 'grid', 'saves', 'solving')
+    TABLED_MODULES = ('algorithms', 'algorithms.backtracker',
+                      'algorithms.division', 'algorithms.prim', 'generation',
+                      'grid', 'saves', 'solving')
 
     def section(self):
         # the library section, from its heading to the next level 2 one
@@ -3270,6 +3811,54 @@ class TestLibrarySection(unittest.TestCase):
         self.assertTrue(markers, 'the package exports no markers')
         for name in markers:
             self.assertIn('`%s`' % name, section)
+
+
+class TestCarvingSectionExamples(MainRunner, unittest.TestCase):
+    # the README shows the maze each of the new options prints. Every one
+    # of those is run as it is written, so a section that drifts from the
+    # package fails here rather than in a reader's terminal
+
+    # the heading the example sits under, and the command it shows
+    EXAMPLES = (
+        ('### Carving Algorithms',
+         'python -m py_maze -d easy --seed 2024 --algorithm prim'),
+        ('### Carving Algorithms',
+         'python -m py_maze -d easy --seed 2024 --algorithm division'),
+        ('### Braiding',
+         'python -m py_maze -d easy --seed 2024 --braid --solve'),
+    )
+
+    def shown(self, heading, command):
+        # the maze the README shows the command printing
+        #
+        # Args:
+        #     heading: The section the example sits under
+        #     command: The command line the example runs
+        #
+        # Returns:
+        #     str: The maze, without the start and end markers round it
+
+        readme = read_project_file(README_PATH)
+        start = readme.find(heading)
+        self.assertNotEqual(start, -1,
+                            'the README has no %s section' % heading)
+
+        drawn = re.search(
+            r'```bash\n%s\n```\n\n\*\*Output:\*\*\n\n```\nstart\n(.*?)end\n```'
+            % re.escape(command), readme[start:], re.DOTALL)
+        self.assertIsNotNone(drawn,
+                             'the README shows no output for %s' % command)
+
+        return drawn.group(1).rstrip('\n')
+
+    def test_each_example_prints_the_maze_the_readme_shows(self):
+        for heading, command in self.EXAMPLES:
+            with self.subTest(command=command):
+                argv = command.split()[3:]
+                output, _ = self.run_main(argv)
+
+                self.assertEqual(self.maze_of(output),
+                                 self.shown(heading, command))
 
 
 class TestDevelopmentFileTree(unittest.TestCase):

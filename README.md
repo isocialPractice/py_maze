@@ -9,6 +9,9 @@ A command-line maze generator and game written in Python. Generate random, solva
 - 🖥️ **Cross-Platform**: Works on Windows, Linux, and macOS
 - 🎯 **Always Solvable**: Every generated maze is guaranteed to have a path from start to end
 - 🎚️ **Difficulty Presets**: Easy, normal and hard maze sizes, or set your own
+- 🧱 **Three Carving Algorithms**: Winding backtracker corridors, Prim's more
+  open branching, or the straight runs and rooms of recursive division
+- 🔀 **Braiding**: Open the dead ends and the maze gains a second way through
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
 - 💡 **Hints**: Stuck mid-game? One key lights up the next step
@@ -65,6 +68,8 @@ needed.
 | `--width` | `-w` | from the preset | Width of the maze in cells (minimum 2) |
 | `--height` | `-H` | from the preset | Height of the maze in cells (minimum 2) |
 | `--difficulty` | `-d` | `normal` | Preset maze size: `easy`, `normal` or `hard` |
+| `--algorithm` | `-A` | `backtracker` | How the maze is carved: `backtracker`, `prim` or `division` |
+| `--braid` | `-b` | `0` | Open this share of the dead ends, from `0` for none to `1` for all |
 | `--seed` | `-s` | chosen at random | Seed for the maze generator |
 | `--collectibles` | `-c` | `0` | Scatter this many pickups through the maze |
 | `--save` | `-o` | | Write the maze to a file so it can be played again |
@@ -76,8 +81,9 @@ needed.
 
 Note that the short flag for height is a capital `-H`. Lowercase `-h` is
 reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
-`-S` solves the maze, lowercase `-s` seeds it. The short flag for `--save` is
-`-o`, as in an output file, since `-s` is already the seed.
+`-S` solves the maze, lowercase `-s` seeds it, and capital `-A` picks the
+algorithm. The short flag for `--save` is `-o`, as in an output file, since
+`-s` is already the seed.
 
 A maze is drawn with walls between cells, so a maze of `W` by `H` cells
 renders as `W * 2 + 1` characters wide and `H * 2 + 1` characters tall.
@@ -93,9 +99,10 @@ python -m py_maze -w 1
 
 ```
 usage: py_maze [-h] [--width WIDTH] [--height HEIGHT]
-               [--difficulty {easy,normal,hard}] [--seed SEED]
-               [--collectibles COUNT] [--save FILE] [--load FILE] [--solve]
-               [--animate] [--version]
+               [--difficulty {easy,normal,hard}]
+               [--algorithm {backtracker,prim,division}] [--braid [SHARE]]
+               [--seed SEED] [--collectibles COUNT] [--save FILE]
+               [--load FILE] [--solve] [--animate] [--version]
 py_maze: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
 
@@ -123,6 +130,128 @@ overrides that half of the preset:
 python -m py_maze -d hard -H 8
 ```
 
+### Carving Algorithms
+
+`--algorithm` picks how the maze is carved. All three leave exactly one route
+between any two cells, so every maze is solvable whichever one carves it;
+what changes is the shape of the corridors:
+
+| Algorithm | Short | What it carves |
+| --- | --- | --- |
+| `backtracker` | `-A backtracker` | One winding route, with long dead ends. The default |
+| `prim` | `-A prim` | A more open maze, with short dead ends |
+| `division` | `-A division` | Straight corridors and squared-off rooms |
+
+```bash
+python -m py_maze -d easy --seed 2024 --algorithm prim
+```
+
+**Output:**
+
+```
+start
+* ***********
+*           *
+* ********* *
+*         * *
+*** *********
+*   *       *
+*** * *******
+*   *       *
+*** * *******
+*           *
+*** * * * ***
+*   * * *   *
+*********** *
+end
+```
+
+Prim's grows the maze outward from one cell, drawing each step at random
+from the whole of the growing edge rather than from wherever the last step
+landed. It spreads evenly, so it branches often and its dead ends are short.
+
+```bash
+python -m py_maze -d easy --seed 2024 --algorithm division
+```
+
+**Output:**
+
+```
+start
+* ***********
+*   *       *
+*** * *** * *
+*   *   * * *
+*** ******* *
+*   *     * *
+*** * * * * *
+*   * * *   *
+*** *** *** *
+*   *     * *
+* ******* ***
+*           *
+*********** *
+end
+```
+
+Recursive division works the other way about from the other two. Rather
+than carving passages out of solid wall, it starts from an empty floor and
+builds a wall the whole way across it, leaving one gap to cross by, then
+divides each half the same way until what is left is a corridor one cell
+wide. Each wall runs straight, which is where the long runs and the
+squared-off rooms come from.
+
+`backtracker` is the algorithm py_maze has always carved with, so a run
+without `--algorithm` is unchanged.
+
+### Braiding
+
+A carved maze is a *perfect* maze: one route between any two cells, and every
+wrong turn ends in a dead end. `--braid` opens a share of those dead ends,
+knocking out one wall apiece so each joins the corridor behind it. The maze
+then has more than one way through, and `--solve` reports a shortest way
+rather than the only one:
+
+```bash
+python -m py_maze -d easy --seed 2024 --braid --solve
+```
+
+**Output:**
+
+```
+start
+*.***********
+*.....  *   *
+* ***.* * * *
+*   *.*     *
+*** *.*******
+*   *.......*
+* *** *****.*
+*   * *    .*
+*** * * ***.*
+*   *   *  .*
+* ******* *.*
+*         *.*
+***********.*
+end
+```
+
+That is the same maze `--seed 2024` carves without `--braid`, where the only
+route through runs 35 cells. Opening its dead ends leaves a shortest route of
+23.
+
+The share runs from `0` for none of the dead ends to `1` for all of them, and
+`--braid` on its own means `1`:
+
+```bash
+# open a quarter of the dead ends, for a maze with a few loops in it
+python -m py_maze --braid 0.25
+```
+
+Braiding is applied to a maze as it is generated, so it does not apply to a
+maze read back with `--load`: that maze comes out of the file exactly as it
+went in, braided or not.
+
 ### Repeating a Maze
 
 Every run reports the seed its maze was generated from:
@@ -145,8 +274,11 @@ python -m py_maze --seed winter
 ```
 
 The same seed only reproduces the same maze at the same size, since the size
-decides how many turns the generator takes. Pair a seed with `--difficulty`,
-or with `--width` and `--height`, to get the identical maze back.
+decides how many turns the generator takes. The same goes for `--algorithm`
+and `--braid`: each draws its own random numbers from the seed, so a seed
+reproduces a maze only alongside the options it was carved with. Pair a seed
+with `--difficulty`, or with `--width` and `--height`, and with whichever of
+those two the run used, to get the identical maze back.
 
 ### Collectibles
 
@@ -627,6 +759,37 @@ if path is None:
     print("no way through")
 ```
 
+### Carving and Braiding
+
+`MazeGenerator` looks the algorithm up by name and holds the seed, but a
+carver can be called on its own: a width, a height and a random number
+generator in, a carved grid out.
+
+```python
+import random
+import py_maze
+
+# the names --algorithm reads from: ['backtracker', 'division', 'prim']
+print(sorted(py_maze.ALGORITHMS))
+
+# a carver on its own, and the same maze through the generator
+grid = py_maze.carve_prim(8, 8, random.Random(7))
+
+generator = py_maze.MazeGenerator(width=8, height=8, seed=7, algorithm='prim')
+grid = generator.generate()
+print(len(py_maze.solve_maze(grid)))    # 35 cells, the only way through
+
+# open every dead end, so there is more than one way through
+py_maze.braid_maze(grid, 1.0, generator.random)
+print(len(py_maze.solve_maze(grid)))    # 31 cells, the shortest of them
+```
+
+`py_maze.carver(name)` returns the function a name stands for and raises
+`ValueError` for a name no algorithm answers to, which is the same check
+`MazeGenerator` makes when it is built. `braid_maze` modifies the grid it is
+given and hands it back, so it can be wrapped around `generate()` or called
+on a maze read out of a file.
+
 ### Collectibles and Save Files
 
 `place_collectibles` picks the cells to scatter pickups over, and drawing
@@ -669,6 +832,7 @@ surface, and `py_maze.__all__` lists it in full.
 | `find_exit(grid)` | The `(x, y)` of the exit, in the bottom row |
 | `open_cells(grid)` | Yield every cell the player can stand on, in reading order |
 | `open_neighbors(grid, x, y)` | Yield the open cells one step from `(x, y)` |
+| `open_ends(grid)` | Cut the entrance and the exit into a carved maze |
 | `MOVES` | The four steps a player, and the solver, can make |
 | `MIN_DIMENSION` | The smallest maze with an interior path, 2 cells |
 
@@ -676,10 +840,26 @@ surface, and `py_maze.__all__` lists it in full.
 
 | Name | What it does |
 | --- | --- |
-| `MazeGenerator(width, height, seed)` | Carve by recursive backtracking; `generate()` returns the grid |
+| `MazeGenerator(width, height, seed, algorithm)` | Carve a maze; `generate()` returns the grid |
+| `braid_maze(grid, share, rng)` | Open a share of the dead ends, for more than one way through |
 | `place_collectibles(grid, count, rng)` | The set of cells to scatter pickups over |
 | `maze_seed(value)` | Read a seed from text, as `--seed` and a save file both do |
 | `MAX_SEED` | The bound a seed is drawn from when none is given |
+
+**Carving** (`py_maze.algorithms`)
+
+Every carver is the same call, `carve(width, height, rng)`, returning a
+carved grid with its entrance and exit already opened:
+
+| Name | What it does |
+| --- | --- |
+| `carve_backtracker(width, height, rng)` | Recursive backtracking: one winding route, long dead ends |
+| `carve_prim(width, height, rng)` | Randomized Prim's: a more open maze, short dead ends |
+| `carve_division(width, height, rng)` | Recursive division: straight corridors and rooms |
+| `carver(name)` | The carving function a name stands for, or `ValueError` |
+| `ALGORITHMS` | The name `--algorithm` takes, mapped to the function that carves it |
+| `ALGORITHM_NOTES` | What each one carves, in the words the help text uses |
+| `DEFAULT_ALGORITHM` | The algorithm a bare run carves with, `backtracker` |
 
 **Solving** (`py_maze.solving`)
 
@@ -742,7 +922,8 @@ versions that are actually checked.
 
 ## How It Works
 
-The maze generator uses the **recursive backtracking algorithm**:
+The maze generator carves with the **recursive backtracking algorithm** by
+default:
 
 1. Start with a grid full of walls
 2. Begin at the starting cell and mark it as visited
@@ -754,10 +935,34 @@ The maze generator uses the **recursive backtracking algorithm**:
 
 This algorithm ensures that every maze generated has exactly one path between any two points, making it both challenging and always solvable!
 
-Each call to `generate()` starts from step 1 again: the grid goes back to
-solid wall and a seeded generator goes back to the same random numbers, so
+`--algorithm` swaps in one of the other two, and each holds to that same
+promise of one path between any two points:
+
+- **Prim's** grows the maze outward from one cell. Every wall between a
+  carved cell and an uncarved one is a candidate, and each step draws one at
+  random out of the whole growing edge, so the maze spreads evenly rather
+  than wandering: it branches often and its dead ends are short.
+- **Recursive division** builds walls instead of carving passages. It starts
+  from an empty floor, walls it in two with a single gap to cross by, and
+  divides each half the same way until what is left is a corridor one cell
+  wide. Each wall runs the whole way across, which is where its straight
+  corridors and squared-off rooms come from.
+
+Each algorithm is one module under `py_maze/algorithms/`, and each is the
+same function to call: a size and a random number generator in, a carved grid
+out. Adding a fourth is a module there and a line in the registry, with
+nothing in `MazeGenerator` to change.
+
+Each call to `generate()` starts from step 1 again: the carver is handed a
+fresh grid and a seeded generator goes back to the same random numbers, so
 one generator asked for its maze twice hands back the same maze twice rather
 than carving further into the one it already made.
+
+`--braid` is the one thing that undoes a carver's work. A dead end is a cell
+with one way in and no way on; braiding knocks a wall out of a share of them
+so each joins the corridor behind it. That turns the single route through the
+maze into a network of routes, which is what leaves the solver a shortest way
+to find rather than the only way there is.
 
 The solver behind `--solve`, `--animate` and the in-game hints is a
 **breadth-first search**: it spreads out from the start one step at a time,
@@ -767,9 +972,10 @@ every cell one step away is examined before any cell two steps away, the path
 that comes back is always the shortest one. `--animate` draws one frame per
 step outward, which is exactly the wave the search is working on.
 
-The generated maze has only one route through, so the shortest route is the
-only route, but the same solver still finds the way out from anywhere a player
-has wandered to.
+A carved maze has only one route through, so the shortest route is the only
+route, and the same solver still finds the way out from anywhere a player has
+wandered to. On a maze braided with `--braid` there is more than one route,
+and the one that comes back is the shortest of them.
 
 ## Development
 
@@ -778,6 +984,7 @@ The project structure:
 ```
 py_maze/
 ├── py_maze/                # The package itself
+│   └── algorithms/         # The ways a maze can be carved, one to a module
 ├── docs/
 │   └── save-format.md      # The save file, for a tool that writes one
 ├── .github/
@@ -806,7 +1013,12 @@ py_maze/
 ├── __init__.py         # Re-exports the public names
 ├── __main__.py         # python -m py_maze
 ├── grid.py             # The grid, and the helpers that build and read it
-├── generation.py       # Carving a maze, and scattering its pickups
+├── algorithms/         # The ways a maze can be carved, one to a module
+│   ├── __init__.py     # The registry --algorithm reads its names from
+│   ├── backtracker.py  # Recursive backtracking, the default
+│   ├── prim.py         # Randomized Prim's algorithm
+│   └── division.py     # Recursive division
+├── generation.py       # Carving a maze, braiding it, scattering its pickups
 ├── solving.py          # Breadth-first search over a grid
 ├── rendering.py        # Drawing a maze, and measuring the terminal
 ├── saves.py            # Reading and writing save files
@@ -826,6 +1038,14 @@ so `help(py_maze)` and `help(py_maze.solve_maze)` describe the surface.
 `keys.py` is the only module that imports terminal machinery, so `msvcrt`,
 `tty` and `termios` stay out of the way of anything that only wants to
 generate or solve a maze.
+
+`algorithms/` is the one subpackage, and every module in it is the same
+shape: one carving function taking a width, a height and a random number
+generator and returning a carved grid. `algorithms/__init__.py` maps the name
+`--algorithm` takes to the function that carves it, so a fourth algorithm is
+a module there and an entry in that map, with nothing in `generation.py` to
+change. `pyproject.toml` lists the subpackage beside the package, which is
+what installs it.
 
 ### The Version Number
 

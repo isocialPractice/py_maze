@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
-"""Carving a maze, and scattering the pickups over it.
+"""Carving a maze, working it over and scattering the pickups on it.
 
-:class:`MazeGenerator` carves with recursive backtracking, which leaves
-exactly one route between any two cells, so every maze it produces is
-solvable. Given a seed it carves the same maze every time, and
-:func:`place_collectibles` drawing its places from that same generator
-means a seed reproduces the pickups along with the walls.
+:class:`MazeGenerator` hands the carving to one of the algorithms in
+:mod:`py_maze.algorithms`, every one of which leaves exactly one route
+between any two cells, so every maze it produces is solvable. Given a seed
+it carves the same maze every time, and :func:`place_collectibles` drawing
+its places from that same generator means a seed reproduces the pickups
+along with the walls.
+
+:func:`braid_maze` is the one thing here that undoes what a carver did: it
+opens dead ends, which is what gives a maze more than one way through.
 
 The carved maze is the grid described in :mod:`py_maze.grid`.
 """
 
 import random
 
-from .grid import find_entrance, find_exit, open_cells, walled_grid
+from .algorithms import DEFAULT_ALGORITHM, carver
+from .grid import (MOVES, find_entrance, find_exit, open_cells,
+                   open_neighbors, walled_grid)
 from .rendering import maze_lines, solution_overlay
 
 __all__ = [
     'MAX_SEED',
     'MazeGenerator',
+    'braid_maze',
     'maze_seed',
     'place_collectibles',
 ]
@@ -74,10 +81,106 @@ def place_collectibles(grid, count, rng=None):
     return set(rng.sample(spots, min(count, len(spots))))
 
 
-class MazeGenerator:
-    """Generate random, solvable mazes using recursive backtracking."""
+def dead_ends(grid):
+    # the cells of a maze with one way in and no way on
+    #
+    # The entrance and the exit sit on the border and have a single open
+    # neighbour apiece, but neither is a dead end to open: they are how
+    # the maze is entered and left. Only the cells inside it count.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #
+    # Returns:
+    #     list: The (x, y) of each dead end, in reading order
 
-    def __init__(self, width=9, height=11, seed=None):
+    ends = []
+    for x, y in open_cells(grid):
+        if not (0 < x < len(grid[0]) - 1 and 0 < y < len(grid) - 1):
+            continue
+        if sum(1 for _ in open_neighbors(grid, x, y)) == 1:
+            ends.append((x, y))
+
+    return ends
+
+
+def removable_walls(grid, x, y):
+    # the walls of a cell with another part of the maze behind them
+    #
+    # A wall on the border is left alone however open the far side looks:
+    # knocking one of those out would breach the outside of the maze.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     x: Column of the cell
+    #     y: Row of the cell
+    #
+    # Returns:
+    #     list: The (x, y) of each wall that can be opened
+
+    walls = []
+    for dx, dy in MOVES:
+        wall_x, wall_y = x + dx, y + dy
+        far_x, far_y = x + dx * 2, y + dy * 2
+
+        if not (0 < wall_x < len(grid[0]) - 1 and
+                0 < wall_y < len(grid) - 1):
+            continue
+        if grid[wall_y][wall_x] and not grid[far_y][far_x]:
+            walls.append((wall_x, wall_y))
+
+    return walls
+
+
+def braid_maze(grid, share, rng=None):
+    """Open a share of a maze's dead ends, giving it more than one way through.
+
+    A dead end is a cell with one way in and no way on. Knocking a wall
+    out of one joins it to the corridor behind, which turns the single
+    route a carver leaves into a network of routes: the breadth-first
+    solver then picks a shortest way through rather than reporting the
+    only one there is.
+
+    Args:
+        grid: 2D list of booleans (True = wall, False = path). It is
+            modified in place
+        share: How many of the dead ends to open, from 0.0 for none to
+            1.0 for every one that has a wall worth opening
+        rng: Random number generator the dead ends and the walls are
+            drawn from, so a seeded one braids the same maze every time.
+            Defaults to the shared random module
+
+    Returns:
+        list: The same grid, with the dead ends opened
+    """
+
+    if share <= 0:
+        return grid
+    if rng is None:
+        rng = random
+
+    ends = dead_ends(grid)
+    rng.shuffle(ends)
+
+    for x, y in ends[:round(len(ends) * min(share, 1.0))]:
+        # opening one dead end can join another to the maze on the way
+        # past, and that one is no longer a dead end to open
+        if sum(1 for _ in open_neighbors(grid, x, y)) != 1:
+            continue
+
+        walls = removable_walls(grid, x, y)
+        if walls:
+            wall_x, wall_y = rng.choice(walls)
+            grid[wall_y][wall_x] = False
+
+    return grid
+
+
+class MazeGenerator:
+    """Generate random, solvable mazes with a choice of carving algorithm."""
+
+    def __init__(self, width=9, height=11, seed=None,
+                 algorithm=DEFAULT_ALGORITHM):
         """Initialize maze generator.
 
         Args:
@@ -86,22 +189,32 @@ class MazeGenerator:
             seed: Seed for this generator's own random numbers, so the
                 same seed always carves the same maze. When None, the
                 shared random module is used and the maze is unrepeatable
+            algorithm: Which of py_maze.algorithms carves the maze,
+                defaulting to recursive backtracking
+
+        Raises:
+            ValueError: If no algorithm goes by that name
         """
 
         self.width = width
         self.height = height
         self.seed = seed
+        self.algorithm = algorithm
         self.random = random if seed is None else random.Random(seed)
+
+        # an unknown algorithm is worth hearing about now rather than
+        # whenever the maze is first asked for
+        carver(algorithm)
 
         # create grid with all walls (True = wall, False = path)
         self.grid = walled_grid(width, height)
 
     def generate(self):
-        """Carve a solvable maze with the recursive backtracking algorithm.
+        """Carve a solvable maze with this generator's algorithm.
 
         Calling this a second time on the same generator makes the maze
         again rather than carving over the one it already made: the
-        grid goes back to solid wall, and a seeded generator goes back
+        carver is handed a fresh grid, and a seeded generator goes back
         to the same random numbers, so the same seed gives the same
         maze however many times it is asked for it.
 
@@ -111,54 +224,14 @@ class MazeGenerator:
             at the bottom
         """
 
-        # carve out of solid wall every time, so nothing survives from
-        # the maze the last call made
-        self.grid = walled_grid(self.width, self.height)
-
         # a seeded generator draws the same numbers it drew last time.
         # An unseeded one shares the random module, which is nobody's
         # to rewind
         if self.seed is not None:
             self.random = random.Random(self.seed)
 
-        # start from top-left cell (1, 1)
-        start_x, start_y = 1, 1
-        self.grid[start_y][start_x] = False
-
-        # stack for backtracking
-        stack = [(start_x, start_y)]
-        visited = {(start_x, start_y)}
-
-        while stack:
-            current_x, current_y = stack[-1]
-
-            # find unvisited neighbors (2 cells away in each direction)
-            neighbors = []
-            for dx, dy in [(0, -2), (2, 0), (0, 2), (-2, 0)]:  # Up, Right, Down, Left
-                nx, ny = current_x + dx, current_y + dy
-                if (0 < nx < len(self.grid[0]) and 0 < ny < len(self.grid) and
-                    (nx, ny) not in visited):
-                    neighbors.append((nx, ny, dx, dy))
-
-            if neighbors:
-                # choose random neighbor
-                nx, ny, dx, dy = self.random.choice(neighbors)
-
-                # remove wall between current and neighbor
-                wall_x = current_x + dx // 2
-                wall_y = current_y + dy // 2
-                self.grid[wall_y][wall_x] = False
-                self.grid[ny][nx] = False
-
-                visited.add((nx, ny))
-                stack.append((nx, ny))
-            else:
-                # backtrack
-                stack.pop()
-
-        # create entrance and exit
-        self.grid[0][1]   = False  # entrance at top
-        self.grid[-1][-2] = False  # exit at bottom
+        self.grid = carver(self.algorithm)(self.width, self.height,
+                                           self.random)
 
         return self.grid
 

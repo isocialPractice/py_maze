@@ -13,6 +13,7 @@ authors = [
 ]
 keywords = [
     "maze", "game", "terminal", "console", "puzzle", "solver", "collectibles",
+    "maze-generator", "prim", "recursive-division", "braid",
 ]
 # every version listed is one the suite is run on: see
 # .github/workflows/tests.yml, which builds its matrix from this list
@@ -40,7 +41,9 @@ Issues = "https://github.com/isocialPractice/py_maze/issues"
 py_maze = "py_maze.cli:main"
 
 [tool.setuptools]
-packages = ["py_maze"]
+# every algorithm is a module under py_maze/algorithms, so the subpackage
+# has to be installed alongside the package itself
+packages = ["py_maze", "py_maze.algorithms"]
 
 [tool.setuptools.dynamic]
 version = { attr = "py_maze.__version__" }

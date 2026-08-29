@@ -11,8 +11,10 @@ import argparse
 import random
 import sys
 
+from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
 from .game import GOODBYE_MESSAGE, MazeGame
-from .generation import MAX_SEED, MazeGenerator, maze_seed, place_collectibles
+from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
+                         place_collectibles)
 from .grid import MIN_DIMENSION
 from .keys import read_response
 from .rendering import (COLLECTIBLE_MARKER, animate_search,
@@ -25,6 +27,8 @@ from .version import __version__
 __all__ = [
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
+    'algorithm_summary',
+    'braid_share',
     'build_maze',
     'build_parser',
     'collectible_count',
@@ -101,6 +105,33 @@ def collectible_count(value):
     return count
 
 
+def braid_share(value):
+    """Read a share of the dead ends, as the --braid option does.
+
+    Args:
+        value: Raw command-line string for the option
+
+    Returns:
+        float: How many of the dead ends to open, from 0 to 1
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a number from 0
+        to 1 inclusive
+    """
+
+    try:
+        share = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "'%s' is not a share of the dead ends" % value)
+
+    if not 0.0 <= share <= 1.0:
+        raise argparse.ArgumentTypeError(
+            "the share of dead ends runs from 0 to 1, got %s" % value)
+
+    return share
+
+
 def difficulty_summary():
     """Describe the presets for the --difficulty help text.
 
@@ -110,6 +141,17 @@ def difficulty_summary():
 
     return ", ".join("%s (%d by %d)" % (name, width, height)
                      for name, (width, height) in DIFFICULTIES.items())
+
+
+def algorithm_summary():
+    """Describe the carving algorithms for the --algorithm help text.
+
+    Returns:
+        str: Each algorithm and the kind of maze it carves
+    """
+
+    return ", ".join("%s (%s)" % (name, ALGORITHM_NOTES[name])
+                     for name in ALGORITHMS)
 
 
 def resolve_dimensions(args):
@@ -156,6 +198,16 @@ def build_parser():
                         default=DEFAULT_DIFFICULTY,
                         help="Preset maze size: %s (default: %s)"
                              % (difficulty_summary(), DEFAULT_DIFFICULTY))
+    parser.add_argument("--algorithm", "-A", choices=list(ALGORITHMS),
+                        default=DEFAULT_ALGORITHM,
+                        help="How the maze is carved: %s (default: %s)"
+                             % (algorithm_summary(), DEFAULT_ALGORITHM))
+    parser.add_argument("--braid", "-b", type=braid_share, nargs="?",
+                        const=1.0, default=0.0, metavar="SHARE",
+                        help="Open this share of the maze's dead ends, from "
+                             "0 for none to 1 for all of them, so the maze "
+                             "has more than one way through (default: 0, and "
+                             "1 when the option is given no share)")
     parser.add_argument("--seed", "-s", type=maze_seed, default=None,
                         help="Seed for the maze generator, so the same maze "
                              "can be generated again. One is drawn at random, "
@@ -217,8 +269,15 @@ def build_maze(args):
     print("Generating maze...")
 
     # generate a random maze
-    generator = MazeGenerator(width, height, seed=seed)
+    generator = MazeGenerator(width, height, seed=seed,
+                              algorithm=args.algorithm)
     maze_grid = generator.generate()
+
+    # braiding before the pickups are scattered lets them land in the
+    # dead ends it has just opened a second way into. With no --braid
+    # this draws no random numbers, so the pickups fall where the seed
+    # has always put them
+    braid_maze(maze_grid, args.braid, generator.random)
 
     # drawing the places from the generator's own random numbers keeps
     # the collectibles wherever the seed put them last time

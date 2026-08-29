@@ -130,6 +130,39 @@ Beyond that, follow the surrounding code: four-space indentation, lines
 under 80 characters, `%` string formatting as the package already uses, and
 no em dashes in prose or comments.
 
+## Adding a Carving Algorithm
+
+Every way of carving a maze lives in its own module under
+`py_maze/algorithms/`, and every one is the same function to call:
+
+```python
+carve(width, height, rng) -> grid
+```
+
+A size and a random number generator in, a carved grid out, with the
+entrance and the exit already opened by `open_ends`. Nothing is carried
+between calls, which is what makes a seeded run repeatable: the carver reads
+its size and its random numbers and touches nothing else.
+
+A fourth algorithm is four small edits and nothing in `MazeGenerator`:
+
+1. Write `py_maze/algorithms/<name>.py` with the carving function in it, its
+   own `__all__` and a module docstring saying what kind of maze it carves.
+2. Add it to `ALGORITHMS` and `ALGORITHM_NOTES` in
+   `py_maze/algorithms/__init__.py`. The note is what `--algorithm --help`
+   shows, so write it for a player choosing between them.
+3. Re-export the function from `py_maze/__init__.py`, as any public name is.
+4. Add the module to `PACKAGE_MODULES`, `TERMINAL_FREE_MODULES` and
+   `TestLibrarySection.TABLED_MODULES` in `test_py_maze.py`, and give it a
+   row in the README's `Carving` table. `TestCarvingAlgorithms` then holds
+   the new algorithm to every promise the others keep, without a test of its
+   own being written.
+
+An algorithm has to leave a maze that is solvable, that seals its border,
+that leaves every cell standable, and that has exactly one route between any
+two cells. `--braid` is what opens a maze up beyond that, and it works on
+whatever a carver hands back.
+
 ## The Version Number
 
 The version lives in exactly one place, `__version__` in

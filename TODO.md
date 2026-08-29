@@ -7,27 +7,31 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Put the generators behind one interface - a size and a seeded random
-  generator in, a carved grid out - so a new algorithm is one module and one
-  name in an option rather than a change to `MazeGenerator`
-  - From: Generation Algorithms
-- [ ] Add an `--algorithm`/`-A` option choosing the generator, defaulting to
-  recursive backtracking so a bare run is unchanged
-  - From: Generation Algorithms
-- [ ] Add Prim's algorithm as a second generator, which carves shorter dead
-  ends and a more open maze than backtracking does
-  - From: Generation Algorithms
-- [ ] Add recursive division as a third generator, which carves long straight
-  corridors and rooms rather than a winding single route
-  - From: Generation Algorithms
-- [ ] Add a `--braid` option removing a share of the dead ends, so the maze
-  has more than one way through and the breadth-first solver picks a shortest
-  path rather than the only path
-  - From: Generation Algorithms
+- [ ] Add a `--quiet` flag suppressing the banners, the seed line and the
+  play prompt, so a run that only wants the maze on standard output gets
+  nothing else
+  - From: Machine-Readable Output and Interop
+- [ ] Accept `-` as the file name for `--load` and `--save`, reading from
+  standard input and writing to standard output, so py_maze can sit in the
+  middle of a shell pipeline
+  - From: Machine-Readable Output and Interop
+- [ ] Add a `--format` option choosing how the maze is written: `text`, the
+  picture it prints today and the default, or `json`, carrying the grid, the
+  entrance, the exit, the collectibles, the seed and the solution when one
+  was asked for
+  - From: Machine-Readable Output and Interop
+- [ ] Exit with distinct status codes for a refused save file, an unreadable
+  file and a maze with no way through, so a script can tell the three apart
+  without reading the message
+  - From: Machine-Readable Output and Interop
+- [ ] Load a plain maze picture that carries no `# py_maze save` header, with
+  the wall and open characters given by `--wall-char` and `--open-char`, so a
+  maze drawn by another tool can be played, solved and re-saved
+  - From: Machine-Readable Output and Interop
 
 ### Create and Deploy GitHub Pages Override
 
-- Line count over 1500
+- [ ] Line count over 1500
 
 ## Fixes and Hardening
 
@@ -71,18 +75,7 @@ More than one way to carve a maze, selectable from the command line. New
 options with the current behaviour unchanged, so completing items in this
 section is a minor version update.
 
-- [ ] Put the generators behind one interface - a size and a seeded random
-  generator in, a carved grid out - so a new algorithm is one module and one
-  name in an option rather than a change to `MazeGenerator`
-- [ ] Add an `--algorithm`/`-A` option choosing the generator, defaulting to
-  recursive backtracking so a bare run is unchanged
-- [ ] Add Prim's algorithm as a second generator, which carves shorter dead
-  ends and a more open maze than backtracking does
-- [ ] Add recursive division as a third generator, which carves long straight
-  corridors and rooms rather than a winding single route
-- [ ] Add a `--braid` option removing a share of the dead ends, so the maze
-  has more than one way through and the breadth-first solver picks a shortest
-  path rather than the only path
+No items are currently queued in this section.
 
 ## Machine-Readable Output and Interop
 
@@ -252,3 +245,20 @@ No items are currently queued in this section.
 - [x] Refresh the `Development` file tree in `README.md`, which lists neither
   `TODO.md`, the launcher scripts nor `.github/`
   - From: version.control = null
+- [x] Put the generators behind one interface - a size and a seeded random
+  generator in, a carved grid out - so a new algorithm is one module and one
+  name in an option rather than a change to `MazeGenerator`
+  - From: Generation Algorithms
+- [x] Add an `--algorithm`/`-A` option choosing the generator, defaulting to
+  recursive backtracking so a bare run is unchanged
+  - From: Generation Algorithms
+- [x] Add Prim's algorithm as a second generator, which carves shorter dead
+  ends and a more open maze than backtracking does
+  - From: Generation Algorithms
+- [x] Add recursive division as a third generator, which carves long straight
+  corridors and rooms rather than a winding single route
+  - From: Generation Algorithms
+- [x] Add a `--braid` option removing a share of the dead ends, so the maze
+  has more than one way through and the breadth-first solver picks a shortest
+  path rather than the only path
+  - From: Generation Algorithms

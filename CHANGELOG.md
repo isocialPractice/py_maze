@@ -5,13 +5,53 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-29
 
-Documentation only, so the version is unchanged and nothing in the package
-moved.
+More than one way to carve a maze, chosen from the command line, and an
+option that opens a carved maze up so it has more than one way through. Both
+are new options with the current behaviour unchanged: a run without them
+carves the maze py_maze has always carved, from the same seeds.
 
 ### Added
 
+- `--algorithm`, `-A`, choosing how the maze is carved. `backtracker` is the
+  recursive backtracking py_maze has always used and remains the default, so
+  a bare run is unchanged. `prim` grows the maze outward from one cell,
+  drawing each step from the whole of the growing edge rather than from
+  wherever the last step landed: it branches often and its dead ends are
+  short, which reads as a more open maze. `division` works the other way
+  about, starting from an empty floor and walling it in two with a single gap
+  to cross by, over and over, which leaves straight corridors and squared-off
+  rooms. All three carve exactly one route between any two cells, so every
+  maze is solvable whichever one made it.
+- `--braid`, `-b`, opening a share of the maze's dead ends. A dead end is a
+  cell with one way in and no way on; braiding knocks a wall out of one so it
+  joins the corridor behind it. The single route through the maze becomes a
+  network of routes, and `--solve` then reports a shortest way through rather
+  than the only one there is. The share runs from `0` for none of them to `1`
+  for all, and `--braid` on its own means `1`. It applies to a maze as it is
+  generated, so a maze read back with `--load` is untouched by it.
+- A `py_maze/algorithms/` subpackage, one module to an algorithm, behind a
+  single interface: a size and a random number generator in, a carved grid
+  out. `ALGORITHMS` maps the name `--algorithm` takes to the function that
+  carves it, so a fourth algorithm is a module there and an entry in that
+  map, with nothing in `MazeGenerator` to change. `carve_backtracker`,
+  `carve_prim`, `carve_division`, `carver`, `ALGORITHMS`, `ALGORITHM_NOTES`
+  and `DEFAULT_ALGORITHM` are all re-exported from the package.
+- `braid_maze(grid, share, rng)` and `open_ends(grid)` on the public surface,
+  the first opening the dead ends of any grid it is handed and the second
+  cutting the entrance and the exit into a carved one.
+- Tests holding every algorithm to the same promises rather than the default
+  alone: that it carves the size asked for, seals its border, opens its
+  entrance and its exit, leaves every cell standable, carves a solvable maze
+  and leaves exactly one route between any two squares, and repeats itself
+  from a seed. Prim's is checked to leave more dead ends than backtracking
+  and recursive division to build a wall the whole way across the maze, so
+  each stays the algorithm it says it is. The maze the default carves is
+  pinned to the picture it has always drawn.
+- A "Carving Algorithms" section, a "Braiding" section and a "Carving and
+  Braiding" library example in `README.md`, and a section in
+  `CONTRIBUTING.md` on what adding a carving algorithm takes.
 - A "Using py_maze as a Library" section in `README.md`, covering the half of
   the project that is not the game: the grid every name reads and writes and
   the shape it takes, a worked example that generates a maze, solves it and
@@ -30,6 +70,12 @@ moved.
 
 ### Changed
 
+- `MazeGenerator` no longer holds the carving itself: it takes an `algorithm`
+  name, looks the carver up and hands it the size and its own random numbers.
+  An unknown name raises `ValueError` when the generator is built rather than
+  at the first `generate()`. The interface is unchanged for a caller that
+  does not pass one, and the maze carved from a given seed is the maze that
+  seed has always carved.
 - The `Development` file tree in `README.md` lists what the repository
   carries. It named neither `TODO.md`, the two launcher scripts nor
   `.github/`, and nothing for `docs/`, `CONTRIBUTING.md` or `LICENSE`, each

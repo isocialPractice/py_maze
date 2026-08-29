@@ -17,6 +17,7 @@ between generating a maze, solving it, drawing it and saving it.
 The modules, and what each one owns:
 
 - :mod:`py_maze.grid` - the grid, and the helpers that build and read it
+- :mod:`py_maze.algorithms` - the ways a maze can be carved, one to a module
 - :mod:`py_maze.generation` - carving a maze and scattering its pickups
 - :mod:`py_maze.solving` - breadth-first search over a grid
 - :mod:`py_maze.rendering` - drawing a maze, and measuring the terminal it
@@ -34,15 +35,17 @@ Run a source checkout with ``python -m py_maze``, or the installed console
 script with ``py_maze``.
 """
 
-from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, build_maze, build_parser,
-                  collectible_count, difficulty_summary, main, maze_dimension,
-                  resolve_dimensions)
+from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
+                         carve_backtracker, carve_division, carve_prim, carver)
+from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, algorithm_summary,
+                  braid_share, build_maze, build_parser, collectible_count,
+                  difficulty_summary, main, maze_dimension, resolve_dimensions)
 from .game import (CONTROLS_LINE, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
                    PLAIN_WIN_BANNER, WIN_BANNER, MazeGame, win_banner)
-from .generation import (MAX_SEED, MazeGenerator, maze_seed,
+from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MOVES, find_entrance, find_exit, open_cells,
-                   open_neighbors, walled_grid)
+                   open_ends, open_neighbors, walled_grid)
 from .keys import (INTERRUPT_KEY, KEY_POLL_INTERVAL, WINDOWS_INTERRUPT_KEY,
                    read_key, read_key_posix, read_key_windows, read_response)
 from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME,
@@ -67,11 +70,21 @@ __all__ = [
     'find_entrance',
     'find_exit',
     'open_cells',
+    'open_ends',
     'open_neighbors',
     'walled_grid',
+    # algorithms
+    'ALGORITHMS',
+    'ALGORITHM_NOTES',
+    'DEFAULT_ALGORITHM',
+    'carve_backtracker',
+    'carve_division',
+    'carve_prim',
+    'carver',
     # generation
     'MAX_SEED',
     'MazeGenerator',
+    'braid_maze',
     'maze_seed',
     'place_collectibles',
     # solving
@@ -135,6 +148,8 @@ __all__ = [
     # cli
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
+    'algorithm_summary',
+    'braid_share',
     'build_maze',
     'build_parser',
     'collectible_count',
