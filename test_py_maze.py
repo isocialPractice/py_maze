@@ -2923,6 +2923,24 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
 
         self.assertEqual(len(self.maze_of(output).splitlines()), 7 * 2 + 1)
 
+    def test_a_loaded_maze_ignores_the_carving_options(self):
+        # build_maze hands back the saved grid before --algorithm and
+        # --braid are read, so the file is played back exactly as it stands
+        self.run_main(['--save', self.path, '--seed', '2024'])
+        plain, _ = self.run_main(['--load', self.path])
+        carved, _ = self.run_main(['--load', self.path, '-A', 'division',
+                                   '--braid', '1'])
+
+        self.assertEqual(self.maze_of(carved), self.maze_of(plain))
+
+    def test_the_load_help_names_the_options_it_ignores(self):
+        # a help that names only some of them reads as though the rest
+        # applied, which is the whole of what the option is being asked
+        help_text = ' '.join(py_maze.build_parser().format_help().split())
+
+        self.assertIn('the size, seed, algorithm, braid and collectible '
+                      'options do not apply', help_text)
+
     def test_a_loaded_maze_can_be_solved(self):
         self.run_main(['--save', self.path, '--seed', '2024'])
         output, _ = self.run_main(['--load', self.path, '--solve'])

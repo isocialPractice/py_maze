@@ -4,7 +4,7 @@ A command-line maze generator and game written in Python. Generate random, solva
 
 ## Features
 
-- 🎲 **Random Maze Generation**: Uses recursive backtracking algorithm to create unique, solvable mazes
+- 🎲 **Random Maze Generation**: Every run carves a fresh maze, no two alike
 - 🎮 **Interactive Gameplay**: Navigate through mazes using arrow keys or WASD
 - 🖥️ **Cross-Platform**: Works on Windows, Linux, and macOS
 - 🎯 **Always Solvable**: Every generated maze is guaranteed to have a path from start to end
@@ -366,9 +366,10 @@ python -m py_maze --load maze.txt
 ```
 
 The maze comes from the file as it was saved, so the options that generate one
-do not apply to it: `--width`, `--height`, `--difficulty`, `--seed` and
-`--collectibles` are all ignored for a loaded maze. `--solve`, `--animate` and
-the in-game hints work on it exactly as they do on a generated one.
+do not apply to it: `--width`, `--height`, `--difficulty`, `--seed`,
+`--algorithm`, `--braid` and `--collectibles` are all ignored for a loaded
+maze. `--solve`, `--animate` and the in-game hints work on it exactly as they
+do on a generated one.
 
 A loaded maze reports the seed its file records, so a maze that turned out to
 be worth keeping can still be traced back:

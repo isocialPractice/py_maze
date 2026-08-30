@@ -27,6 +27,9 @@ __all__ = [
     'ALGORITHMS',
     'ALGORITHM_NOTES',
     'DEFAULT_ALGORITHM',
+    'carve_backtracker',
+    'carve_division',
+    'carve_prim',
     'carver',
 ]
 

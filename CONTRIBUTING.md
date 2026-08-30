@@ -148,9 +148,10 @@ A fourth algorithm is four small edits and nothing in `MazeGenerator`:
 
 1. Write `py_maze/algorithms/<name>.py` with the carving function in it, its
    own `__all__` and a module docstring saying what kind of maze it carves.
-2. Add it to `ALGORITHMS` and `ALGORITHM_NOTES` in
+2. Add it to `ALGORITHMS`, `ALGORITHM_NOTES` and `__all__` in
    `py_maze/algorithms/__init__.py`. The note is what `--algorithm --help`
-   shows, so write it for a player choosing between them.
+   shows, so write it for a player choosing between them, and the `__all__`
+   entry is what `from py_maze.algorithms import *` reads.
 3. Re-export the function from `py_maze/__init__.py`, as any public name is.
 4. Add the module to `PACKAGE_MODULES`, `TERMINAL_FREE_MODULES` and
    `TestLibrarySection.TABLED_MODULES` in `test_py_maze.py`, and give it a

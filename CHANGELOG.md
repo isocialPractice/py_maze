@@ -5,6 +5,38 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-08-30
+
+Corrections to what 2.1.0 says about itself. The two new options carve and
+braid exactly as they did; what changes is that the help and the README now
+account for them where they were still describing the release before.
+
+### Fixed
+
+- `from py_maze.algorithms import *` now brings in `carve_backtracker`,
+  `carve_prim` and `carve_division`. The subpackage imported all three to
+  build its registry and `py_maze` re-exported them, but they were left out
+  of `py_maze/algorithms/__init__.py`'s own `__all__`, so the star import
+  that `__all__` governs handed back the registry and `carver` alone while
+  `py_maze.carve_prim` worked. `CONTRIBUTING.md` now names that `__all__` in
+  the steps for adding an algorithm, so a fourth one does not repeat it.
+- The `--load` help names every option a loaded maze ignores. It named the
+  size, seed and collectible ones, and `--algorithm` and `--braid` joined
+  that list in 2.1.0: `build_maze` hands back the saved grid before either
+  is read, so `py_maze --load maze.txt -A division --braid 1` printed the
+  file untouched and nothing said it would. The README's list of ignored
+  options names the two as well, and two tests hold the pair to it, one
+  reading the help and one loading a maze twice to check the carving options
+  leave it alone.
+- The README's feature list no longer contradicts itself on how a maze is
+  carved. Its first bullet named recursive backtracking as the way mazes are
+  made, written when it was the only way, while a later bullet in the same
+  list offered three, so the first few lines a reader sees disagreed with one
+  another. That bullet now says what the generator does and leaves the naming
+  to the "Three Carving Algorithms" bullet below it. Backtracking is still
+  the default, and the guarantee it used to carry is on the "Always Solvable"
+  bullet already.
+
 ## [2.1.0] - 2026-08-29
 
 More than one way to carve a maze, chosen from the command line, and an

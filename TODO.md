@@ -262,3 +262,26 @@ No items are currently queued in this section.
   has more than one way through and the breadth-first solver picks a shortest
   path rather than the only path
   - From: Generation Algorithms
+- [x] The README feature list contradicts itself on how a maze is carved
+  - **Issue**: `README.md` line 7 still reads "Uses recursive backtracking
+    algorithm to create unique, solvable mazes", written when that was the
+    only algorithm. Line 12 of the same list now reads "Three Carving
+    Algorithms", so the first six bullets a reader sees disagree with one
+    another about whether py_maze carves one way or three.
+  - **Goal**: Reword line 7 so it describes what the generator does rather
+    than naming one algorithm, leaving the "Three Carving Algorithms" bullet
+    to name them. Backtracking is the default, not the only choice, and the
+    "Always Solvable" bullet already carries the guarantee.
+  - From: Code Review Override - Carving and Braiding Documentation
+- [x] `--load` does not say that `--algorithm` and `--braid` are ignored
+  - **Issue**: `py_maze/cli.py` lines 224 to 228 tell the user that for a
+    loaded maze "the size, seed and collectible options do not apply". Two
+    more options joined that list this release: `build_maze` returns the
+    saved grid before either is read, so `py_maze --load maze.txt -A
+    division --braid 1` prints the file untouched with no warning, and the
+    help text names neither. `README.md` line 252 does say it; the help
+    does not.
+  - **Goal**: Extend the `--load` help so it names the carving and braiding
+    options alongside the size, seed and collectible ones, and cover it with
+    a test in the `--load` group of `test_py_maze.py`.
+  - From: Code Review Override - Carving and Braiding Documentation

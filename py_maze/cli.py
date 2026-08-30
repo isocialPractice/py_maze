@@ -224,8 +224,8 @@ def build_parser():
     parser.add_argument("--load", "-l", default=None, metavar="FILE",
                         help="Play the maze saved in FILE instead of "
                              "generating one. The maze comes from the file, "
-                             "so the size, seed and collectible options do "
-                             "not apply")
+                             "so the size, seed, algorithm, braid and "
+                             "collectible options do not apply")
     parser.add_argument("--solve", "-S", action="store_true",
                         help="Print the solution path overlaid on the maze")
     parser.add_argument("--animate", "-a", action="store_true",
