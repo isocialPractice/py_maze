@@ -164,6 +164,27 @@ that leaves every cell standable, and that has exactly one route between any
 two cells. `--braid` is what opens a maze up beyond that, and it works on
 whatever a carver hands back.
 
+## Adding a Way to Write a Maze
+
+`--format` chooses between the picture py_maze draws and the JSON document
+it writes, both of which live in `py_maze/saves.py`. A third form is:
+
+1. A writer taking `(grid, collectibles, seed, solution)` and returning the
+   whole file as one string, beside `save_lines` and `save_json`.
+2. A reader taking `(text, source)` and returning
+   `(grid, collectibles, seed)`, beside `parse_save` and `parse_json_save`,
+   with a way for `parse_save` to recognize the form from the text in hand.
+3. An entry in `FORMATS`, a branch in `write_save`, and the name in
+   `saves.__all__` and `py_maze/__init__.py`.
+4. A section in `docs/save-format.md` specifying it, a row in the README's
+   `Save files` table for every new name, and a refusal in
+   `TestSaveFormatDocument.REFUSALS` for everything the reader turns down.
+
+A reader hands back the grid and nothing more interpreted than that. The
+entrance, the exit and a route through are read out of the grid every time,
+which is what lets a maze from any of the three be played, solved and saved
+as any other.
+
 ## The Version Number
 
 The version lives in exactly one place, `__version__` in
@@ -218,3 +239,5 @@ python -m py_maze --seed 2024 -d hard
 
 If it came from a save file, the file itself is better still: the format is
 plain text and is specified in [docs/save-format.md](docs/save-format.md).
+`python -m py_maze --load maze.txt --format json` prints the same maze as
+one line, which pastes into an issue without an attachment.

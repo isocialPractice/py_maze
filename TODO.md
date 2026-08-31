@@ -7,27 +7,23 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add a `--quiet` flag suppressing the banners, the seed line and the
-  play prompt, so a run that only wants the maze on standard output gets
-  nothing else
-  - From: Machine-Readable Output and Interop
-- [ ] Accept `-` as the file name for `--load` and `--save`, reading from
-  standard input and writing to standard output, so py_maze can sit in the
-  middle of a shell pipeline
-  - From: Machine-Readable Output and Interop
-- [ ] Add a `--format` option choosing how the maze is written: `text`, the
-  picture it prints today and the default, or `json`, carrying the grid, the
-  entrance, the exit, the collectibles, the seed and the solution when one
-  was asked for
-  - From: Machine-Readable Output and Interop
-- [ ] Exit with distinct status codes for a refused save file, an unreadable
-  file and a maze with no way through, so a script can tell the three apart
-  without reading the message
-  - From: Machine-Readable Output and Interop
-- [ ] Load a plain maze picture that carries no `# py_maze save` header, with
-  the wall and open characters given by `--wall-char` and `--open-char`, so a
-  maze drawn by another tool can be played, solved and re-saved
-  - From: Machine-Readable Output and Interop
+- [ ] Resolve the flicker still visible in the play screen and its HUD.
+  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
+  and writing the frame in one call, and the flicker a player sees is
+  reported as noticeable all the same. Find what is still redrawing more
+  than it has to - the status line and the controls line are rewritten
+  every frame whether or not they changed, and the hint redraws the whole
+  screen twice - and draw only what moved
+  - From: UI/UX and Screen Drawing
+- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
+  of crashing on it. `find_entrance` reads column 1 and `find_exit` the
+  second-to-last column, so a file carrying a maze fewer than 3 characters
+  wide raises `IndexError` out of `py_maze/grid.py` rather than being
+  refused: `py_maze --load tiny.txt --solve` on a one-column picture ends in
+  a traceback. `docs/save-format.md` says a rectangle of the allowed
+  characters loads, so the check belongs where the maze is used rather than
+  where the file is read
+  - From: Runtime and Portability Fixes
 
 ### Create and Deploy GitHub Pages Override
 
@@ -52,7 +48,10 @@ No items are currently queued in this section.
 New player-facing features from the README's future-enhancements list.
 Completing items in this section is a minor version update.
 
-No items are currently queued in this section.
+- [ ] Add more than one player character to choose between, so the marker
+  walking the maze is not always `o`
+- [ ] Add obstacles that block or slow the way through, scattered like the
+  collectibles are and reported in the end-of-game summary
 
 ## Maze Solver and Visualization
 
@@ -83,29 +82,36 @@ Letting another program call py_maze and read what comes back, with no
 dependencies and no network service. New options with the current output
 unchanged, so completing items in this section is a minor version update.
 
-- [ ] Add a `--format` option choosing how the maze is written: `text`, the
-  picture it prints today and the default, or `json`, carrying the grid, the
-  entrance, the exit, the collectibles, the seed and the solution when one
-  was asked for
-- [ ] Accept `-` as the file name for `--load` and `--save`, reading from
-  standard input and writing to standard output, so py_maze can sit in the
-  middle of a shell pipeline
-- [ ] Load a plain maze picture that carries no `# py_maze save` header, with
-  the wall and open characters given by `--wall-char` and `--open-char`, so a
-  maze drawn by another tool can be played, solved and re-saved
-- [ ] Exit with distinct status codes for a refused save file, an unreadable
-  file and a maze with no way through, so a script can tell the three apart
-  without reading the message
-- [ ] Add a `--quiet` flag suppressing the banners, the seed line and the
-  play prompt, so a run that only wants the maze on standard output gets
-  nothing else
+No items are currently queued in this section.
+
+## UI/UX and Screen Drawing
+
+How the game looks while it is being played: the redraw, the status line and
+everything a player watches move. Verifying an item here means watching the
+screen rather than reading a test, and completing one is a patch version
+update.
+
+- [ ] Resolve the flicker still visible in the play screen and its HUD.
+  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
+  and writing the frame in one call, and the flicker a player sees is
+  reported as noticeable all the same. Find what is still redrawing more
+  than it has to - the status line and the controls line are rewritten
+  every frame whether or not they changed, and the hint redraws the whole
+  screen twice - and draw only what moved
 
 ## Runtime and Portability Fixes
 
 Faults found while evaluating the finished project, none of which change an
 interface. Completing items in this section is a patch version update.
 
-No items are currently queued in this section.
+- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
+  of crashing on it. `find_entrance` reads column 1 and `find_exit` the
+  second-to-last column, so a file carrying a maze fewer than 3 characters
+  wide raises `IndexError` out of `py_maze/grid.py` rather than being
+  refused: `py_maze --load tiny.txt --solve` on a one-column picture ends in
+  a traceback. `docs/save-format.md` says a rectangle of the allowed
+  characters loads, so the check belongs where the maze is used rather than
+  where the file is read
 
 ## Documentation and Chores
 
@@ -285,3 +291,24 @@ No items are currently queued in this section.
     options alongside the size, seed and collectible ones, and cover it with
     a test in the `--load` group of `test_py_maze.py`.
   - From: Code Review Override - Carving and Braiding Documentation
+- [x] Add a `--quiet` flag suppressing the banners, the seed line and the
+  play prompt, so a run that only wants the maze on standard output gets
+  nothing else
+  - From: Machine-Readable Output and Interop
+- [x] Accept `-` as the file name for `--load` and `--save`, reading from
+  standard input and writing to standard output, so py_maze can sit in the
+  middle of a shell pipeline
+  - From: Machine-Readable Output and Interop
+- [x] Add a `--format` option choosing how the maze is written: `text`, the
+  picture it prints today and the default, or `json`, carrying the grid, the
+  entrance, the exit, the collectibles, the seed and the solution when one
+  was asked for
+  - From: Machine-Readable Output and Interop
+- [x] Exit with distinct status codes for a refused save file, an unreadable
+  file and a maze with no way through, so a script can tell the three apart
+  without reading the message
+  - From: Machine-Readable Output and Interop
+- [x] Load a plain maze picture that carries no `# py_maze save` header, with
+  the wall and open characters given by `--wall-char` and `--open-char`, so a
+  maze drawn by another tool can be played, solved and re-saved
+  - From: Machine-Readable Output and Interop

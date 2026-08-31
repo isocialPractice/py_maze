@@ -5,6 +5,105 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-08-31
+
+Letting another program call py_maze and read what comes back, with no
+dependencies and no network service. Every option here is new and none
+changes what a run without it prints: a bare `py_maze` generates, draws and
+plays exactly the maze it did before.
+
+### Added
+
+- `--quiet`, `-q`, keeping standard output to the maze. The
+  `Generating maze...` and `Loading maze...` banners, the `seed:` line, the
+  `saved:` line, the blank spacers and the "would you like to play" prompt
+  are all left out, so what is left is the maze and nothing else. The maze
+  itself is untouched, `start` and `end` markers included: the option takes
+  lines away and changes none. A quiet run does not offer to play, there
+  being nobody at the prompt to answer.
+- `--format`, `-f`, choosing how the maze is written. `text` is the picture
+  py_maze has always printed and saved and remains the default. `json`
+  writes a document instead, carrying the grid as a list of rows of `true`
+  and `false`, the entrance, the exit, the cells holding a collectible, the
+  seed and the solution when `--solve` or `--animate` asked for one. It is
+  written on a single line, so it pipes into a reader as it stands, and the
+  same document is what `--save` writes under it. A JSON run is quiet
+  whether or not `--quiet` is given, a document with a banner in front of it
+  no longer being a document. `--load` reads a document back, so a maze
+  written as one can be played, solved and re-saved like any other.
+- `-` as the file name for `--save` and `--load`, so py_maze can sit in the
+  middle of a shell pipeline:
+  `py_maze --save - | py_maze --load - --solve`. `--save -` puts the save
+  file on standard output and prints nothing else there, the maze included,
+  since the file is already the maze and drawing it again would corrupt what
+  the next command reads. `--load -` reads the maze off standard input and
+  does not offer to play, that stream being the maze rather than the
+  keypress a prompt would read. A stream refused by the reader is named
+  `<stdin>` in the message.
+- `--wall-char` and `--open-char`, saying how a loaded file that carries no
+  `# py_maze save` header was drawn, so a maze drawn by another tool can be
+  played, solved and re-saved. A file with no header is now read as a plain
+  picture rather than refused, and the two options default to the characters
+  py_maze itself draws with, so a save file with its header cut off loads
+  with no options at all. They apply to reading alone: a maze is always
+  written with `*`, the space and `$`, which is why a picture loaded this
+  way comes back in py_maze's own characters. A file that does carry the
+  header is read with the characters the format fixes whatever they say, and
+  a comment is a line the picture could not have drawn, so a maze drawn with
+  `#` is read as rows rather than as notes.
+- A status code for each thing that can go wrong, so a script can tell them
+  apart without reading the message: `3` for a file that is not a maze this
+  build can read, `4` for a file that could not be read or written, and `5`
+  for a maze with no way from the entrance to the exit. `0` and argparse's
+  `2` are unchanged. Code 5 is reported when a solution was asked for and
+  there was none to find, after the maze is printed, so a script gets the
+  maze and the news together. `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`,
+  `EXIT_FILE_ERROR` and `EXIT_NO_WAY_THROUGH` are on the package.
+- `save_json`, `parse_json_save`, `picture_chars`, `STDIO_PATH`,
+  `JSON_FORMAT_KEY`, `FORMATS`, `TEXT_FORMAT`, `JSON_FORMAT` and
+  `DEFAULT_FORMAT` on the public surface, along with `is_quiet`,
+  `asks_to_play` and `maze_char` from the command line. `write_save` and
+  `read_save` both take a `stream` of their own in place of standard input
+  and standard output, and `parse_save` takes the `chars` a headerless
+  picture is drawn with.
+- A "Scripting py_maze" section in `README.md` covering all of the above,
+  and two sections in `docs/save-format.md`: one specifying the JSON
+  document key by key and one specifying the picture with no header. The
+  save format number does not move: a document is a second way to write a
+  maze rather than a change to the first.
+- Tests holding every one of them. The quiet run is compared to the loud one
+  character for character, the document is compared to the grid the picture
+  draws and round-trips through the reader, a maze written to standard
+  output is read back off standard input, each status code is checked
+  against the run that produces it, and a picture drawn with `#` and `.` is
+  loaded, solved and re-saved as a py_maze file. Every example the two new
+  README sections and the two new save-format sections show is run as it is
+  written and compared to the output they draw, so prose that drifts from
+  the package fails the suite rather than a reader's terminal.
+
+### Changed
+
+- `--save` is written after the maze is solved rather than before, the JSON
+  document having a solution to record. Nothing about the text save file
+  changes, and a path that cannot be written is still reported and still
+  exits without playing.
+- A refusal is printed to standard error and the run exits with the code for
+  it, where before every failure exited with 1 and the message was the only
+  way to tell them apart.
+- `python -m py_maze` exits with what `main` hands back, as the installed
+  console script already did, so the two agree on a run's status as well as
+  on its output.
+
+### Fixed
+
+- The README's feature list no longer promises that no two mazes are alike.
+  The bullet 2.1.1 rewrote to stop naming one carving algorithm went on to
+  claim every run carves a maze "no two alike", which the "Repeatable Mazes"
+  bullet eight lines below it contradicts and `--seed` disproves:
+  `py_maze --seed 2024` carves the same maze every time it is run. The
+  bullet now says the carving is random unless a seed is set, so the first
+  few lines a reader sees agree with the rest of the list.
+
 ## [2.1.1] - 2026-08-30
 
 Corrections to what 2.1.0 says about itself. The two new options carve and

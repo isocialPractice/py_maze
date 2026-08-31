@@ -17,23 +17,33 @@ from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import MIN_DIMENSION
 from .keys import read_response
-from .rendering import (COLLECTIBLE_MARKER, animate_search,
-                        collectible_overlay, fit_to_terminal, print_maze,
-                        solution_overlay, terminal_size)
-from .saves import SaveFileError, read_save, write_save
+from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
+                        animate_search, collectible_overlay, fit_to_terminal,
+                        print_maze, solution_overlay, terminal_size)
+from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIO_PATH,
+                    TEXT_FORMAT, SaveFileError, picture_chars, read_save,
+                    save_json, write_save)
 from .solving import solve_maze
 from .version import __version__
 
 __all__ = [
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
+    'EXIT_FILE_ERROR',
+    'EXIT_NO_WAY_THROUGH',
+    'EXIT_OK',
+    'EXIT_SAVE_FILE',
+    'EXIT_USAGE',
     'algorithm_summary',
+    'asks_to_play',
     'braid_share',
     'build_maze',
     'build_parser',
     'collectible_count',
     'difficulty_summary',
+    'is_quiet',
     'main',
+    'maze_char',
     'maze_dimension',
     'resolve_dimensions',
 ]
@@ -48,6 +58,14 @@ DIFFICULTIES = {
 # preset used when --difficulty is not given: the size the maze has
 # always defaulted to
 DEFAULT_DIFFICULTY = 'normal'
+
+# the status codes a run exits with, so a script can tell one failure
+# from another without reading the message it was given
+EXIT_OK = 0
+EXIT_USAGE = 2             # argparse's own, for an option it will not take
+EXIT_SAVE_FILE = 3         # the file is not a maze this build can read
+EXIT_FILE_ERROR = 4        # the file could not be read, or written
+EXIT_NO_WAY_THROUGH = 5    # the maze has no route from entrance to exit
 
 
 def maze_dimension(value):
@@ -130,6 +148,26 @@ def braid_share(value):
             "the share of dead ends runs from 0 to 1, got %s" % value)
 
     return share
+
+
+def maze_char(value):
+    """Read a picture character, as --wall-char and --open-char do.
+
+    Args:
+        value: Raw command-line string for the option
+
+    Returns:
+        str: The single character the option stands for
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not one character
+    """
+
+    if len(value) != 1:
+        raise argparse.ArgumentTypeError(
+            "'%s' is not a single character" % value)
+
+    return value
 
 
 def difficulty_summary():
@@ -220,21 +258,105 @@ def build_parser():
                              % COLLECTIBLE_MARKER)
     parser.add_argument("--save", "-o", default=None, metavar="FILE",
                         help="Write the maze, and any collectibles, to FILE "
-                             "so it can be played again with --load")
+                             "so it can be played again with --load. '%s' "
+                             "writes it to standard output, which is then "
+                             "the whole of what the run prints there"
+                             % STDIO_PATH)
     parser.add_argument("--load", "-l", default=None, metavar="FILE",
                         help="Play the maze saved in FILE instead of "
-                             "generating one. The maze comes from the file, "
-                             "so the size, seed, algorithm, braid and "
-                             "collectible options do not apply")
+                             "generating one, or in standard input when FILE "
+                             "is '%s'. The maze comes from the file, so the "
+                             "size, seed, algorithm, braid and collectible "
+                             "options do not apply" % STDIO_PATH)
+    parser.add_argument("--wall-char", type=maze_char, default=WALL_MARKER,
+                        metavar="CHAR",
+                        help="Character a wall is drawn with in a loaded "
+                             "file that carries no py_maze save header, so a "
+                             "maze drawn by another tool can be played "
+                             "(default: %s). A file with the header is read "
+                             "with the characters the format fixes, and a "
+                             "maze is always written with them"
+                             % WALL_MARKER)
+    parser.add_argument("--open-char", type=maze_char, default=OPEN_MARKER,
+                        metavar="CHAR",
+                        help="Character an open cell is drawn with in a "
+                             "loaded file that carries no py_maze save "
+                             "header (default: a space)")
+    parser.add_argument("--format", "-f", choices=list(FORMATS),
+                        default=DEFAULT_FORMAT,
+                        help="How the maze is written: %s, the picture "
+                             "py_maze prints and saves, or %s, a document "
+                             "carrying the grid, the entrance, the exit, the "
+                             "collectibles, the seed and the solution when "
+                             "one was asked for. A %s run is quiet, so the "
+                             "document is the whole of standard output "
+                             "(default: %s)"
+                             % (TEXT_FORMAT, JSON_FORMAT, JSON_FORMAT,
+                                DEFAULT_FORMAT))
     parser.add_argument("--solve", "-S", action="store_true",
                         help="Print the solution path overlaid on the maze")
     parser.add_argument("--animate", "-a", action="store_true",
                         help="Step through the solver's search on screen "
                              "before showing the solved maze")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Print the maze and nothing else: no banner, no "
+                             "seed line and no play prompt, so a run whose "
+                             "output is read by another program carries "
+                             "nothing it did not ask for")
     parser.add_argument("--version", "-V", action="version",
                         version="py_maze %s" % __version__,
                         help="Show the installed version and exit")
     return parser
+
+
+def is_quiet(args):
+    """Report whether a run keeps standard output to the maze alone.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        bool: True when --quiet was given, when --format json puts a
+        document there for a program to read, or when --save - puts the
+        save file there. All three leave no room for a banner, a seed
+        line or a prompt
+    """
+
+    return bool(args.quiet or args.format == JSON_FORMAT or
+                args.save == STDIO_PATH)
+
+
+def asks_to_play(args):
+    """Report whether a run ends by offering to play the maze.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        bool: False for a quiet run, which prints the maze and stops, and
+        for a maze read from standard input, that stream carrying the
+        maze rather than the keypress a prompt would read. True otherwise
+    """
+
+    return not is_quiet(args) and args.load != STDIO_PATH
+
+
+def fail(message, code):
+    # report a failure on standard error and exit with its status code
+    #
+    # sys.exit(message) prints the same line, but it always exits with 1,
+    # which leaves a script reading the message to work out which of the
+    # things that can go wrong did.
+    #
+    # Args:
+    #     message: What went wrong, printed under the program name
+    #     code: Status code to exit with
+    #
+    # Raises:
+    #     SystemExit: Always, carrying the code
+
+    print("py_maze: %s" % message, file=sys.stderr)
+    sys.exit(code)
 
 
 def build_maze(args):
@@ -250,13 +372,21 @@ def build_maze(args):
     Raises:
         OSError: If a maze was to be loaded and the file cannot be read
         SaveFileError: If the file is not a maze this build can read
+        ValueError: If --wall-char and --open-char name the same
+            character, leaving no way to tell a wall from a cell
     """
 
+    quiet = is_quiet(args)
+
     if args.load:
-        print("Loading maze...")
+        if not quiet:
+            print("Loading maze...")
         # the maze comes from the file exactly as it was saved, so it is
-        # neither resized nor re-seeded here
-        return read_save(args.load)
+        # neither resized nor re-seeded here. A file with no py_maze save
+        # header is a plain picture, read with the characters the two
+        # character options say it is drawn with
+        return read_save(args.load,
+                         picture_chars(args.wall_char, args.open_char))
 
     # use the difficulty preset and any width and height overrides,
     # capped to whatever the terminal can actually show
@@ -266,7 +396,8 @@ def build_maze(args):
     # worth keeping can be generated again with --seed
     seed = args.seed if args.seed is not None else random.randrange(MAX_SEED)
 
-    print("Generating maze...")
+    if not quiet:
+        print("Generating maze...")
 
     # generate a random maze
     generator = MazeGenerator(width, height, seed=seed,
@@ -288,17 +419,32 @@ def build_maze(args):
 
 
 def main():
-    """Run py_maze from the command line: the console script entry point."""
+    """Run py_maze from the command line: the console script entry point.
 
-    args = build_parser().parse_args()
+    Returns:
+        int: EXIT_OK, the console script and ``python -m py_maze`` both
+        exiting with what this hands back. A run that could not do what
+        it was asked exits before returning, with the status code for
+        what went wrong
+    """
+
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.wall_char == args.open_char:
+        # one character cannot stand for both, and this is the option
+        # error it is rather than the ValueError picture_chars would raise
+        parser.error("--wall-char and --open-char are both '%s'"
+                     % args.wall_char)
+
+    quiet = is_quiet(args)
 
     try:
         maze_grid, collectibles, seed = build_maze(args)
-
-        if args.save:
-            write_save(args.save, maze_grid, collectibles, seed)
-    except (SaveFileError, OSError) as error:
-        sys.exit("py_maze: %s" % error)
+    except SaveFileError as error:
+        fail(error, EXIT_SAVE_FILE)
+    except OSError as error:
+        fail(error, EXIT_FILE_ERROR)
 
     # animating needs a terminal to draw over; with the output piped or
     # redirected there is nothing to animate, so the maze is just solved
@@ -308,16 +454,43 @@ def main():
     elif args.animate or args.solve:
         solution = solve_maze(maze_grid)
 
-    # display the maze, with the collectibles drawn over the solution so
-    # a solved maze still shows what there is to pick up along the way
-    print()
-    print_maze(maze_grid, collectible_overlay(collectibles) +
-               solution_overlay(solution))
-    if seed is not None:
-        print("seed: %s" % seed)
+    # the JSON form records the solution, so the file is written once
+    # there is one to record rather than before the maze is solved
     if args.save:
-        print("saved: %s" % args.save)
-    print()
+        try:
+            write_save(args.save, maze_grid, collectibles, seed, solution,
+                       args.format)
+        except OSError as error:
+            fail(error, EXIT_FILE_ERROR)
+
+    # a save file written to standard output is the whole of it, so the
+    # maze is not drawn over the top of the file it was just written to
+    if args.save != STDIO_PATH:
+        if not quiet:
+            print()
+
+        if args.format == JSON_FORMAT:
+            print(save_json(maze_grid, collectibles, seed, solution))
+        else:
+            # the collectibles are drawn over the solution, so a solved
+            # maze still shows what there is to pick up along the way
+            print_maze(maze_grid, collectible_overlay(collectibles) +
+                       solution_overlay(solution))
+
+        if not quiet:
+            if seed is not None:
+                print("seed: %s" % seed)
+            if args.save:
+                print("saved: %s" % args.save)
+            print()
+
+    # a maze with no way through is worth a code of its own, so a script
+    # can tell it from a file that could not be read at all
+    if (args.solve or args.animate) and solution is None:
+        fail("the maze has no way through", EXIT_NO_WAY_THROUGH)
+
+    if not asks_to_play(args):
+        return EXIT_OK
 
     # ask if user wants to play
     print("Would you like to play this maze? (y/n): ", end='', flush=True)
@@ -334,3 +507,5 @@ def main():
     except KeyboardInterrupt:
         # Ctrl+C at the prompt, before the game takes over the terminal
         print("\n" + GOODBYE_MESSAGE)
+
+    return EXIT_OK

@@ -37,9 +37,12 @@ script with ``py_maze``.
 
 from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
                          carve_backtracker, carve_division, carve_prim, carver)
-from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, algorithm_summary,
-                  braid_share, build_maze, build_parser, collectible_count,
-                  difficulty_summary, main, maze_dimension, resolve_dimensions)
+from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
+                  EXIT_NO_WAY_THROUGH, EXIT_OK, EXIT_SAVE_FILE, EXIT_USAGE,
+                  algorithm_summary, asks_to_play, braid_share, build_maze,
+                  build_parser, collectible_count, difficulty_summary,
+                  is_quiet, main, maze_char, maze_dimension,
+                  resolve_dimensions)
 from .game import (CONTROLS_LINE, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
                    PLAIN_WIN_BANNER, WIN_BANNER, MazeGame, win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
@@ -57,8 +60,11 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME,
                         fit_to_terminal, format_duration, frame_text,
                         maze_lines, print_maze, solution_overlay, status_line,
                         summary_lines, terminal_size)
-from .saves import (SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, SaveFileError,
-                    parse_save, read_save, save_lines, write_save)
+from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
+                    SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIO_PATH,
+                    TEXT_FORMAT, SaveFileError, parse_json_save, parse_save,
+                    picture_chars, read_save, save_json, save_lines,
+                    write_save)
 from .solving import search_frames, solve_maze
 from .version import __version__
 
@@ -120,12 +126,21 @@ __all__ = [
     'summary_lines',
     'terminal_size',
     # saves
+    'DEFAULT_FORMAT',
+    'FORMATS',
+    'JSON_FORMAT',
+    'JSON_FORMAT_KEY',
     'SAVE_CHARS',
     'SAVE_FORMAT',
     'SAVE_HEADER',
+    'STDIO_PATH',
+    'TEXT_FORMAT',
     'SaveFileError',
+    'parse_json_save',
     'parse_save',
+    'picture_chars',
     'read_save',
+    'save_json',
     'save_lines',
     'write_save',
     # keys
@@ -148,13 +163,21 @@ __all__ = [
     # cli
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
+    'EXIT_FILE_ERROR',
+    'EXIT_NO_WAY_THROUGH',
+    'EXIT_OK',
+    'EXIT_SAVE_FILE',
+    'EXIT_USAGE',
     'algorithm_summary',
+    'asks_to_play',
     'braid_share',
     'build_maze',
     'build_parser',
     'collectible_count',
     'difficulty_summary',
+    'is_quiet',
     'main',
+    'maze_char',
     'maze_dimension',
     'resolve_dimensions',
 ]

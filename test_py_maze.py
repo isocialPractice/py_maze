@@ -9,6 +9,7 @@ import doctest
 import importlib
 import inspect
 import io
+import json
 import os
 import random
 import re
@@ -2710,12 +2711,28 @@ class TestSaveFile(unittest.TestCase):
         self.assertEqual(game.total_collectibles, 1)
         self.assertTrue(game.move_player(0, 1))
 
-    def test_a_file_without_the_header_is_rejected(self):
+    def test_a_file_without_the_header_is_read_as_a_plain_picture(self):
+        # a py_maze picture with its header cut off is drawn with the
+        # characters the format uses, so it needs no options to load
+        grid, _, _ = py_maze.parse_save('\n'.join(self.MAZE), 'maze.txt')
+
+        self.assertEqual(grid, grid_from_strings(self.MAZE))
+
+    def test_a_file_that_is_not_a_maze_at_all_is_rejected(self):
         with self.assertRaises(py_maze.SaveFileError) as caught:
-            py_maze.parse_save('\n'.join(self.MAZE), 'maze.txt')
+            py_maze.parse_save("just some notes\n", 'notes.txt')
 
         self.assertIn('not a py_maze save file', str(caught.exception))
-        self.assertIn('maze.txt', str(caught.exception))
+        self.assertIn('notes.txt', str(caught.exception))
+
+    def test_a_header_below_the_maze_is_rejected(self):
+        # the header has to come first, or a reader cannot know which
+        # characters the lines above it were drawn with
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("*   *\n%s\n" % py_maze.SAVE_HEADER)
+
+        self.assertIn('comes after the maze', str(caught.exception))
+        self.assertIn('line 2', str(caught.exception))
 
     def test_an_empty_file_is_rejected(self):
         with self.assertRaises(py_maze.SaveFileError):
@@ -2757,13 +2774,14 @@ class TestSaveFile(unittest.TestCase):
 # Drives main() end to end, with the keyboard and the animation standing
 # in for a real terminal.
 class MainRunner:
-    def run_main(self, argv=(), response='n', terminal=True):
+    def run_main(self, argv=(), response='n', terminal=True, stdin=None):
         # Returns:
         #     tuple: (what main printed, the patched animate_search)
 
         stdout = io.StringIO()
         size = terminal_size(200, 80) if terminal else None
         with mock.patch.object(sys, 'argv', ['py_maze'] + list(argv)), \
+                mock.patch.object(sys, 'stdin', io.StringIO(stdin or '')), \
                 measuring(size), \
                 mock.patch.object(py_maze.cli, 'read_response',
                                   side_effect=[response]), \
@@ -2773,6 +2791,24 @@ class MainRunner:
             py_maze.main()
 
         return stdout.getvalue(), animate
+
+    def run_main_failing(self, argv=(), stdin=None):
+        # drive main() through a failure, so the code it exits with and
+        # the message it leaves on standard error can both be read
+        #
+        # Returns:
+        #     tuple: (the status code, standard error, standard output)
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, 'argv', ['py_maze'] + list(argv)), \
+                mock.patch.object(sys, 'stdin', io.StringIO(stdin or '')), \
+                measuring(terminal_size(200, 80)), \
+                contextlib.redirect_stdout(stdout), \
+                contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as caught:
+                py_maze.main()
+
+        return caught.exception.code, stderr.getvalue(), stdout.getvalue()
 
     def maze_of(self, output):
         # Returns:
@@ -2964,27 +3000,27 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
 
     def test_loading_a_missing_file_exits_with_a_message(self):
         missing = os.path.join(self.directory.name, 'nowhere.txt')
-        with self.assertRaises(SystemExit) as caught:
-            self.run_main(['--load', missing])
+        code, message, _ = self.run_main_failing(['--load', missing])
 
-        self.assertIn('py_maze:', str(caught.exception))
-        self.assertIn('nowhere.txt', str(caught.exception))
+        self.assertEqual(code, py_maze.EXIT_FILE_ERROR)
+        self.assertIn('py_maze:', message)
+        self.assertIn('nowhere.txt', message)
 
     def test_loading_something_that_is_not_a_maze_exits_with_a_message(self):
         with open(self.path, 'w', encoding='utf-8') as handle:
             handle.write("just some notes\n")
 
-        with self.assertRaises(SystemExit) as caught:
-            self.run_main(['--load', self.path])
+        code, message, _ = self.run_main_failing(['--load', self.path])
 
-        self.assertIn('not a py_maze save file', str(caught.exception))
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn('not a py_maze save file', message)
 
     def test_saving_somewhere_unwritable_exits_with_a_message(self):
         unwritable = os.path.join(self.directory.name, 'no', 'such', 'dir.txt')
-        with self.assertRaises(SystemExit) as caught:
-            self.run_main(['--save', unwritable])
+        code, message, _ = self.run_main_failing(['--save', unwritable])
 
-        self.assertIn('py_maze:', str(caught.exception))
+        self.assertEqual(code, py_maze.EXIT_FILE_ERROR)
+        self.assertIn('py_maze:', message)
 
 
 class TestMainAlgorithmAndBraid(MainRunner, unittest.TestCase):
@@ -3062,6 +3098,485 @@ class TestMainAlgorithmAndBraid(MainRunner, unittest.TestCase):
         loaded, _ = self.run_main(['--load', path])
 
         self.assertEqual(self.maze_of(loaded), self.maze_of(saved))
+
+
+# A maze whose exit cannot be reached, for the runs that have to notice
+UNSOLVABLE_SAVE = "# py_maze save 1\n* *\n***\n* *\n"
+
+
+class TestQuietOption(MainRunner, unittest.TestCase):
+    # --quiet keeps standard output to the maze alone, so a run being
+    # read by another program carries nothing it did not ask for
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def test_it_is_off_until_it_is_asked_for(self):
+        self.assertFalse(py_maze.build_parser().parse_args([]).quiet)
+
+    def test_either_flag_turns_it_on(self):
+        for flag in ['--quiet', '-q']:
+            self.assertTrue(py_maze.build_parser().parse_args([flag]).quiet)
+
+    def test_a_quiet_run_prints_the_maze_and_nothing_else(self):
+        drawn = py_maze.maze_lines(
+            py_maze.MazeGenerator(6, 6, seed=2024).generate())
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '--quiet'])
+
+        self.assertEqual(output, "start\n%s\nend\n" % '\n'.join(drawn))
+
+    def test_the_maze_is_the_one_a_loud_run_prints(self):
+        loud, _ = self.run_main(['-d', 'easy', '--seed', '2024'])
+        quiet, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q'])
+
+        self.assertEqual(self.maze_of(quiet), self.maze_of(loud))
+
+    def test_it_says_nothing_about_the_banner_or_the_seed(self):
+        output, _ = self.run_main(['--seed', '2024', '-q'])
+
+        self.assertNotIn('Generating maze...', output)
+        self.assertNotIn('seed:', output)
+
+    def test_a_quiet_load_says_nothing_about_loading(self):
+        self.run_main(['--save', self.path, '--seed', '2024'])
+        output, _ = self.run_main(['--load', self.path, '-q'])
+
+        self.assertNotIn('Loading maze...', output)
+        self.assertNotIn('seed:', output)
+
+    def test_a_quiet_save_says_nothing_about_saving(self):
+        output, _ = self.run_main(['--save', self.path, '-q'])
+
+        self.assertNotIn('saved:', output)
+        self.assertTrue(os.path.exists(self.path))
+
+    def test_a_quiet_run_does_not_ask_whether_to_play(self):
+        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+            output, _ = self.run_main(['-q'], response='y')
+
+        self.assertNotIn('Would you like to play', output)
+        self.assertEqual(game.call_count, 0)
+
+    def test_a_solved_quiet_run_still_draws_the_solution(self):
+        output, _ = self.run_main(['-d', 'easy', '-s', '2024', '-q', '-S'])
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+
+class TestFormatOption(MainRunner, unittest.TestCase):
+    # --format json is the maze as a program reads it, beside the picture
+    # a person does
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.json')
+
+    def document(self, argv):
+        # Returns:
+        #     dict: The JSON document a run printed
+        output, _ = self.run_main(list(argv) + ['--format', 'json'])
+        return json.loads(output)
+
+    def test_it_defaults_to_the_picture_py_maze_has_always_printed(self):
+        self.assertEqual(py_maze.build_parser().parse_args([]).format,
+                         py_maze.DEFAULT_FORMAT)
+        self.assertEqual(py_maze.DEFAULT_FORMAT, py_maze.TEXT_FORMAT)
+
+    def test_either_flag_chooses_a_format(self):
+        for flag in ['--format', '-f']:
+            for name in py_maze.FORMATS:
+                self.assertEqual(
+                    py_maze.build_parser().parse_args([flag, name]).format,
+                    name)
+
+    def test_an_unknown_format_is_rejected(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit):
+                py_maze.build_parser().parse_args(['-f', 'yaml'])
+
+        self.assertIn('yaml', stderr.getvalue())
+
+    def test_asking_for_text_prints_what_a_bare_run_prints(self):
+        plain, _ = self.run_main(['-d', 'easy', '--seed', '2024'])
+        asked, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                  '--format', 'text'])
+
+        self.assertEqual(asked, plain)
+
+    def test_the_document_carries_the_grid_the_picture_draws(self):
+        document = self.document(['-d', 'easy', '--seed', '2024'])
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+        self.assertEqual(document['grid'], grid)
+
+    def test_the_document_carries_the_entrance_and_the_exit(self):
+        document = self.document(['-d', 'easy', '--seed', '2024'])
+        grid = document['grid']
+
+        self.assertEqual(tuple(document['entrance']),
+                         py_maze.find_entrance(grid))
+        self.assertEqual(tuple(document['exit']), py_maze.find_exit(grid))
+
+    def test_the_document_carries_the_seed_and_the_format_number(self):
+        document = self.document(['--seed', '2024'])
+
+        self.assertEqual(document['seed'], 2024)
+        self.assertEqual(document[py_maze.JSON_FORMAT_KEY],
+                         py_maze.SAVE_FORMAT)
+
+    def test_the_document_carries_the_collectibles(self):
+        document = self.document(['-d', 'easy', '--seed', '2024', '-c', '4'])
+
+        self.assertEqual(len(document['collectibles']), 4)
+        for x, y in document['collectibles']:
+            self.assertFalse(document['grid'][y][x],
+                             "a pickup should sit on a cell, not in a wall")
+
+    def test_the_collectibles_are_written_in_reading_order(self):
+        # a set has no order of its own, so the same maze would otherwise
+        # write a different document from one run to the next
+        cells = self.document(['--seed', '2024', '-c', '6'])['collectibles']
+
+        self.assertEqual(cells, sorted(cells, key=lambda cell: cell[::-1]))
+
+    def test_there_is_no_solution_until_one_is_asked_for(self):
+        self.assertIsNone(self.document(['--seed', '2024'])['solution'])
+
+    def test_asking_for_a_solution_records_it(self):
+        document = self.document(['-d', 'easy', '--seed', '2024', '--solve'])
+        path = py_maze.solve_maze(document['grid'])
+
+        self.assertEqual([tuple(cell) for cell in document['solution']], path)
+
+    def test_a_json_run_is_quiet(self):
+        # a document with "Generating maze..." in front of it is not a
+        # document any more
+        output, _ = self.run_main(['--seed', '2024', '-f', 'json'])
+
+        self.assertTrue(py_maze.is_quiet(
+            py_maze.build_parser().parse_args(['-f', 'json'])))
+        self.assertEqual(len(output.splitlines()), 1)
+
+    def test_the_document_is_written_to_a_file_as_it_is_printed(self):
+        printed, _ = self.run_main(['--seed', '2024', '-f', 'json',
+                                    '-o', self.path])
+
+        with open(self.path, encoding='utf-8') as handle:
+            self.assertEqual(handle.read(), printed)
+
+    def test_a_written_document_loads_back(self):
+        self.run_main(['-d', 'easy', '--seed', '2024', '-c', '4',
+                       '-f', 'json', '-o', self.path])
+        loaded, _ = self.run_main(['--load', self.path, '-q'])
+        saved, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-c', '4',
+                                  '-q'])
+
+        self.assertEqual(self.maze_of(loaded), self.maze_of(saved))
+
+    def test_write_save_refuses_a_format_it_does_not_know(self):
+        grid = py_maze.MazeGenerator(3, 3, seed=1).generate()
+
+        with self.assertRaises(ValueError):
+            py_maze.write_save(self.path, grid, form='yaml')
+
+    def test_a_document_round_trips_through_the_library(self):
+        generator = py_maze.MazeGenerator(6, 6, seed=2024)
+        grid = generator.generate()
+        collectibles = py_maze.place_collectibles(grid, 4, generator.random)
+        text = py_maze.save_json(grid, collectibles, 2024,
+                                 py_maze.solve_maze(grid))
+
+        self.assertEqual(py_maze.parse_json_save(text),
+                         (grid, collectibles, 2024))
+
+    def test_a_loaded_document_is_the_grid_the_package_passes_around(self):
+        grid = py_maze.MazeGenerator(4, 5, seed=7).generate()
+        loaded, _, _ = py_maze.parse_save(py_maze.save_json(grid))
+
+        self.assertEqual(loaded, grid)
+        for row in loaded:
+            for cell in row:
+                self.assertIsInstance(cell, bool)
+
+
+class TestStandardInputAndOutput(MainRunner, unittest.TestCase):
+    # '-' is standard input to a reader and standard output to a writer,
+    # so py_maze can sit in the middle of a shell pipeline
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def test_the_name_is_the_one_every_other_tool_uses(self):
+        self.assertEqual(py_maze.STDIO_PATH, '-')
+
+    def test_saving_to_it_puts_the_file_on_standard_output(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                   '--save', py_maze.STDIO_PATH])
+        self.run_main(['-d', 'easy', '--seed', '2024', '-o', self.path])
+
+        with open(self.path, encoding='utf-8') as handle:
+            self.assertEqual(output, handle.read())
+
+    def test_the_file_is_the_whole_of_what_it_prints(self):
+        # the maze is not drawn over the top of the file just written to
+        # the same stream, and nothing announces either of them
+        output, _ = self.run_main(['--seed', '2024', '-o',
+                                   py_maze.STDIO_PATH])
+
+        self.assertTrue(output.startswith(py_maze.SAVE_HEADER))
+        self.assertNotIn('start', output)
+        self.assertNotIn('saved:', output)
+
+    def test_loading_from_it_reads_the_maze_off_standard_input(self):
+        grid = py_maze.MazeGenerator(4, 5, seed=7).generate()
+        saved = '\n'.join(py_maze.save_lines(grid, seed=7)) + '\n'
+        output, _ = self.run_main(['--load', py_maze.STDIO_PATH, '-q'],
+                                  stdin=saved)
+
+        self.assertEqual(self.maze_of(output),
+                         '\n'.join(py_maze.maze_lines(grid)))
+
+    def test_a_maze_written_to_the_stream_reads_back_off_it(self):
+        written, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-c', '3',
+                                    '-o', py_maze.STDIO_PATH])
+        read, _ = self.run_main(['--load', py_maze.STDIO_PATH, '-q'],
+                                stdin=written)
+        plain, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-c', '3',
+                                  '-q'])
+
+        self.assertEqual(self.maze_of(read), self.maze_of(plain))
+
+    def test_a_maze_read_from_the_stream_is_not_offered_to_play(self):
+        # standard input is the maze, not the keypress a prompt reads
+        grid = py_maze.MazeGenerator(3, 3, seed=1).generate()
+        saved = '\n'.join(py_maze.save_lines(grid)) + '\n'
+
+        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+            output, _ = self.run_main(['--load', py_maze.STDIO_PATH],
+                                      response='y', stdin=saved)
+
+        self.assertNotIn('Would you like to play', output)
+        self.assertEqual(game.call_count, 0)
+        self.assertIn('Loading maze...', output)
+
+    def test_a_refused_stream_is_named_rather_than_left_unnamed(self):
+        code, message, _ = self.run_main_failing(
+            ['--load', py_maze.STDIO_PATH], stdin="just some notes\n")
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn('not a py_maze save file', message)
+        self.assertIn('stdin', message)
+
+    def test_the_library_writes_and_reads_a_stream_of_its_own(self):
+        grid = py_maze.MazeGenerator(4, 4, seed=3).generate()
+        written = io.StringIO()
+        py_maze.write_save(py_maze.STDIO_PATH, grid, seed=3, stream=written)
+        loaded, _, seed = py_maze.read_save(
+            py_maze.STDIO_PATH, stream=io.StringIO(written.getvalue()))
+
+        self.assertEqual(loaded, grid)
+        self.assertEqual(seed, 3)
+
+
+class TestExitCodes(MainRunner, unittest.TestCase):
+    # a script reads the status code rather than the message, so the
+    # three things that can go wrong have three codes
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def write(self, text):
+        # Returns:
+        #     str: The path a file of that text was written to
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(text)
+        return self.path
+
+    def test_every_code_is_its_own_number(self):
+        codes = (py_maze.EXIT_OK, py_maze.EXIT_USAGE, py_maze.EXIT_SAVE_FILE,
+                 py_maze.EXIT_FILE_ERROR, py_maze.EXIT_NO_WAY_THROUGH)
+
+        self.assertEqual(len(set(codes)), len(codes))
+        self.assertEqual(py_maze.EXIT_OK, 0)
+
+    def test_a_refused_save_file_has_its_own_code(self):
+        code, _, _ = self.run_main_failing(
+            ['--load', self.write("# py_maze save 2\n*   *\n")])
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+
+    def test_a_file_that_cannot_be_read_has_another(self):
+        code, _, _ = self.run_main_failing(
+            ['--load', os.path.join(self.directory.name, 'nowhere')])
+
+        self.assertEqual(code, py_maze.EXIT_FILE_ERROR)
+
+    def test_a_file_that_cannot_be_written_has_the_same_one(self):
+        code, _, _ = self.run_main_failing(
+            ['--save', os.path.join(self.directory.name, 'no', 'dir.txt')])
+
+        self.assertEqual(code, py_maze.EXIT_FILE_ERROR)
+
+    def test_a_maze_with_no_way_through_has_a_third(self):
+        code, message, _ = self.run_main_failing(
+            ['--load', self.write(UNSOLVABLE_SAVE), '--solve'])
+
+        self.assertEqual(code, py_maze.EXIT_NO_WAY_THROUGH)
+        self.assertIn('no way through', message)
+
+    def test_the_maze_is_still_printed_before_that_code(self):
+        # the run answers the question it was asked, and says on standard
+        # error that there was nothing to solve
+        _, _, output = self.run_main_failing(
+            ['--load', self.write(UNSOLVABLE_SAVE), '--solve', '-q'])
+
+        self.assertEqual(self.maze_of(output), "* *\n***\n* *")
+
+    def test_an_animated_run_reports_it_too(self):
+        code, _, _ = self.run_main_failing(
+            ['--load', self.write(UNSOLVABLE_SAVE), '--animate'])
+
+        self.assertEqual(code, py_maze.EXIT_NO_WAY_THROUGH)
+
+    def test_a_run_that_asked_for_no_solution_reports_nothing(self):
+        # the reader checks the file, not the maze: an unsolvable maze
+        # loads and is printed, as it always has been
+        output, _ = self.run_main(
+            ['--load', self.write(UNSOLVABLE_SAVE), '-q'])
+
+        self.assertEqual(self.maze_of(output), "* *\n***\n* *")
+
+    def test_a_run_that_worked_hands_back_the_code_that_says_so(self):
+        with mock.patch.object(sys, 'argv', ['py_maze', '-q']), \
+                measuring(terminal_size(200, 80)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(py_maze.main(), py_maze.EXIT_OK)
+
+    def test_the_module_entry_point_exits_with_what_main_returns(self):
+        result = run_python(
+            "import runpy, sys\n"
+            "sys.argv = ['py_maze', '-q', '-d', 'easy']\n"
+            "runpy.run_module('py_maze', run_name='__main__')")
+
+        self.assertEqual(result.returncode, py_maze.EXIT_OK, result.stderr)
+
+
+class TestPlainPicture(MainRunner, unittest.TestCase):
+    # a maze drawn by another tool carries no py_maze save header, and
+    # --wall-char and --open-char are what say how it was drawn
+
+    PLAIN = "#.#####\n#.....#\n#####.#\n"
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'plain.txt')
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(self.PLAIN)
+
+    def test_the_options_default_to_the_characters_py_maze_draws_with(self):
+        args = py_maze.build_parser().parse_args([])
+
+        self.assertEqual(args.wall_char, py_maze.WALL_MARKER)
+        self.assertEqual(args.open_char, py_maze.OPEN_MARKER)
+
+    def test_a_character_option_takes_one_character(self):
+        self.assertEqual(py_maze.maze_char('#'), '#')
+
+        with self.assertRaises(argparse.ArgumentTypeError):
+            py_maze.maze_char('##')
+
+    def test_one_character_cannot_stand_for_both(self):
+        code, message, _ = self.run_main_failing(
+            ['--wall-char', '#', '--open-char', '#'])
+
+        self.assertEqual(code, py_maze.EXIT_USAGE)
+        self.assertIn('--wall-char and --open-char', message)
+
+    def test_picture_chars_maps_the_two_and_the_pickup(self):
+        chars = py_maze.picture_chars('#', '.')
+
+        self.assertEqual(chars['#'], True)
+        self.assertEqual(chars['.'], False)
+        self.assertEqual(chars[py_maze.COLLECTIBLE_MARKER], False)
+
+    def test_picture_chars_refuses_one_character_for_both(self):
+        with self.assertRaises(ValueError):
+            py_maze.picture_chars('#', '#')
+
+    def test_a_headerless_py_maze_picture_needs_no_options(self):
+        grid = py_maze.MazeGenerator(4, 5, seed=7).generate()
+        drawn = '\n'.join(py_maze.maze_lines(grid))
+        loaded, _, _ = py_maze.parse_save(drawn)
+
+        self.assertEqual(loaded, grid)
+
+    def test_a_headerless_picture_keeps_its_seed_comment(self):
+        _, _, seed = py_maze.parse_save("# seed: 2024\n* ***\n*   *\n*** *\n")
+
+        self.assertEqual(seed, 2024)
+
+    def test_a_picture_drawn_another_way_loads_once_it_is_named(self):
+        output, _ = self.run_main(['--load', self.path, '-q',
+                                   '--wall-char', '#', '--open-char', '.'])
+
+        self.assertEqual(self.maze_of(output), "* *****\n*     *\n***** *")
+
+    def test_a_row_starting_with_a_hash_is_a_row_and_not_a_comment(self):
+        # '#' is the comment marker, so a picture drawn with it would
+        # otherwise read as a file of comments with no maze in it
+        grid, _, _ = py_maze.parse_save(self.PLAIN,
+                                        chars=py_maze.picture_chars('#', '.'))
+
+        self.assertEqual(len(grid), 3)
+
+    def test_the_same_picture_is_refused_without_them(self):
+        # with the default characters every line of it opens with the
+        # comment marker, so the file reads as notes and no maze at all
+        code, message, _ = self.run_main_failing(['--load', self.path])
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn('no maze in it', message)
+
+    def test_a_plain_picture_can_be_solved(self):
+        output, _ = self.run_main(['--load', self.path, '-q', '--solve',
+                                   '--wall-char', '#', '--open-char', '.'])
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
+
+    def test_a_plain_picture_saves_as_a_py_maze_file(self):
+        output, _ = self.run_main(['--load', self.path, '--wall-char', '#',
+                                   '--open-char', '.', '-o',
+                                   py_maze.STDIO_PATH])
+
+        self.assertEqual(output.splitlines(),
+                         [py_maze.SAVE_HEADER, "* *****", "*     *",
+                          "***** *"])
+
+    def test_the_header_fixes_the_characters_whatever_is_asked_for(self):
+        # a file that says it is a py_maze save file is read as one
+        saved = "%s\n* ***\n*   *\n*** *\n" % py_maze.SAVE_HEADER
+        grid, _, _ = py_maze.parse_save(saved,
+                                        chars=py_maze.picture_chars('#', '.'))
+
+        self.assertEqual(grid, grid_from_strings(["* ***", "*   *", "*** *"]))
+
+    def test_a_stray_character_further_down_is_named(self):
+        # the first row read as a maze, so this is a maze with something
+        # wrong in it rather than a file that was never a maze
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save("* ***\n*.  *\n")
+
+        self.assertIn("'.'", str(caught.exception))
+        self.assertIn('line 2', str(caught.exception))
 
 
 class TestMainInterrupt(unittest.TestCase):
@@ -3575,12 +4090,22 @@ class TestSaveFormatDocument(unittest.TestCase):
     # every refusal the document tables, as the file that causes it and
     # the message the reader gives for it
     REFUSALS = (
-        ('no header at all', "*   *\n"),
+        ('nothing a maze could be drawn as', "just some notes\n"),
         ('a maze above the header', "*   *\n# py_maze save 1\n"),
         ('a format this build does not read', "# py_maze save 2\n*   *\n"),
         ('a marker only drawn on screen', "# py_maze save 1\n*.*\n"),
         ('a ragged maze', "# py_maze save 1\n*****\n*  *\n"),
         ('a header and nothing else', "# py_maze save 1\n"),
+        ('a document that is not a maze', '{"notes": "hello"}\n'),
+        ('a document with no grid in it', '{"py_maze": 1}\n'),
+        ('a document whose grid is not booleans',
+         '{"py_maze": 1, "grid": [[1, 0]]}\n'),
+        ('a document with a ragged grid',
+         '{"py_maze": 1, "grid": [[true, true], [true]]}\n'),
+        ('a document whose collectibles are not cells',
+         '{"py_maze": 1, "grid": [[true]], "collectibles": [[1]]}\n'),
+        ('a document whose seed is neither a number nor a word',
+         '{"py_maze": 1, "grid": [[true]], "seed": {}}\n'),
     )
 
     def document(self):
@@ -3682,11 +4207,69 @@ class TestSaveFormatDocument(unittest.TestCase):
 
     def test_the_document_names_the_public_reader_and_writer(self):
         document = self.document()
-        for name in ('read_save', 'parse_save', 'write_save', 'save_lines',
+        for name in ('read_save', 'parse_save', 'parse_json_save',
+                     'write_save', 'save_lines', 'save_json', 'picture_chars',
                      'SaveFileError', 'SAVE_CHARS', 'SAVE_FORMAT',
-                     'SAVE_HEADER'):
+                     'SAVE_HEADER', 'JSON_FORMAT_KEY', 'FORMATS',
+                     'STDIO_PATH'):
             self.assertIn('py_maze.%s' % name, document)
             self.assertIn(name, py_maze.__all__)
+
+    def documented_json(self):
+        # the example document, out of the fenced block that lays it out
+        #
+        # Returns:
+        #     dict: The document as the reader would parse it
+
+        shown = re.search(r'^```json\n(.*?)^```$', self.document(),
+                          re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(shown, 'the document shows no example document')
+        return json.loads(shown.group(1))
+
+    def test_the_example_document_is_what_its_command_writes(self):
+        # the document is drawn laid out and written on one line, so the
+        # two are compared as documents rather than as text
+        generator = py_maze.MazeGenerator(2, 3, seed=2024)
+        grid = generator.generate()
+        collectibles = py_maze.place_collectibles(grid, 2, generator.random)
+        written = py_maze.save_json(grid, collectibles, 2024,
+                                    py_maze.solve_maze(grid))
+
+        self.assertEqual(self.documented_json(), json.loads(written))
+
+    def test_the_example_document_is_one_the_reader_accepts(self):
+        loaded, collectibles, seed = py_maze.parse_save(
+            json.dumps(self.documented_json()))
+
+        self.assertEqual(loaded, self.documented_json()['grid'])
+        self.assertEqual(sorted(collectibles), [(1, 3), (1, 5)])
+        self.assertEqual(seed, 2024)
+
+    def test_the_document_names_every_key_a_document_carries(self):
+        shown = self.document()
+        for key in self.documented_json():
+            self.assertIn('`%s`' % key, shown)
+
+    def test_unreadable_json_says_so_and_names_what_went_wrong(self):
+        # the parser's own complaint is worth passing on, but its wording
+        # is the interpreter's rather than this project's, so only the
+        # opening of the message is documented
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_save('{"py_maze"\n')
+
+        self.assertIn('the JSON could not be read', str(caught.exception))
+        self.assertIn('the JSON could not be read', self.document())
+
+    def test_the_documented_plain_picture_loads_the_way_it_is_shown(self):
+        drawn = re.search(r'\*\*`drawn\.txt`:\*\*\n\n```\n(.*?)^```$',
+                          self.document(), re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(drawn, 'the document draws no plain picture')
+
+        grid, _, _ = py_maze.parse_save(drawn.group(1),
+                                        chars=py_maze.picture_chars('#', '.'))
+
+        self.assertEqual(py_maze.maze_lines(grid),
+                         ["* *****", "*     *", "***** *"])
 
     def test_the_readme_points_at_the_document(self):
         self.assertIn('docs/save-format.md', read_project_file(README_PATH))
@@ -3832,7 +4415,7 @@ class TestLibrarySection(unittest.TestCase):
 
 
 class TestCarvingSectionExamples(MainRunner, unittest.TestCase):
-    # the README shows the maze each of the new options prints. Every one
+    # the README shows the maze each of these options prints. Every one
     # of those is run as it is written, so a section that drifts from the
     # package fails here rather than in a reader's terminal
 
@@ -3844,6 +4427,8 @@ class TestCarvingSectionExamples(MainRunner, unittest.TestCase):
          'python -m py_maze -d easy --seed 2024 --algorithm division'),
         ('### Braiding',
          'python -m py_maze -d easy --seed 2024 --braid --solve'),
+        ('### A Quiet Run',
+         'python -m py_maze -d easy --seed 2024 --quiet'),
     )
 
     def shown(self, heading, command):
@@ -3877,6 +4462,113 @@ class TestCarvingSectionExamples(MainRunner, unittest.TestCase):
 
                 self.assertEqual(self.maze_of(output),
                                  self.shown(heading, command))
+
+
+class TestScriptingSection(MainRunner, unittest.TestCase):
+    # the README's scripting section is what a script is written against,
+    # so every example in it is run and every code it tables is checked
+
+    HEADING = '## Scripting py_maze'
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def section(self):
+        # the scripting section, from its heading to the next level 2 one
+        #
+        # Returns:
+        #     str: The section, its heading included
+
+        readme = read_project_file(README_PATH)
+        start = readme.find(self.HEADING)
+        self.assertNotEqual(start, -1, 'the README has no scripting section')
+
+        end = readme.find('\n## ', start + len(self.HEADING))
+        return readme[start:] if end == -1 else readme[start:end]
+
+    def fenced(self, pattern):
+        # one fenced block of the section, by whatever introduces it
+        #
+        # Args:
+        #     pattern: Expression matching up to the block, capturing it
+        #
+        # Returns:
+        #     str: The block, without the fences around it
+
+        shown = re.search(pattern, self.section(), re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(shown, 'the section shows no %s block' % pattern)
+        return shown.group(1)
+
+    def test_the_section_is_there(self):
+        self.assertIn(self.HEADING, read_project_file(README_PATH))
+
+    def test_the_documented_json_is_what_its_command_writes(self):
+        # laid out in the README and written on one line, so the two are
+        # compared as documents rather than as text
+        grid = py_maze.MazeGenerator(2, 2, seed=2024).generate()
+        written = py_maze.save_json(grid, seed=2024,
+                                    solution=py_maze.solve_maze(grid))
+
+        self.assertEqual(json.loads(self.fenced(r'^```json\n(.*?)^```$')),
+                         json.loads(written))
+
+    def test_the_documented_json_run_prints_that_document(self):
+        output, _ = self.run_main(['-w', '2', '-H', '2', '--seed', '2024',
+                                   '--solve', '--format', 'json'])
+
+        self.assertEqual(json.loads(output),
+                         json.loads(self.fenced(r'^```json\n(.*?)^```$')))
+
+    def test_the_documented_plain_picture_loads_as_it_is_shown(self):
+        # the file and the maze it comes back as are read together, so
+        # the output block matched is the one below that file
+        example = re.search(
+            r'\*\*`drawn\.txt`:\*\*\n\n```\n(.*?)^```\n'
+            r'.*?\*\*Output:\*\*\n\n```\nstart\n(.*?)end\n```',
+            self.section(), re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(example, 'the section draws no plain picture')
+
+        path = os.path.join(self.directory.name, 'drawn.txt')
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write(example.group(1))
+
+        output, _ = self.run_main(['--load', path, '--wall-char', '#',
+                                   '--open-char', '.', '--quiet'])
+
+        self.assertEqual(self.maze_of(output), example.group(2).rstrip('\n'))
+
+    def test_the_pipeline_it_shows_runs_end_to_end(self):
+        command = self.fenced(r'```bash\n(python -m py_maze [^\n]*\|[^\n]*)\n')
+        first, second = [half.split()[3:] for half in command.split('|')]
+
+        written, _ = self.run_main(first)
+        read, _ = self.run_main(second, stdin=written)
+
+        self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(read))
+
+    def test_it_tables_the_code_for_everything_that_can_go_wrong(self):
+        codes = {
+            'The run finished': py_maze.EXIT_OK,
+            'An option the command line will not take': py_maze.EXIT_USAGE,
+            'A file that is not a maze this build can read':
+                py_maze.EXIT_SAVE_FILE,
+            'A file that could not be read, or written':
+                py_maze.EXIT_FILE_ERROR,
+            'A maze with no way from the entrance to the exit':
+                py_maze.EXIT_NO_WAY_THROUGH,
+        }
+        section = self.section()
+
+        for description, code in codes.items():
+            self.assertIn('| `%d` | %s |' % (code, description), section)
+
+    def test_it_names_every_code_the_command_line_exports(self):
+        section = self.section()
+
+        for name in py_maze.cli.__all__:
+            if name.startswith('EXIT_'):
+                self.assertIn('`py_maze.%s`' % name, section)
 
 
 class TestDevelopmentFileTree(unittest.TestCase):
