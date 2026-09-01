@@ -18,9 +18,11 @@ is not a maze.
 
 __all__ = [
     'MIN_DIMENSION',
+    'MIN_GRID_WIDTH',
     'MOVES',
     'find_entrance',
     'find_exit',
+    'has_ends',
     'open_cells',
     'open_ends',
     'open_neighbors',
@@ -29,6 +31,11 @@ __all__ = [
 
 # smallest maze that still has an interior path
 MIN_DIMENSION = 2
+
+# narrowest a maze can be drawn and still have somewhere to put both its
+# ends: the entrance is cut in column 1 and the exit in the column before
+# the last, so anything narrower puts one of them off the grid entirely
+MIN_GRID_WIDTH = 3
 
 # the four moves a player, and the solver, can make
 MOVES = ((0, -1), (1, 0), (0, 1), (-1, 0))
@@ -71,6 +78,27 @@ def open_ends(grid):
     grid[-1][-2] = False  # exit at the bottom
 
     return grid
+
+
+def has_ends(grid):
+    """Report whether a maze has room for an entrance and an exit.
+
+    :func:`find_entrance` reads column 1 and :func:`find_exit` the column
+    before the last, so a maze narrower than :data:`MIN_GRID_WIDTH` has
+    one of those columns off the grid and neither function has anything
+    to read. A maze straight from the generator is always wide enough,
+    :data:`MIN_DIMENSION` cells carving five columns; a maze read out of
+    a file is whatever the file drew, which is what this is for.
+
+    Args:
+        grid: 2D list of booleans (True = wall, False = path)
+
+    Returns:
+        bool: True when the entrance and exit columns are both inside the
+        maze, so everything that reads the two ends has ends to read
+    """
+
+    return bool(grid) and len(grid[0]) >= MIN_GRID_WIDTH
 
 
 def find_entrance(grid):

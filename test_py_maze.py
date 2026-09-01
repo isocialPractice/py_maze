@@ -3283,6 +3283,81 @@ class TestFormatOption(MainRunner, unittest.TestCase):
         with self.assertRaises(ValueError):
             py_maze.write_save(self.path, grid, form='yaml')
 
+    def test_a_document_whose_format_is_a_word_says_so(self):
+        # "1" is not 1, and a message reporting it as 1 tells the reader
+        # that format 1 is not supported by the build that reads 1
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save('{"py_maze": "1", "grid": [[true]]}')
+
+        self.assertIn('save format "1" is not supported',
+                      str(caught.exception))
+
+    def test_a_document_whose_format_is_true_is_refused(self):
+        # a boolean is a whole number in Python, so true would otherwise
+        # read as the format this build carries
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save('{"py_maze": true, "grid": [[true]]}')
+
+        self.assertIn('save format true is not supported',
+                      str(caught.exception))
+
+    def test_the_format_this_build_reads_is_reported_as_the_document_wrote_it(
+            self):
+        # the number a document carries is shown the way the save-format
+        # document tables it, so the fix above changes no message it names
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save('{"py_maze": 2, "grid": [[true]]}')
+
+        self.assertEqual(str(caught.exception),
+                         'save format 2 is not supported, this build reads 1')
+
+    def test_a_document_may_not_put_a_pickup_outside_the_maze(self):
+        # the picture cannot express one, a '$' always being drawn inside
+        # the maze. Off the grid it is drawn by nothing and reached by
+        # nobody, and MazeGame tallies it all the same, so the summary
+        # reads "Collected: 0 of 1" however well the maze is played
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save(
+                '{"py_maze": 1, "grid": [[true, false, true]], '
+                '"collectibles": [[99, 99]]}', 'maze.json')
+
+        self.assertEqual(str(caught.exception),
+                         'maze.json: collectibles holds [99, 99], which is '
+                         'outside the maze')
+
+    def test_a_pickup_before_the_first_cell_is_outside_it_too(self):
+        # a negative coordinate indexes a row from its end in Python, so
+        # it is off the maze without being out of range of it
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save('{"py_maze": 1, "grid": [[true, false]], '
+                                    '"collectibles": [[-1, 0]]}')
+
+        self.assertIn('[-1, 0], which is outside the maze',
+                      str(caught.exception))
+
+    def test_a_pickup_in_the_corner_of_the_maze_is_inside_it(self):
+        # the edge of the grid is the edge of the maze, not a cell short
+        _, collectibles, _ = py_maze.parse_json_save(
+            '{"py_maze": 1, "grid": [[false, false], [false, false]], '
+            '"collectibles": [[0, 0], [1, 1]]}')
+
+        self.assertEqual(sorted(collectibles), [(0, 0), (1, 1)])
+
+    def test_every_pickup_a_document_hands_back_is_one_that_can_be_had(self):
+        # the tally MazeGame keeps is the count of what the reader
+        # handed it, so a cell it can never reach leaves the summary
+        # unwinnable
+        generator = py_maze.MazeGenerator(6, 6, seed=2024)
+        grid = generator.generate()
+        placed = py_maze.place_collectibles(grid, 4, generator.random)
+        _, collectibles, _ = py_maze.parse_json_save(
+            py_maze.save_json(grid, placed))
+
+        self.assertEqual(py_maze.MazeGame(grid, collectibles)
+                         .total_collectibles, 4)
+        for x, y in collectibles:
+            self.assertIn((x, y), set(py_maze.open_cells(grid)))
+
     def test_a_document_round_trips_through_the_library(self):
         generator = py_maze.MazeGenerator(6, 6, seed=2024)
         grid = generator.generate()
@@ -3467,6 +3542,105 @@ class TestExitCodes(MainRunner, unittest.TestCase):
             "runpy.run_module('py_maze', run_name='__main__')")
 
         self.assertEqual(result.returncode, py_maze.EXIT_OK, result.stderr)
+
+
+class TestMazeWithNoEnds(MainRunner, unittest.TestCase):
+    # find_entrance reads column 1 and find_exit the column before the
+    # last, so a picture too narrow to hold the two faults in whichever
+    # reader of them the run happens to reach first. The maze is refused
+    # once, where it is settled on, instead
+
+    # a maze one character wide: the entrance column is off it
+    NARROW = "# py_maze save 1\n*\n*\n*\n"
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'tiny.txt')
+
+    def write(self, text):
+        # Returns:
+        #     str: The path a file of that text was written to
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(text)
+        return self.path
+
+    def test_has_ends_measures_the_columns_the_two_are_cut_in(self):
+        self.assertEqual(py_maze.MIN_GRID_WIDTH, 3)
+        self.assertFalse(py_maze.has_ends([]))
+        self.assertFalse(py_maze.has_ends([[True]]))
+        self.assertFalse(py_maze.has_ends([[True, False]]))
+        self.assertTrue(py_maze.has_ends([[True, False, True]]))
+
+    def test_a_generated_maze_always_has_room_for_them(self):
+        grid = py_maze.MazeGenerator(py_maze.MIN_DIMENSION,
+                                     py_maze.MIN_DIMENSION).generate()
+
+        self.assertTrue(py_maze.has_ends(grid))
+
+    def test_the_reader_loads_it_as_the_format_says_it_does(self):
+        # the refusal belongs where the maze is used, not where the file
+        # is read: docs/save-format.md promises that any rectangle of the
+        # allowed characters loads, and it still does
+        grid, _, _ = py_maze.parse_save(self.NARROW)
+
+        self.assertEqual(grid, [[True], [True], [True]])
+        self.assertFalse(py_maze.has_ends(grid))
+
+    def test_it_is_refused_rather_than_traced_back_from(self):
+        code, message, _ = self.run_main_failing(
+            ['--load', self.write(self.NARROW)])
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn('too narrow for an entrance and an exit', message)
+        self.assertIn(self.path, message)
+
+    def test_every_run_that_reads_the_two_ends_is_refused_the_same_way(self):
+        # the solver, the document and the game each read them, and one
+        # check in front of all three is what covers them
+        for argv in ([], ['--solve'], ['--animate'], ['--format', 'json'],
+                     ['--format', 'json', '--save', py_maze.STDIO_PATH]):
+            with self.subTest(run=argv):
+                code, _, output = self.run_main_failing(
+                    ['--load', self.write(self.NARROW)] + argv)
+
+                self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+                self.assertNotIn('{', output)
+
+    def test_a_document_too_narrow_for_them_is_refused_as_well(self):
+        # a document says outright where the two ends are, and the reader
+        # works them out again, so it reaches the same fault a picture did
+        code, message, _ = self.run_main_failing(
+            ['--load', self.write('{"py_maze": 1, "grid": [[true]]}\n')])
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn('too narrow', message)
+
+    def test_a_maze_read_from_the_stream_is_named_the_way_the_reader_names_it(
+            self):
+        code, message, _ = self.run_main_failing(
+            ['--load', py_maze.STDIO_PATH], stdin=self.NARROW)
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
+        self.assertIn(py_maze.STDIN_NAME, message)
+        self.assertNotIn("%s:" % py_maze.STDIO_PATH, message)
+
+    def test_the_narrowest_maze_that_has_both_ends_is_played_as_ever(self):
+        # three characters is the width the entrance and the exit need,
+        # and a maze of exactly that is not refused
+        output, _ = self.run_main(
+            ['--load', self.write(UNSOLVABLE_SAVE), '-q'])
+
+        self.assertEqual(self.maze_of(output), "* *\n***\n* *")
+
+    def test_a_wall_char_picture_of_the_same_width_is_refused_too(self):
+        # the refusal measures the maze, not the characters it was drawn
+        # with, so a headerless picture reaches it as well
+        code, _, _ = self.run_main_failing(
+            ['--load', self.write("#\n#\n"), '--wall-char', '#',
+             '--open-char', '.'])
+
+        self.assertEqual(code, py_maze.EXIT_SAVE_FILE)
 
 
 class TestPlainPicture(MainRunner, unittest.TestCase):
@@ -4104,6 +4278,8 @@ class TestSaveFormatDocument(unittest.TestCase):
          '{"py_maze": 1, "grid": [[true, true], [true]]}\n'),
         ('a document whose collectibles are not cells',
          '{"py_maze": 1, "grid": [[true]], "collectibles": [[1]]}\n'),
+        ('a document with a collectible off the maze',
+         '{"py_maze": 1, "grid": [[true]], "collectibles": [[9, 9]]}\n'),
         ('a document whose seed is neither a number nor a word',
          '{"py_maze": 1, "grid": [[true]], "seed": {}}\n'),
     )

@@ -818,6 +818,13 @@ reading the message:
 | `4` | A file that could not be read, or written |
 | `5` | A maze with no way from the entrance to the exit |
 
+Code 3 also covers a loaded maze fewer than 3 characters wide. The entrance
+is cut in the second column and the exit in the second from last, so a maze
+that narrow has nowhere to put them, and the solver, the JSON document and
+the game all read the two out of the grid. The maze is refused once, before
+any of them sees it, rather than faulting in whichever the run reaches
+first.
+
 Code 5 is reported only when a solution was asked for. A generated maze
 always has a way through, so it is a loaded one that can lack it, and
 `--solve` or `--animate` is what looks. The maze is still printed before the
@@ -1007,8 +1014,10 @@ surface, and `py_maze.__all__` lists it in full.
 | `open_cells(grid)` | Yield every cell the player can stand on, in reading order |
 | `open_neighbors(grid, x, y)` | Yield the open cells one step from `(x, y)` |
 | `open_ends(grid)` | Cut the entrance and the exit into a carved maze |
+| `has_ends(grid)` | Whether a maze is wide enough to have an entrance and an exit |
 | `MOVES` | The four steps a player, and the solver, can make |
 | `MIN_DIMENSION` | The smallest maze with an interior path, 2 cells |
+| `MIN_GRID_WIDTH` | The narrowest a maze can be drawn and still have both ends, 3 characters |
 
 **Generating** (`py_maze.generation`)
 
@@ -1080,6 +1089,7 @@ constants, so a caller need not repeat the characters: `WALL_MARKER`,
 | `FORMATS`, `TEXT_FORMAT`, `JSON_FORMAT`, `DEFAULT_FORMAT` | The two forms a maze is written in, and the one written unasked |
 | `JSON_FORMAT_KEY` | The key a document carries the format number under |
 | `STDIO_PATH` | The file name that means standard input or standard output, `-` |
+| `STDIN_NAME` | What a message calls that stream, `<stdin>`, there being no file name |
 
 `write_save` and `read_save` take the file name `-` for standard output and
 standard input, or a `stream` of your own in its place, which is what makes

@@ -326,7 +326,16 @@ And for a document:
 | Has a row that is not `true` and `false` | `row 1 is not a row of true and false` |
 | Has rows of different lengths | `row 2 is 1 cells, expected 2` |
 | Lists something that is not a cell | `collectibles holds [1], which is not an (x, y) cell` |
+| Puts a collectible off the maze | `collectibles holds [9, 9], which is outside the maze` |
 | Records a seed that is neither | `the seed is not a number or a word` |
+
+A picture cannot express a collectible outside the maze, a `$` being one of
+the characters the maze is drawn with, so the document reader refuses one
+rather than admitting a maze the picture reader could not. A cell off the
+grid is drawn by nothing and can be stepped on by nobody, and it would be
+counted in the tally all the same, leaving a summary that reads
+`Collected: 0 of 1` however well the maze is played. Every cell from
+`[0, 0]` to the bottom right of the grid is inside it.
 
 Line numbers count every line in the file, comments and blank lines
 included, and start at 1; a document's rows are counted from 1 as well.
@@ -341,6 +350,13 @@ Two things are deliberately **not** refused:
   it is the solver that reports there is no route, by returning `None`.
 - **A maze of no particular size.** Any rectangle of the allowed characters
   loads, whether or not its dimensions are the `2n + 1` of a carved maze.
+  The command line does draw one line here: a maze fewer than 3 characters
+  wide has no column for an entrance and an exit to be cut in, so
+  `py_maze --load` refuses it with
+  `the maze is too narrow for an entrance and an exit, which need 3
+  characters` and exits with status **3**. The reader still hands the maze
+  back, `py_maze.has_ends` being what reports whether a grid has room for
+  the two.
 
 ## Writing a File py_maze Will Load
 

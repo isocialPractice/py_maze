@@ -47,8 +47,9 @@ from .game import (CONTROLS_LINE, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
                    PLAIN_WIN_BANNER, WIN_BANNER, MazeGame, win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
-from .grid import (MIN_DIMENSION, MOVES, find_entrance, find_exit, open_cells,
-                   open_ends, open_neighbors, walled_grid)
+from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
+                   find_exit, has_ends, open_cells, open_ends, open_neighbors,
+                   walled_grid)
 from .keys import (INTERRUPT_KEY, KEY_POLL_INTERVAL, WINDOWS_INTERRUPT_KEY,
                    read_key, read_key_posix, read_key_windows, read_response)
 from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME,
@@ -61,10 +62,10 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME,
                         maze_lines, print_maze, solution_overlay, status_line,
                         summary_lines, terminal_size)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
-                    SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIO_PATH,
-                    TEXT_FORMAT, SaveFileError, parse_json_save, parse_save,
-                    picture_chars, read_save, save_json, save_lines,
-                    write_save)
+                    SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIN_NAME,
+                    STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
+                    parse_save, picture_chars, read_save, save_json,
+                    save_lines, write_save)
 from .solving import search_frames, solve_maze
 from .version import __version__
 
@@ -72,9 +73,11 @@ __all__ = [
     '__version__',
     # grid
     'MIN_DIMENSION',
+    'MIN_GRID_WIDTH',
     'MOVES',
     'find_entrance',
     'find_exit',
+    'has_ends',
     'open_cells',
     'open_ends',
     'open_neighbors',
@@ -133,6 +136,7 @@ __all__ = [
     'SAVE_CHARS',
     'SAVE_FORMAT',
     'SAVE_HEADER',
+    'STDIN_NAME',
     'STDIO_PATH',
     'TEXT_FORMAT',
     'SaveFileError',

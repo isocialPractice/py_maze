@@ -5,6 +5,57 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-09-01
+
+Corrections to the edges of the document 2.2.0 introduced. A document
+carrying a maze this build can play is read exactly as it was, and every
+option behaves as it did: what changes is that the three documents it should
+never have taken are refused rather than misread, crashed on or silently
+counted.
+
+### Added
+
+- Repo graphics: [logo.svg](logo.svg), [icon.svg](icon.svg),
+  [banner.gif](banner.gif)
+- `has_ends` and `MIN_GRID_WIDTH` on the public surface, the first reporting
+  whether a grid is wide enough to have an entrance and an exit and the
+  second the width the two need, and `STDIN_NAME`, what a message calls
+  standard input when there is no file name to give it.
+
+### Fixed
+
+- A maze too narrow to have an entrance and an exit is refused instead of
+  ending in a traceback. `find_entrance` reads column 1 and `find_exit` the
+  column before the last, so a file drawing a maze fewer than 3 characters
+  wide had nowhere to put either, and every reader of the two faulted on it
+  in turn: `py_maze --load tiny.txt --solve` raised `IndexError` out of the
+  solver, and `py_maze --load tiny.txt --format json` raised it out of the
+  document without a solution being asked for at all. The maze is now
+  refused once, where the run settles on it, so the solver, the document and
+  the game are all covered by the one check, and the run exits with status
+  `3` and a message naming the file. The reader is unchanged: any rectangle
+  of the allowed characters still loads, as `docs/save-format.md` says it
+  does, and it is the command line that draws the line.
+- A document may no longer put a collectible outside the maze. Any pair of
+  whole numbers was taken, so `"collectibles": [[99, 99]]` or `[[-1, -1]]`
+  loaded without complaint: the cell sits off the grid, so nothing draws it
+  and nobody can step on it, while `MazeGame` counted it all the same and
+  the end-of-game summary read `Collected: 0 of 1` however well the maze was
+  played. A picture cannot express one, `$` being a character the maze is
+  drawn with, so the document reader was admitting a maze the picture reader
+  could not. Such a cell is now refused with
+  `collectibles holds [99, 99], which is outside the maze`, and the refusal
+  is tabled in `docs/save-format.md` beside the others.
+- A JSON document whose `py_maze` key is not the format number is refused
+  and named for what it carries. The key was compared to the number without
+  being checked for one first, so `"py_maze": "1"` was refused with
+  `save format 1 is not supported, this build reads 1`, a message that
+  reports the string as the number it is not and so contradicts itself, and
+  `"py_maze": true` was accepted as format 1, a boolean being a whole number
+  in Python. The value is now shown as the document wrote it, so a word
+  reads as `save format "1"` and a boolean as `save format true`. The
+  message for a format number this build does not read is unchanged.
+
 ## [2.2.0] - 2026-08-31
 
 Letting another program call py_maze and read what comes back, with no

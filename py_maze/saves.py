@@ -42,6 +42,7 @@ __all__ = [
     'SAVE_CHARS',
     'SAVE_FORMAT',
     'SAVE_HEADER',
+    'STDIN_NAME',
     'STDIO_PATH',
     'TEXT_FORMAT',
     'SaveFileError',
@@ -74,7 +75,9 @@ DEFAULT_FORMAT = TEXT_FORMAT
 # to a writer, as it does to most of the tools py_maze would be piped into
 STDIO_PATH = '-'
 
-# what a message calls that stream, there being no file name to give it
+# what a message calls that stream, there being no file name to give it,
+# so anything refusing a maze read from it names the same thing the
+# reader does
 STDIN_NAME = '<stdin>'
 
 # the comment lines a save file may open with
@@ -265,19 +268,23 @@ def json_grid(grid, where):
     return grid
 
 
-def json_cells(cells, key, where):
+def json_cells(cells, key, where, grid):
     # read a list of (x, y) cells out of a JSON maze document
     #
     # Args:
     #     cells: Whatever the document carried under that key
     #     key: Name of the key, for the messages
     #     where: The file name and its separator, for the messages
+    #     grid: The maze the cells have to be inside. A cell off the grid
+    #         is drawn by nothing and can be stepped on by nobody, so it
+    #         would be tallied and never picked up
     #
     # Returns:
     #     list: The cells as (x, y) pairs, empty when the key is absent
     #
     # Raises:
     #     SaveFileError: If any of them is not a pair of whole numbers
+    #         inside the maze
 
     if cells is None:
         return []
@@ -293,7 +300,13 @@ def json_cells(cells, key, where):
                         not isinstance(number, bool) for number in cell)):
             raise SaveFileError("%s%s holds %s, which is not an (x, y) cell"
                                 % (where, key, json.dumps(cell)))
-        read.append((cell[0], cell[1]))
+
+        x, y = cell
+        if not (0 <= x < len(grid[0]) and 0 <= y < len(grid)):
+            raise SaveFileError("%s%s holds %s, which is outside the maze"
+                                % (where, key, json.dumps(cell)))
+
+        read.append((x, y))
 
     return read
 
@@ -327,19 +340,28 @@ def parse_json_save(text, source=None):
     if not isinstance(document, dict) or JSON_FORMAT_KEY not in document:
         raise SaveFileError("%snot a py_maze save file" % where)
 
+    # a boolean is a whole number in Python and is not a format, and the
+    # number is shown as the document wrote it so that a string carrying
+    # a digit is not reported as the digit it is not
     saved_format = document[JSON_FORMAT_KEY]
-    if saved_format != SAVE_FORMAT:
+    if (not isinstance(saved_format, int) or isinstance(saved_format, bool)
+            or saved_format != SAVE_FORMAT):
         raise SaveFileError(
             "%ssave format %s is not supported, this build reads %d"
-            % (where, saved_format, SAVE_FORMAT))
+            % (where, json.dumps(saved_format), SAVE_FORMAT))
 
     seed = document.get('seed')
     if seed is not None and not isinstance(seed, (int, str)):
         raise SaveFileError("%sthe seed is not a number or a word" % where)
 
-    return (json_grid(document.get('grid'), where),
+    # the grid is read first, the cells being checked against it: a
+    # pickup off the maze is drawn by nothing and reached by nobody, and
+    # would be tallied all the same
+    grid = json_grid(document.get('grid'), where)
+
+    return (grid,
             set(json_cells(document.get('collectibles'), 'collectibles',
-                           where)),
+                           where, grid)),
             seed)
 
 

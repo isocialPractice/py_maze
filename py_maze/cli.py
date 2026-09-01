@@ -15,14 +15,14 @@ from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
 from .game import GOODBYE_MESSAGE, MazeGame
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
-from .grid import MIN_DIMENSION
+from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
 from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
                         animate_search, collectible_overlay, fit_to_terminal,
                         print_maze, solution_overlay, terminal_size)
-from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIO_PATH,
-                    TEXT_FORMAT, SaveFileError, picture_chars, read_save,
-                    save_json, write_save)
+from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIN_NAME,
+                    STDIO_PATH, TEXT_FORMAT, SaveFileError, picture_chars,
+                    read_save, save_json, write_save)
 from .solving import solve_maze
 from .version import __version__
 
@@ -359,6 +359,32 @@ def fail(message, code):
     sys.exit(code)
 
 
+def check_ends(grid, path):
+    # refuse a loaded maze with no room for an entrance and an exit
+    #
+    # The solver, the JSON document and the game each read the two ends
+    # out of the grid, and every one of them faults on a maze too narrow
+    # to hold them. The refusal is made here, once, where the maze is
+    # settled on, rather than in each of the readers or in the reader of
+    # the file: docs/save-format.md promises that any rectangle of the
+    # allowed characters loads, and it still does.
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     path: Where the maze was loaded from, for the message
+    #
+    # Raises:
+    #     SaveFileError: If the maze is too narrow to have both ends
+
+    if has_ends(grid):
+        return
+
+    where = STDIN_NAME if path == STDIO_PATH else path
+    raise SaveFileError(
+        "%s: the maze is too narrow for an entrance and an exit, "
+        "which need %d characters" % (where, MIN_GRID_WIDTH))
+
+
 def build_maze(args):
     """Settle on the maze this run plays: loaded from a file, or generated.
 
@@ -371,7 +397,8 @@ def build_maze(args):
 
     Raises:
         OSError: If a maze was to be loaded and the file cannot be read
-        SaveFileError: If the file is not a maze this build can read
+        SaveFileError: If the file is not a maze this build can read, or
+            the maze in it is too narrow to have an entrance and an exit
         ValueError: If --wall-char and --open-char name the same
             character, leaving no way to tell a wall from a cell
     """
@@ -385,8 +412,14 @@ def build_maze(args):
         # neither resized nor re-seeded here. A file with no py_maze save
         # header is a plain picture, read with the characters the two
         # character options say it is drawn with
-        return read_save(args.load,
-                         picture_chars(args.wall_char, args.open_char))
+        loaded = read_save(args.load,
+                           picture_chars(args.wall_char, args.open_char))
+
+        # a generated maze always has room for both ends; a loaded one is
+        # whatever the file drew, and everything downstream reads them
+        check_ends(loaded[0], args.load)
+
+        return loaded
 
     # use the difficulty preset and any width and height overrides,
     # capped to whatever the terminal can actually show
