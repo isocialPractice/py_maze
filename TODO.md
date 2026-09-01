@@ -90,7 +90,7 @@ into a `## Complete` section at the bottom of this file.
 
 ### Create and Deploy GitHub Pages Override
 
-- [ ] Line count over 1500
+- [ ] Line count over 1300
 
 ## Fixes and Hardening
 
