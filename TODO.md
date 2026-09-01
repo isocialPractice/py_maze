@@ -25,6 +25,69 @@ into a `## Complete` section at the bottom of this file.
   where the file is read
   - From: Runtime and Portability Fixes
 
+### Code Review Override - 2.2.1 Load and Document Edges
+
+#### Resolve Issues
+
+- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
+  of crashing on it
+  - **Issue**: The work is done and shipped, but the queue does not say so.
+    `check_ends` in `py_maze/cli.py` refuses the maze, `has_ends` and
+    `MIN_GRID_WIDTH` are in `py_maze/grid.py` and on the public surface,
+    `TestMazeWithNoEnds` covers it, and the 2.2.1 `CHANGELOG.md` entry
+    records it - while the item itself sits unchecked in `## Current` and the
+    two override items the same run finished were archived into
+    `## Complete`. The next run to read the queue sees implemented work as
+    outstanding.
+  - **Goal**: Reconcile the record rather than building anything again.
+    Check the item off and archive it into `## Complete` where the work above
+    is what it asked for; where some part of it is genuinely missing, do only
+    that part.
+  - From: Runtime and Portability Fixes
+
+#### Found Issues
+
+- [ ] A document may still put a collectible on a wall
+  - **Issue**: `json_cells` in `py_maze/saves.py` now refuses a cell outside
+    the grid, but takes any cell inside it, wall or not. A document whose
+    grid is three rows of `[true, false, true]` and whose collectibles are
+    `[[0, 0]]` loads, and `(0, 0)` is a wall: `open_cells` never yields it,
+    the player can never stand on it, and `MazeGame` counts it in
+    `total_collectibles` all the same, so the summary reads
+    `Collected: 0 of 1` however well the maze is played - the very defect the
+    off-grid check was written to close. It also breaks the text round trip:
+    `save_lines` draws `$` over that wall and `parse_save` reads `$` back as
+    an open cell, so loading the document and saving it as a picture yields a
+    maze whose wall has turned into a path. `docs/save-format.md` now says
+    the document reader refuses such a cell "rather than admitting a maze the
+    picture reader could not", and a picture cannot express this one either,
+    `$` always being an open cell there.
+  - **Goal**: Refuse a collectible that is not on an open cell, in the style
+    of the message beside it, and table the refusal in the JSON section of
+    `docs/save-format.md`. Then make
+    `test_every_pickup_a_document_hands_back_is_one_that_can_be_had` verify
+    what its name claims: it reads a generated maze back, where
+    `place_collectibles` has already guaranteed open cells, so it passes with
+    or without any check in the reader.
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+- [ ] `MIN_GRID_WIDTH` is explained by something that does not happen
+  - **Issue**: The `has_ends` docstring in `py_maze/grid.py` says a maze
+    narrower than `MIN_GRID_WIDTH` "has one of those columns off the grid and
+    neither function has anything to read", the `check_ends` comment in
+    `py_maze/cli.py` says "every one of them faults", and `README.md` says
+    such a maze "has nowhere to put them". None of that holds at two
+    characters wide: `find_entrance` reads column 1 and `find_exit` column 0,
+    both on the grid, and neither raises. Only a one-column maze faults, and
+    only in `find_entrance` - `find_exit` reads column `-1` there and quietly
+    hands back an `x` of `-1`. Refusing a two-wide maze is right, the exit
+    column sitting left of the entrance column with both on the border, but
+    the reason given for it is not the one that applies.
+  - **Goal**: Restate the reason in `py_maze/grid.py`, `py_maze/cli.py`,
+    `README.md` and `docs/save-format.md`: three characters is what it takes
+    for the entrance column and the exit column to be distinct and inside the
+    maze. Leave the behaviour, the message and the status code as they are.
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+
 ### Create and Deploy GitHub Pages Override
 
 - [ ] Line count over 1500
@@ -312,3 +375,36 @@ No items are currently queued in this section.
   the wall and open characters given by `--wall-char` and `--open-char`, so a
   maze drawn by another tool can be played, solved and re-saved
   - From: Machine-Readable Output and Interop
+- [x] Add a `--format` option choosing how the maze is written: `text`, the
+  picture it prints today and the default, or `json`, carrying the grid, the
+  entrance, the exit, the collectibles, the seed and the solution when one
+  was asked for
+  - **Issue**: `save_json` reads `find_entrance` and `find_exit` to write the
+    `entrance` and `exit` keys, so `--format json` reaches the crash the
+    second `## Current` item above describes, and reaches it without
+    `--solve`. On a one-column picture, both `py_maze --load tiny.txt
+    --format json` and `py_maze --load tiny.txt --format json --save
+    out.json` end in an `IndexError` traceback out of `py_maze/grid.py` line
+    88 and exit 1, rather than being refused. `docs/save-format.md` promises
+    that any rectangle of the allowed characters loads.
+  - **Goal**: Widen the fix for that queued item so it covers `save_json` as
+    well as the solver. The item names only `--solve`, `find_entrance` and
+    `find_exit`, so a fix written to its letter leaves `--format json`
+    tracing back. Refuse the maze once, where it is used, so every reader of
+    the entrance and the exit is covered by the one check.
+  - From: Machine-Readable Output and Interop
+- [x] A document may put a collectible outside the maze
+  - **Issue**: `json_cells` in `py_maze/saves.py` takes any pair of whole
+    numbers, so a document carrying `"collectibles": [[99, 99]]` or
+    `[[-1, -1]]` loads without complaint. The cell is off the grid, so
+    `maze_lines` never draws it and the player can never step on it, but
+    `MazeGame` counts it in `total_collectibles` all the same and the
+    end-of-game summary reads `Collected: 0 of 1` however well the maze is
+    played. The picture format cannot express this, a `$` always being
+    inside the maze, so the document reader admits a maze the picture reader
+    cannot.
+  - **Goal**: Refuse a cell outside the grid in `parse_json_save`, with a
+    message in the style of the ones beside it, and table the refusal in the
+    JSON section of `docs/save-format.md`. Cover it with a test in the JSON
+    group of `test_py_maze.py`.
+  - From: Code Review Override - JSON Document Edges
