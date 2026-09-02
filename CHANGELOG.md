@@ -5,6 +5,69 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The documentation moved out of `README.md` and into a site. Nothing about
+the package changed: no option behaves differently, no name entered or left
+the public surface, and the version is where 2.2.1 left it. A documentation
+site is not a release.
+
+### Added
+
+- A documentation site under `docs/`, one Markdown page to a file, built by
+  GitHub Pages' own Markdown processing under a layout and stylesheet of the
+  project's own. Fourteen pages, a fixed side menu with collapsible groups, a
+  light and a dark rendering, and a layout that reads from a phone.
+- `QUICKSTART.md` and `CHEATSHEET.md` as pages of that site: the first for a
+  reader who wants the game running now, the second for one who has read the
+  documentation and wants the options, keys, markers, codes and public names
+  back at a glance.
+- `DESIGN_LANGUAGE.md`, recording the palette, type scale and spacing the
+  site is drawn with, what in the repository's own artwork each was derived
+  from, and the contrast ratio measured for every text and background pair.
+- `.github/workflows/workflow.yml`, building the site from `docs/` and
+  deploying it to GitHub Pages on every push to the default branch. The
+  repository's Pages source is set to GitHub Actions.
+- A `Documentation` URL in the manifest, pointing at the site.
+- Tests covering the site: that every page is published, carries the front
+  matter the layout reads and is reachable from the side menu; that the menu
+  links the page beside it; that the README stays a front door rather than a
+  manual and links every page; that the workflow asks for the permissions a
+  Pages deploy needs and runs the Pages action sequence; and that every
+  contrast ratio `DESIGN_LANGUAGE.md` writes down is the one recomputed from
+  its own hex values, clears 4.5:1, and names a colour the stylesheet
+  actually uses. A page's links are checked as well: a raw `href` written in
+  a page has to name a page the build actually writes, since the site
+  rewrites Markdown links from `.md` to `.html` but leaves an `href`
+  untouched.
+
+### Fixed
+
+- The four cards on the site's home page linked `.md` files, which the build
+  does not publish, so each was a 404 on the deployed site. The rewrite that
+  fixes this for a Markdown link does not reach a raw `href`, so the cards
+  name the built pages directly. The same four pages are still linked as
+  Markdown under "Where to go next", which is what a reader on GitHub
+  follows.
+
+### Changed
+
+- `README.md` is a front door rather than a manual. It went from 1315 lines
+  to under 220: what it keeps is what the project is, how to install it, the
+  options a run reaches for most, and a short stand-in for each section whose
+  detail moved, with that section's heading linking the page it moved to. The
+  full text was moved rather than summarized, so nothing was lost in the
+  split.
+- `docs/save-format.md` is a page of the site rather than a document beside
+  it. Its text is unchanged.
+- The tests that read the documentation read it where it now lives. The
+  worked example is still executed and compared character for character, the
+  carving, braiding and quiet-run command lines are still run, the name
+  tables are still checked against every `__all__` they cover, and the
+  project tree is still resolved against the repository - against
+  `docs/library.md`, `docs/generating.md`, `docs/scripting.md` and
+  `docs/development.md` rather than against one README.
+
 ## [2.2.1] - 2026-09-01
 
 Corrections to the edges of the document 2.2.0 introduced. A document

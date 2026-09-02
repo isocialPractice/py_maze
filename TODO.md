@@ -87,6 +87,31 @@ into a `## Complete` section at the bottom of this file.
     for the entrance column and the exit column to be distinct and inside the
     maze. Leave the behaviour, the message and the status code as they are.
   - From: Code Review Override - 2.2.1 Load and Document Edges
+- [ ] A table on the site has no way to scroll on a narrow screen
+  - **Issue**: `docs/assets/css/site.css` defines `.table-scroll` with
+    `overflow-x: auto`, and nothing ever carries that class: kramdown writes
+    a bare `<table>` for a Markdown table, and no page wraps one by hand. So
+    the rule that was written to keep a wide table inside the screen is dead,
+    and `.page table { width: 100% }` is what applies instead. A table cannot
+    shrink below its widest unbreakable word, and the name table in
+    `docs/library.md` holds `collectible_overlay(collectibles)` - 33
+    characters set in the monospace face at `--type-sm`, roughly 277px, in a
+    cell with 24px of padding, beside two more columns. On a 360px phone the
+    shell leaves 328px, so that row pushes the page wider than the viewport
+    and the whole page scrolls sideways rather than the table.
+    `DESIGN_LANGUAGE.md` says "every page reads from a phone", and
+    `docs/save-format.md` and `docs/CHEATSHEET.md` carry tables of the same
+    shape.
+  - **Goal**: Give the tables the scroll the stylesheet already intends,
+    without a wrapper on every table by hand - `.page table { display: block;
+    overflow-x: auto }` or an equivalent that keeps the header readable - and
+    either use `.table-scroll` or drop it, so the stylesheet has one answer
+    rather than two. Then record the behaviour in the "Layout and menu"
+    section of `DESIGN_LANGUAGE.md`, which currently promises the phone
+    rendering without saying what a wide table does. Confirm it in a browser
+    at 360px: this was queued rather than fixed because it cannot be verified
+    without rendering the page.
+  - From: Code Review Override - 2.2.1 Load and Document Edges
 
 ### Create and Deploy GitHub Pages Override
 
@@ -175,6 +200,122 @@ interface. Completing items in this section is a patch version update.
   a traceback. `docs/save-format.md` says a rectangle of the allowed
   characters loads, so the check belongs where the maze is used rather than
   where the file is read
+
+## Maze Analysis and Statistics
+
+Reading a maze rather than carving or solving one: what shape it turned out
+to be, how hard it is likely to play, and how two mazes compare. Everything
+here is measured from a grid that already exists, so it works the same on a
+generated maze and on one read out of a file. New options with the current
+output unchanged, so completing items in this section is a minor version
+update.
+
+- [ ] Add a `maze_stats(grid)` to a new `py_maze/analysis.py` returning the
+  measurements the rest of this section reports: the cell count, the open
+  cell count, the dead end count, the junction count, the longest corridor
+  and the solution length. One call, one dictionary, no terminal
+- [ ] Add `dead_ends(grid)` yielding every cell with one open neighbour and
+  no way on, which `braid_maze` already finds for itself in
+  `py_maze/generation.py` and which nothing else can reach
+- [ ] Add `junctions(grid)` yielding every cell with three or more open
+  neighbours, so the branching of a maze can be counted rather than
+  eyeballed
+- [ ] Add a `--stats` flag printing those measurements under the maze, in
+  the style of the status line rather than as a table, and leaving the maze
+  itself unchanged
+- [ ] Carry the same measurements in the JSON document under a `stats` key
+  when `--stats` is given, so a script reads them rather than parsing the
+  printed lines
+- [ ] Report the share of the maze the solution walks through, which is what
+  separates a maze that is mostly one long corridor from one that is mostly
+  wrong turns
+- [ ] Add a difficulty score built from the measurements above, documented
+  as what it is made of rather than as a number to trust, so `--stats` says
+  something a player understands
+- [ ] Compare the three carving algorithms in the documentation with the
+  measurements rather than with prose, so "Prim's dead ends are short" is a
+  number a reader can check
+- [ ] Measure a braided maze before and after braiding in the same run, so
+  `--braid 0.25 --stats` says how many dead ends were opened rather than how
+  many are left
+- [ ] Add the analysis names to `py_maze/__init__.py`, the module to
+  `PACKAGE_MODULES` and `TERMINAL_FREE_MODULES` in the suite, and a table to
+  `docs/library.md`, since nothing here touches a terminal
+- [ ] Write `docs/analysis.md` covering the measurements and what each one
+  means for a maze, and add it to `docs/_data/nav.yml` and the README's
+  documentation table
+
+## Rendering Styles and Character Sets
+
+What a maze is drawn with, as opposed to when the screen is redrawn. Today
+every maze is asterisks and spaces, and every marker is one ASCII character
+fixed in `py_maze/rendering.py`. This section makes the drawing a choice
+without changing what a bare run draws. New options with the current output
+unchanged, so completing items in this section is a minor version update.
+
+- [ ] Gather the markers into one style object in `py_maze/rendering.py` -
+  the wall, the open cell, the player, the solution, the frontier, the
+  visited cell, the hint and the collectible - so a second style is a second
+  object rather than a change to `maze_lines`
+- [ ] Keep the current markers as the default style under a name, so a run
+  with no options draws exactly what it draws today and the suite's fixed
+  mazes still match
+- [ ] Add a box-drawing style using the light box characters, drawn only
+  where the output encoding can carry them, falling back to the ASCII style
+  the way the win banner already falls back
+- [ ] Add a `--style` option choosing between the styles, defaulting to the
+  current one, with the names listed in its help text as `--algorithm` lists
+  its own
+- [ ] Add a heavy-block style for a terminal whose font makes the asterisk
+  maze hard to read, using a full block for a wall and a space for a cell
+- [ ] Make `--wall-char` and `--open-char` apply to writing as well as
+  reading, so a maze can be drawn with the characters it will be read back
+  with, and say plainly in the documentation what that costs: a picture
+  drawn with anything but the format's own characters is no longer a save
+  file
+- [ ] Refuse a style whose characters a save file could not be read back
+  from, rather than writing a file `parse_save` will turn down
+- [ ] Report the style in the JSON document, so a program that reads a
+  document knows how the picture beside it was drawn
+- [ ] Add the style names to the public surface and a table to
+  `docs/library.md`, since a caller drawing a maze with `maze_lines` picks a
+  style the same way the command line does
+- [ ] Extend `TestCarvingSectionExamples` to run each documented style, so a
+  style that stops drawing what the documentation shows fails the suite
+
+## The Documentation Site
+
+The site in `docs/`, now that it exists: the pages it is still missing, the
+ways it can be read better, and the checks that keep it honest. None of
+these move the version.
+
+- [ ] Add a search over the pages, built from a small index generated at
+  build time rather than from a hosted service, so the site keeps its
+  promise of no dependency and no network call
+- [ ] Add a "copy" control to every code block, so a reader takes a command
+  without selecting it, and leave the block readable with the script turned
+  off
+- [ ] Add anchor links to every heading on a page, so a reader can link to
+  the paragraph they mean rather than to the page it is on
+- [ ] Add an in-page table of contents to the longer pages, built from their
+  own level 2 headings, fixed beside the text on a wide screen and folded
+  above it on a narrow one
+- [ ] Check every link on the site in the suite: an internal link that names
+  no page, and an anchor that names no heading, are both failures worth
+  catching before a reader finds them
+- [ ] Check that every option `build_parser` defines is tabled on
+  `docs/options.md`, the way the library page's tables are already checked
+  against `__all__`, so an option added without documentation fails
+- [ ] Check that every status code `py_maze.cli` exports is tabled on
+  `docs/scripting.md` with the same wording the message uses
+- [ ] Add the mazes the site shows as generated images rather than as
+  characters, only where the characters are genuinely hard to read, and keep
+  the text version beside each so a screen reader still reaches it
+- [ ] Give the site a page of worked examples: a maze piped through another
+  tool, a maze drawn by a script and played by py_maze, and a maze read out
+  of a document, each runnable as written and each run by the suite
+- [ ] Record the site's URL in one place rather than in the README, the
+  manifest and `docs/_config.yml` separately, and check the three agree
 
 ## Documentation and Chores
 
@@ -408,3 +549,30 @@ No items are currently queued in this section.
     JSON section of `docs/save-format.md`. Cover it with a test in the JSON
     group of `test_py_maze.py`.
   - From: Code Review Override - JSON Document Edges
+- [x] Derive the site's design language from `logo.svg` and `icon.svg` and
+  record it in `DESIGN_LANGUAGE.md`, with the contrast ratio checked for
+  every text and background pair the stylesheet uses
+  - From: Create and Deploy GitHub Pages Override
+- [x] Split the documentation out of `README.md` into pages under `docs/`,
+  moving the full text rather than summarizing it, and leave the README a
+  front door whose section headings link to the pages they came from
+  - From: Create and Deploy GitHub Pages Override
+- [x] Write `docs/QUICKSTART.md` and `docs/CHEATSHEET.md`, the first for a
+  reader who wants the game running now and the second for one who has read
+  the documentation and wants the options back at a glance
+  - From: Create and Deploy GitHub Pages Override
+- [x] Build the site from those pages with GitHub Pages' own Markdown
+  processing, under a layout and stylesheet written from
+  `DESIGN_LANGUAGE.md`: a fixed side menu, collapsible groups, light and
+  dark rendering, and a base URL of `/py_maze` so a project site's links
+  resolve
+  - From: Create and Deploy GitHub Pages Override
+- [x] Add `.github/workflows/workflow.yml` deploying `docs/` to GitHub
+  Pages from `main`, and switch the repository's Pages source to GitHub
+  Actions
+  - From: Create and Deploy GitHub Pages Override
+- [x] Point the tests that read the README's documentation at the pages the
+  documentation moved to, so the worked example, the carving examples, the
+  scripting section, the name tables and the project tree are still run
+  against the package rather than left unchecked
+  - From: Create and Deploy GitHub Pages Override
