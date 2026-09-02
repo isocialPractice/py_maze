@@ -155,9 +155,9 @@ A fourth algorithm is four small edits and nothing in `MazeGenerator`:
 3. Re-export the function from `py_maze/__init__.py`, as any public name is.
 4. Add the module to `PACKAGE_MODULES`, `TERMINAL_FREE_MODULES` and
    `TestLibrarySection.TABLED_MODULES` in `test_py_maze.py`, and give it a
-   row in the README's `Carving` table. `TestCarvingAlgorithms` then holds
-   the new algorithm to every promise the others keep, without a test of its
-   own being written.
+   row in the `Carving` table on `docs/library.md`. `TestCarvingAlgorithms`
+   then holds the new algorithm to every promise the others keep, without a
+   test of its own being written.
 
 An algorithm has to leave a maze that is solvable, that seals its border,
 that leaves every cell standable, and that has exactly one route between any
@@ -176,14 +176,46 @@ it writes, both of which live in `py_maze/saves.py`. A third form is:
    with a way for `parse_save` to recognize the form from the text in hand.
 3. An entry in `FORMATS`, a branch in `write_save`, and the name in
    `saves.__all__` and `py_maze/__init__.py`.
-4. A section in `docs/save-format.md` specifying it, a row in the README's
-   `Save files` table for every new name, and a refusal in
-   `TestSaveFormatDocument.REFUSALS` for everything the reader turns down.
+4. A section in `docs/save-format.md` specifying it, a row in the
+   `Save files` table on `docs/library.md` for every new name, and a refusal
+   in `TestSaveFormatDocument.REFUSALS` for everything the reader turns down.
 
 A reader hands back the grid and nothing more interpreted than that. The
 entrance, the exit and a route through are read out of the grid every time,
 which is what lets a maze from any of the three be played, solved and saved
 as any other.
+
+## Working on the Documentation
+
+The documentation is a site, and its pages are Markdown files in `docs/` -
+one page to a file, so the same file reads on GitHub and on the site.
+`README.md` is the front door to it and nothing more: what it keeps is what
+py_maze is, how to install it, the options a run reaches for most, and a
+short stand-in for each page with that heading linking the page.
+
+Nothing needs installing to work on it. GitHub Pages' own Markdown
+processing builds the site, under the one layout in `docs/_layouts/` and the
+stylesheet in `docs/assets/css/`, and
+`.github/workflows/workflow.yml` deploys it on every push to `main`.
+
+- **Editing a page** is editing its Markdown file. Detail belongs on the
+  page rather than in the README, which is kept under 300 lines.
+- **Adding a page** is the file, plus an entry in `docs/_data/nav.yml`, which
+  is the side menu, plus a line in the README's documentation table.
+  `TestDocumentationSite` fails on a page that is published without being
+  reachable, and on one that carries no front matter, since a page without
+  it is downloaded rather than read.
+- **Changing how the site looks** means changing `DESIGN_LANGUAGE.md` and
+  `docs/assets/css/site.css` together. `TestDesignLanguage` recomputes every
+  contrast ratio the document writes down, holds each to 4.5:1, and fails on
+  a colour that appears in one file and not the other.
+
+The suite reads the pages as well as the code: the worked example on
+`docs/library.md` is executed and compared character for character, every
+command line the carving, braiding and scripting pages show is run, the name
+tables are checked against every `__all__` they cover, and the project tree
+on `docs/development.md` is resolved against the repository. Documentation
+that drifts from the package fails the suite rather than a reader.
 
 ## The Version Number
 
@@ -219,9 +251,10 @@ part of a feature change: releasing is its own step.
   option with the current behaviour unchanged is a minor, and a change to
   how py_maze is run or imported is a major. Documentation and repository
   chores move no version at all.
-- **`README.md`** is updated in the same change as the behaviour it
-  describes, not afterwards. An option that is not in the README is an
-  option nobody finds.
+- **The documentation** is updated in the same change as the behaviour it
+  describes, not afterwards. An option that is not on its page is an option
+  nobody finds, and a name that is not in the tables on `docs/library.md`
+  fails the suite outright.
 - **`TODO.md`** holds the road map. Planned work is grouped into themed
   sections there, and the next few items are listed under `## Current`.
 - Keep a pull request to one thing. A fix and a refactor in one diff is two

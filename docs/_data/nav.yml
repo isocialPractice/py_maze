@@ -1,0 +1,56 @@
+# The side menu, in reading order. Each entry matches a page by its source
+# file name, so the highlight does not depend on how a URL is written.
+
+- title: Start here
+  items:
+    - text: Overview
+      file: index.md
+      url: /index.html
+    - text: Quickstart
+      file: QUICKSTART.md
+      url: /QUICKSTART.html
+    - text: Installation
+      file: installation.md
+      url: /installation.html
+
+- title: Using py_maze
+  items:
+    - text: Command-line options
+      file: options.md
+      url: /options.html
+    - text: Generating a maze
+      file: generating.md
+      url: /generating.html
+    - text: Saving and loading
+      file: saving.md
+      url: /saving.html
+    - text: Solving the maze
+      file: solving.md
+      url: /solving.html
+    - text: How to play
+      file: playing.md
+      url: /playing.html
+
+- title: Going further
+  items:
+    - text: Scripting py_maze
+      file: scripting.md
+      url: /scripting.html
+    - text: Using py_maze as a library
+      file: library.md
+      url: /library.html
+    - text: The save file format
+      file: save-format.md
+      url: /save-format.html
+    - text: Cheat sheet
+      file: CHEATSHEET.md
+      url: /CHEATSHEET.html
+
+- title: The project
+  items:
+    - text: How it works
+      file: how-it-works.md
+      url: /how-it-works.html
+    - text: Development
+      file: development.md
+      url: /development.html

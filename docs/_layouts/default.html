@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.path == "index.md" %}{{ site.title }} - {{ site.tagline }}{% else %}{{ page.title }} - {{ site.title }}{% endif %}</title>
+<meta name="description" content="{{ page.summary | default: site.description | strip_newlines }}">
+<link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cg fill='%23373d42'%3E%3Crect x='0' y='0' width='4' height='4'/%3E%3Crect x='8' y='0' width='4' height='4'/%3E%3Crect x='12' y='0' width='4' height='4'/%3E%3Crect x='16' y='0' width='4' height='4'/%3E%3Crect x='0' y='4' width='4' height='4'/%3E%3Crect x='8' y='4' width='4' height='4'/%3E%3Crect x='16' y='4' width='4' height='4'/%3E%3Crect x='0' y='8' width='4' height='4'/%3E%3Crect x='8' y='8' width='4' height='4'/%3E%3Crect x='16' y='8' width='4' height='4'/%3E%3Crect x='0' y='12' width='4' height='4'/%3E%3Crect x='16' y='12' width='4' height='4'/%3E%3Crect x='0' y='16' width='4' height='4'/%3E%3Crect x='4' y='16' width='4' height='4'/%3E%3Crect x='8' y='16' width='4' height='4'/%3E%3Crect x='16' y='16' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+// set the theme before the first paint, so a reader who chose dark does
+// not get a white flash on every page load
+(function () {
+  try {
+    var saved = localStorage.getItem('py_maze-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  } catch (error) {
+    // storage can be refused outright, and the media query still works
+  }
+})();
+</script>
+</head>
+<body>
+
+<a class="skip" href="#content">Skip to the documentation</a>
+
+<header class="header">
+  <button class="menu-button" type="button" aria-expanded="false" aria-controls="menu">
+    <span class="menu-button-bars" aria-hidden="true"></span>
+    <span>Menu</span>
+  </button>
+
+  <a class="brand" href="{{ '/index.html' | relative_url }}">
+    <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <g fill="currentColor">
+        <rect x="0" y="0" width="4" height="4"/><rect x="8" y="0" width="4" height="4"/>
+        <rect x="12" y="0" width="4" height="4"/><rect x="16" y="0" width="4" height="4"/>
+        <rect x="0" y="4" width="4" height="4"/><rect x="8" y="4" width="4" height="4"/>
+        <rect x="16" y="4" width="4" height="4"/><rect x="0" y="8" width="4" height="4"/>
+        <rect x="8" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/>
+        <rect x="0" y="12" width="4" height="4"/><rect x="16" y="12" width="4" height="4"/>
+        <rect x="0" y="16" width="4" height="4"/><rect x="4" y="16" width="4" height="4"/>
+        <rect x="8" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/>
+      </g>
+    </svg>
+    <span class="brand-name">{{ site.title }}</span>
+  </a>
+
+  <div class="header-end">
+    <a class="header-link" href="{{ site.source_url }}">Source</a>
+    <button class="theme-button" type="button" aria-pressed="false">
+      <span class="theme-button-text">Dark</span>
+    </button>
+  </div>
+</header>
+
+<div class="shell">
+
+  <nav class="menu" id="menu" aria-label="Documentation">
+    {% for group in site.data.nav %}
+      {% assign holds_page = false %}
+      {% for item in group.items %}
+        {% if item.file == page.path %}{% assign holds_page = true %}{% endif %}
+      {% endfor %}
+    <section class="menu-group{% if holds_page %} is-open{% endif %}">
+      <button class="menu-group-button" type="button" aria-expanded="{{ holds_page }}">
+        <span class="menu-group-title">{{ group.title }}</span>
+        <span class="menu-group-caret" aria-hidden="true"></span>
+      </button>
+      <ul class="menu-list">
+        {% for item in group.items %}
+        <li>
+          <a class="menu-link{% if item.file == page.path %} is-current{% endif %}"
+             href="{{ item.url | relative_url }}"{% if item.file == page.path %} aria-current="page"{% endif %}>{{ item.text }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </nav>
+
+  <main class="content" id="content">
+    <article class="page">
+      {% if page.title %}
+      <h1 class="page-title">{{ page.title }}</h1>
+      {% if page.summary %}<p class="page-summary">{{ page.summary }}</p>{% endif %}
+      {% endif %}
+
+      {{ content }}
+    </article>
+
+    <footer class="footer">
+      <p>{{ site.title }} - {{ site.tagline }}. MIT licensed.</p>
+      <p><a href="{{ site.source_url }}">The repository</a> holds the code, the
+        changelog and the planned work.</p>
+    </footer>
+  </main>
+
+</div>
+
+<div class="menu-veil" hidden></div>
+<script src="{{ '/assets/js/site.js' | relative_url }}"></script>
+</body>
+</html>

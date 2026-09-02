@@ -1,0 +1,605 @@
+/* The py_maze documentation site.
+ *
+ * Every value here comes from DESIGN_LANGUAGE.md in the repository root,
+ * which records what it was derived from and the contrast ratio measured
+ * for each text and background pair. Change one and change the other. */
+
+/* ---- Tokens ---------------------------------------------------------- */
+
+:root {
+  /* light, the default when nothing else is asked for */
+  --ground: #ffffff;
+  --panel: #f2f2f2;
+  --ink: #373d42;
+  --ink-muted: #5a6268;
+  --rule-color: #6c757d;
+  --shadow: rgba(55, 61, 66, 0.16);
+
+  /* the artwork has no rounded corner anywhere in it */
+  --radius: 0;
+  --rule: 2px;
+  --accent-bar: 3px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --type-xs: 0.8125rem;
+  --type-sm: 0.875rem;
+  --type-base: 1rem;
+  --type-lg: 1.2rem;
+  --type-xl: 1.44rem;
+  --type-2xl: 1.728rem;
+  --type-3xl: 2.0736rem;
+
+  --face-text: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --face-code: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  --measure: 76ch;
+  --menu-width: 264px;
+  --header-height: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --ground: #22262a;
+    --panel: #2b3035;
+    --ink: #e6e8ea;
+    --ink-muted: #a8b0b6;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #22262a;
+  --panel: #2b3035;
+  --ink: #e6e8ea;
+  --ink-muted: #a8b0b6;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Ground ---------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--face-text);
+  font-size: var(--type-base);
+  line-height: 1.65;
+}
+
+a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  background: var(--panel);
+}
+
+:focus-visible {
+  outline: var(--rule) solid var(--ink);
+  outline-offset: 2px;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 40;
+  padding: var(--space-3) var(--space-4);
+  background: var(--ground);
+  border: var(--rule) solid var(--ink);
+}
+
+.skip:focus {
+  left: var(--space-3);
+  top: var(--space-3);
+}
+
+/* ---- Header ---------------------------------------------------------- */
+
+.header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--header-height);
+  padding: 0 var(--space-4);
+  background: var(--ground);
+  border-bottom: var(--accent-bar) solid var(--rule-color);
+  /* the logo rules its lettering off on a 12 unit pitch; this is that
+   * pitch drawn behind the header */
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--panel) 0 1px,
+    transparent 1px 12px
+  );
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: var(--type-lg);
+  font-family: var(--face-code);
+  text-decoration: none;
+}
+
+.brand:hover {
+  background: none;
+  color: var(--ink);
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.header-link {
+  font-size: var(--type-sm);
+  color: var(--ink-muted);
+}
+
+.theme-button,
+.menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  min-height: 32px;
+  background: var(--ground);
+  color: var(--ink);
+  border: var(--rule) solid var(--rule-color);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--type-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-button:hover,
+.menu-button:hover {
+  background: var(--panel);
+}
+
+.menu-button {
+  display: none;
+}
+
+.menu-button-bars,
+.menu-button-bars::before,
+.menu-button-bars::after {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: currentColor;
+}
+
+.menu-button-bars {
+  position: relative;
+}
+
+.menu-button-bars::before,
+.menu-button-bars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+
+.menu-button-bars::before {
+  top: -5px;
+}
+
+.menu-button-bars::after {
+  top: 5px;
+}
+
+/* ---- Shell ----------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--menu-width) minmax(0, 1fr);
+  gap: var(--space-6);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: calc(var(--header-height) + var(--space-6)) var(--space-4)
+    var(--space-8);
+}
+
+/* ---- Menu ------------------------------------------------------------ */
+
+.menu {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-5));
+  align-self: start;
+  max-height: calc(100vh - var(--header-height) - var(--space-8));
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  border-left: var(--rule) solid var(--panel);
+}
+
+.menu-group + .menu-group {
+  margin-top: var(--space-2);
+}
+
+.menu-group-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-group-button:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.menu-group-caret {
+  width: 8px;
+  height: 8px;
+  border-right: var(--rule) solid currentColor;
+  border-bottom: var(--rule) solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.menu-group.is-open .menu-group-caret {
+  transform: rotate(45deg);
+}
+
+.menu-list {
+  display: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.menu-group.is-open .menu-list {
+  display: block;
+}
+
+.menu-link {
+  display: block;
+  padding: var(--space-1) var(--space-3);
+  border-left: var(--accent-bar) solid transparent;
+  color: var(--ink-muted);
+  font-size: var(--type-sm);
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.menu-link:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+/* the page being read is marked by its bar as well as its weight, so the
+ * mark does not depend on colour */
+.menu-link.is-current {
+  border-left-color: var(--rule-color);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.menu-veil {
+  display: none;
+}
+
+/* ---- Content --------------------------------------------------------- */
+
+.content {
+  min-width: 0;
+}
+
+.page {
+  max-width: var(--measure);
+}
+
+.page-title {
+  margin: 0;
+  font-size: var(--type-2xl);
+  line-height: 1.25;
+}
+
+.page-summary {
+  margin: var(--space-2) 0 var(--space-6);
+  padding-left: var(--space-3);
+  border-left: var(--accent-bar) solid var(--rule-color);
+  color: var(--ink-muted);
+}
+
+.page h1 {
+  font-size: var(--type-2xl);
+  line-height: 1.25;
+}
+
+.page h2 {
+  margin-top: var(--space-7);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--rule) solid var(--panel);
+  font-size: var(--type-xl);
+  line-height: 1.3;
+}
+
+.page h3 {
+  margin-top: var(--space-6);
+  font-size: var(--type-lg);
+  line-height: 1.35;
+}
+
+.page h4 {
+  margin-top: var(--space-5);
+  font-size: var(--type-base);
+  text-transform: none;
+}
+
+.page p,
+.page ul,
+.page ol {
+  margin: var(--space-4) 0;
+}
+
+.page li + li {
+  margin-top: var(--space-1);
+}
+
+.page hr {
+  height: var(--rule);
+  margin: var(--space-7) 0;
+  background: var(--panel);
+  border: 0;
+}
+
+blockquote {
+  margin: var(--space-4) 0;
+  padding: var(--space-2) var(--space-4);
+  border-left: var(--accent-bar) solid var(--rule-color);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+blockquote > :first-child {
+  margin-top: 0;
+}
+
+blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---- Code and mazes -------------------------------------------------- */
+
+code,
+kbd,
+samp {
+  font-family: var(--face-code);
+  font-size: var(--type-sm);
+}
+
+:not(pre) > code {
+  padding: 1px var(--space-1);
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+
+pre {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  background: var(--panel);
+  border-left: var(--accent-bar) solid var(--rule-color);
+  border-radius: var(--radius);
+}
+
+/* a maze is drawn as characters, so the lines are set tight enough that
+ * its walls still read as walls */
+pre code {
+  display: block;
+  padding: 0;
+  background: none;
+  line-height: 1.35;
+  white-space: pre;
+  tab-size: 4;
+}
+
+/* the highlighter runs on the fenced blocks that name a language; the
+ * palette is monochrome, so only the comments are set apart */
+.highlight .c,
+.highlight .c1,
+.highlight .cm,
+.highlight .cs,
+.highlight .cp {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.highlight .k,
+.highlight .kn,
+.highlight .kd,
+.highlight .nb,
+.highlight .nf,
+.highlight .nc {
+  font-weight: 700;
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .se,
+.highlight .sb {
+  color: var(--ink-muted);
+}
+
+/* ---- Tables ---------------------------------------------------------- */
+
+.page table {
+  width: 100%;
+  margin: var(--space-4) 0;
+  border-collapse: collapse;
+  font-size: var(--type-sm);
+  font-family: var(--face-code);
+}
+
+.page th,
+.page td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.page thead th {
+  border-bottom: var(--rule) solid var(--rule-color);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.page tbody tr:nth-child(even) {
+  background: var(--panel);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* ---- Cards, used on the overview ------------------------------------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-5) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cards li {
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--panel);
+  border-left: var(--accent-bar) solid var(--rule-color);
+}
+
+.cards a {
+  font-size: var(--type-lg);
+}
+
+.cards p {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-muted);
+  font-size: var(--type-sm);
+}
+
+/* ---- Footer ---------------------------------------------------------- */
+
+.footer {
+  max-width: var(--measure);
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--rule) solid var(--panel);
+  color: var(--ink-muted);
+  font-size: var(--type-sm);
+}
+
+.footer p {
+  margin: var(--space-1) 0;
+}
+
+/* ---- Narrow screens -------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .menu-button {
+    display: inline-flex;
+  }
+
+  .brand-name {
+    font-size: var(--type-base);
+  }
+
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .menu {
+    position: fixed;
+    z-index: 25;
+    top: var(--header-height);
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    max-height: none;
+    padding: var(--space-4) var(--space-3);
+    overflow-y: auto;
+    background: var(--ground);
+    border-left: 0;
+    border-right: var(--accent-bar) solid var(--rule-color);
+    transform: translateX(-102%);
+    transition: transform 140ms ease;
+  }
+
+  .menu.is-open {
+    transform: translateX(0);
+  }
+
+  .menu-veil {
+    display: block;
+    position: fixed;
+    z-index: 20;
+    inset: var(--header-height) 0 0 0;
+    background: var(--shadow);
+  }
+
+  .menu-veil[hidden] {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}

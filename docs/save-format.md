@@ -1,4 +1,9 @@
-# The py_maze Save Format
+---
+title: The py_maze save format
+summary: >-
+  The header, the seed comment, the markers, the ragged-line rule and what a
+  reader refuses, so another tool can write a file py_maze will load.
+---
 
 A save file is the maze exactly as it is drawn, under a short header
 recording the format and the seed it came from. There is no packing and no
@@ -382,8 +387,8 @@ comments and no fixed markers to honour.
 ## Reading and Writing It in Code
 
 The same format through the public API. `read_save` and `parse_save` hand
-back the grid described in [the package docs](../README.md#the-package-layout):
-a list of rows of booleans, `True` for a wall.
+back the grid described on [the library page](library.md#the-grid): a list of
+rows of booleans, `True` for a wall.
 
 ```python
 >>> import py_maze

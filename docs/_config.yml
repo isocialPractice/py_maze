@@ -1,0 +1,47 @@
+# Jekyll configuration for the py_maze documentation site.
+#
+# The site is built by GitHub Pages' own Markdown processing: no theme, no
+# gems beyond the ones GitHub already runs, and one layout of our own in
+# _layouts/. Every page under this folder is Markdown, so the same files
+# read on GitHub and on the site.
+
+title: py_maze
+tagline: A command-line maze generator and game
+description: >-
+  Generate random, solvable mazes at the command line, play them with the
+  arrow keys, solve them, save them, script them, or import the package and
+  build your own.
+
+# A project site is served from /<repo-name>/ rather than from /, so every
+# link is built from this base rather than from the host root.
+url: https://isocialpractice.github.io
+baseurl: /py_maze
+
+repository: isocialPractice/py_maze
+source_url: https://github.com/isocialPractice/py_maze
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+
+# Links between pages are written as .md so they resolve on GitHub as well
+# as on the site; this rewrites them to .html when the site is built.
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
