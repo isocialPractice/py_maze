@@ -45,12 +45,70 @@ CONTRIBUTING_PATH = os.path.join(PROJECT_ROOT, 'CONTRIBUTING.md')
 LICENSE_PATH = os.path.join(PROJECT_ROOT, 'LICENSE')
 MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'pyproject.toml')
 README_PATH = os.path.join(PROJECT_ROOT, 'README.md')
-SAVE_FORMAT_PATH = os.path.join(PROJECT_ROOT, 'docs', 'save-format.md')
 WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                              'tests.yml')
+PAGES_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
+                                   'workflow.yml')
 
-# the box-drawing characters the README draws its project structure with,
-# built from their code points so this file stays ASCII
+# the documentation site, one page to a file. The README is the front door
+# now, so the prose these tests run against lives here rather than there
+DOCS_DIR = os.path.join(PROJECT_ROOT, 'docs')
+DEVELOPMENT_PATH = os.path.join(DOCS_DIR, 'development.md')
+GENERATING_PATH = os.path.join(DOCS_DIR, 'generating.md')
+LIBRARY_PATH = os.path.join(DOCS_DIR, 'library.md')
+SAVE_FORMAT_PATH = os.path.join(DOCS_DIR, 'save-format.md')
+SCRIPTING_PATH = os.path.join(DOCS_DIR, 'scripting.md')
+
+# what the site is built out of, beside the pages themselves
+DESIGN_LANGUAGE_PATH = os.path.join(PROJECT_ROOT, 'DESIGN_LANGUAGE.md')
+SITE_CONFIG_PATH = os.path.join(DOCS_DIR, '_config.yml')
+SITE_CSS_PATH = os.path.join(DOCS_DIR, 'assets', 'css', 'site.css')
+SITE_LAYOUT_PATH = os.path.join(DOCS_DIR, '_layouts', 'default.html')
+SITE_NAV_PATH = os.path.join(DOCS_DIR, '_data', 'nav.yml')
+
+# the README is a front door rather than a manual, and these are the sizes
+# it is kept under. A README past either one is documentation that wants a
+# page of its own
+README_MAX_LINES = 300
+README_MAX_CHARACTERS = 30000
+
+
+def relative_luminance(color):
+    # the relative luminance of a colour, as WCAG 2 defines it
+    #
+    # Args:
+    #     color: The colour as "#rrggbb"
+    #
+    # Returns:
+    #     float: Its luminance, 0 for black and 1 for white
+
+    digits = color.lstrip('#')
+    channels = [int(digits[at:at + 2], 16) / 255
+                for at in (0, 2, 4)]
+    linear = [value / 12.92 if value <= 0.03928
+              else ((value + 0.055) / 1.055) ** 2.4
+              for value in channels]
+
+    return (0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2])
+
+
+def contrast_ratio(one, other):
+    # the contrast between two colours, as WCAG 2 measures it
+    #
+    # Args:
+    #     one: A colour as "#rrggbb"
+    #     other: The colour it is read against
+    #
+    # Returns:
+    #     float: The ratio, from 1 for identical to 21 for black on white
+
+    lighter = max(relative_luminance(one), relative_luminance(other))
+    darker = min(relative_luminance(one), relative_luminance(other))
+
+    return (lighter + 0.05) / (darker + 0.05)
+
+# the box-drawing characters the documentation draws the project structure
+# with, built from their code points so this file stays ASCII
 TREE_BRANCH = chr(0x251C) + chr(0x2500) * 2 + ' '  # an entry, more below it
 TREE_LAST = chr(0x2514) + chr(0x2500) * 2 + ' '    # the last at its level
 TREE_TRUNK = chr(0x2502) + ' ' * 3                 # the line running down
@@ -4452,29 +4510,25 @@ class TestSaveFormatDocument(unittest.TestCase):
 
 
 class TestLibrarySection(unittest.TestCase):
-    # the README's library section is what a caller reads before importing
-    # the package, so everything it shows is checked against the package
+    # docs/library.md is what a caller reads before importing the package,
+    # so everything it shows is checked against the package
 
-    HEADING = '## Using py_maze as a Library'
-
-    # the modules whose whole public surface the section tables, so a name
-    # added to one of them is a name the section has to grow a row for
+    # the modules whose whole public surface the page tables, so a name
+    # added to one of them is a name the page has to grow a row for
     TABLED_MODULES = ('algorithms', 'algorithms.backtracker',
                       'algorithms.division', 'algorithms.prim', 'generation',
                       'grid', 'saves', 'solving')
 
     def section(self):
-        # the library section, from its heading to the next level 2 one
+        # the library page, which is the whole of the file now that the
+        # section has a page of its own
         #
         # Returns:
-        #     str: The section, its heading included
+        #     str: The page, front matter included
 
-        readme = read_project_file(README_PATH)
-        start = readme.find(self.HEADING)
-        self.assertNotEqual(start, -1, 'the README has no library section')
-
-        end = readme.find('\n## ', start + len(self.HEADING))
-        return readme[start:] if end == -1 else readme[start:end]
+        self.assertTrue(os.path.isfile(LIBRARY_PATH),
+                        'docs/library.md is missing')
+        return read_project_file(LIBRARY_PATH)
 
     def tabled_names(self):
         # every name the section's tables give a row of their own, taken
@@ -4509,16 +4563,19 @@ class TestLibrarySection(unittest.TestCase):
         # the code under "A Worked Example", and the output it shows
         #
         # Returns:
-        #     tuple: (code, output) exactly as the section writes them
+        #     tuple: (code, output) exactly as the page writes them
 
-        shown = re.search(r'### A Worked Example\n.*?```python\n(.*?)```'
+        shown = re.search(r'## A Worked Example\n.*?```python\n(.*?)```'
                           r'.*?\*\*Output:\*\*\n\n```\n(.*?)```',
                           self.section(), re.DOTALL)
-        self.assertIsNotNone(shown, 'the section shows no worked example')
+        self.assertIsNotNone(shown, 'the page shows no worked example')
         return shown.group(1), shown.group(2)
 
     def test_the_section_is_there(self):
-        self.assertIn(self.HEADING, read_project_file(README_PATH))
+        # the page exists, and the front door points a reader at it
+        self.assertTrue(os.path.isfile(LIBRARY_PATH),
+                        'docs/library.md is missing')
+        self.assertIn('docs/library.md', read_project_file(README_PATH))
 
     def test_the_worked_example_prints_what_the_readme_shows(self):
         # the example is run as it is written, so prose that drifts from
@@ -4527,7 +4584,7 @@ class TestLibrarySection(unittest.TestCase):
 
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
-            exec(compile(code, README_PATH, 'exec'), {})
+            exec(compile(code, LIBRARY_PATH, 'exec'), {})
 
         self.assertEqual(printed.getvalue(), shown)
 
@@ -4552,9 +4609,9 @@ class TestLibrarySection(unittest.TestCase):
     def test_the_grid_example_holds(self):
         # the >>> block showing the shape of a grid is run as it is written
         parsed = doctest.DocTestParser().get_doctest(
-            self.grid_example(), {'py_maze': py_maze}, 'README',
-            README_PATH, 0)
-        self.assertTrue(parsed.examples, 'the section shows no >>> example')
+            self.grid_example(), {'py_maze': py_maze}, 'library',
+            LIBRARY_PATH, 0)
+        self.assertTrue(parsed.examples, 'the page shows no >>> example')
 
         reported = io.StringIO()
         result = doctest.DocTestRunner(verbose=False).run(
@@ -4568,7 +4625,7 @@ class TestLibrarySection(unittest.TestCase):
         self.assertTrue(tabled, 'the section tables no names')
         for name in sorted(tabled):
             self.assertIn(name, py_maze.__all__,
-                          '%s is in the README but not exported' % name)
+                          '%s is on the library page but not exported' % name)
             self.assertTrue(hasattr(py_maze, name))
 
     def test_it_tables_the_whole_surface_of_the_modules_it_covers(self):
@@ -4578,8 +4635,8 @@ class TestLibrarySection(unittest.TestCase):
             imported = importlib.import_module('py_maze.%s' % module)
             for name in imported.__all__:
                 self.assertIn(name, tabled,
-                              '%s is exported by py_maze.%s but the README '
-                              'does not table it' % (name, module))
+                              '%s is exported by py_maze.%s but the library '
+                              'page does not table it' % (name, module))
 
     def test_it_names_every_marker_a_maze_is_drawn_with(self):
         section = self.section()
@@ -4591,77 +4648,79 @@ class TestLibrarySection(unittest.TestCase):
 
 
 class TestCarvingSectionExamples(MainRunner, unittest.TestCase):
-    # the README shows the maze each of these options prints. Every one
-    # of those is run as it is written, so a section that drifts from the
+    # the documentation shows the maze each of these options prints. Every
+    # one of those is run as it is written, so a page that drifts from the
     # package fails here rather than in a reader's terminal
 
-    # the heading the example sits under, and the command it shows
+    # the page the example is on, the heading it sits under, and the
+    # command it shows
     EXAMPLES = (
-        ('### Carving Algorithms',
+        (GENERATING_PATH, '## Carving Algorithms',
          'python -m py_maze -d easy --seed 2024 --algorithm prim'),
-        ('### Carving Algorithms',
+        (GENERATING_PATH, '## Carving Algorithms',
          'python -m py_maze -d easy --seed 2024 --algorithm division'),
-        ('### Braiding',
+        (GENERATING_PATH, '## Braiding',
          'python -m py_maze -d easy --seed 2024 --braid --solve'),
-        ('### A Quiet Run',
+        (SCRIPTING_PATH, '## A Quiet Run',
          'python -m py_maze -d easy --seed 2024 --quiet'),
     )
 
-    def shown(self, heading, command):
-        # the maze the README shows the command printing
+    def shown(self, path, heading, command):
+        # the maze the documentation shows the command printing
         #
         # Args:
+        #     path: The page the example is on
         #     heading: The section the example sits under
         #     command: The command line the example runs
         #
         # Returns:
         #     str: The maze, without the start and end markers round it
 
-        readme = read_project_file(README_PATH)
-        start = readme.find(heading)
+        self.assertTrue(os.path.isfile(path), '%s is missing' % path)
+        page = read_project_file(path)
+
+        start = page.find(heading)
         self.assertNotEqual(start, -1,
-                            'the README has no %s section' % heading)
+                            '%s has no %s section'
+                            % (os.path.basename(path), heading))
 
         drawn = re.search(
             r'```bash\n%s\n```\n\n\*\*Output:\*\*\n\n```\nstart\n(.*?)end\n```'
-            % re.escape(command), readme[start:], re.DOTALL)
+            % re.escape(command), page[start:], re.DOTALL)
         self.assertIsNotNone(drawn,
-                             'the README shows no output for %s' % command)
+                             '%s shows no output for %s'
+                             % (os.path.basename(path), command))
 
         return drawn.group(1).rstrip('\n')
 
     def test_each_example_prints_the_maze_the_readme_shows(self):
-        for heading, command in self.EXAMPLES:
+        for path, heading, command in self.EXAMPLES:
             with self.subTest(command=command):
                 argv = command.split()[3:]
                 output, _ = self.run_main(argv)
 
                 self.assertEqual(self.maze_of(output),
-                                 self.shown(heading, command))
+                                 self.shown(path, heading, command))
 
 
 class TestScriptingSection(MainRunner, unittest.TestCase):
-    # the README's scripting section is what a script is written against,
-    # so every example in it is run and every code it tables is checked
-
-    HEADING = '## Scripting py_maze'
+    # docs/scripting.md is what a script is written against, so every
+    # example on it is run and every code it tables is checked
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
 
     def section(self):
-        # the scripting section, from its heading to the next level 2 one
+        # the scripting page, which is the whole of the file now that the
+        # section has a page of its own
         #
         # Returns:
-        #     str: The section, its heading included
+        #     str: The page, front matter included
 
-        readme = read_project_file(README_PATH)
-        start = readme.find(self.HEADING)
-        self.assertNotEqual(start, -1, 'the README has no scripting section')
-
-        end = readme.find('\n## ', start + len(self.HEADING))
-        return readme[start:] if end == -1 else readme[start:end]
+        self.assertTrue(os.path.isfile(SCRIPTING_PATH),
+                        'docs/scripting.md is missing')
+        return read_project_file(SCRIPTING_PATH)
 
     def fenced(self, pattern):
         # one fenced block of the section, by whatever introduces it
@@ -4673,11 +4732,14 @@ class TestScriptingSection(MainRunner, unittest.TestCase):
         #     str: The block, without the fences around it
 
         shown = re.search(pattern, self.section(), re.DOTALL | re.MULTILINE)
-        self.assertIsNotNone(shown, 'the section shows no %s block' % pattern)
+        self.assertIsNotNone(shown, 'the page shows no %s block' % pattern)
         return shown.group(1)
 
     def test_the_section_is_there(self):
-        self.assertIn(self.HEADING, read_project_file(README_PATH))
+        # the page exists, and the front door points a reader at it
+        self.assertTrue(os.path.isfile(SCRIPTING_PATH),
+                        'docs/scripting.md is missing')
+        self.assertIn('docs/scripting.md', read_project_file(README_PATH))
 
     def test_the_documented_json_is_what_its_command_writes(self):
         # laid out in the README and written on one line, so the two are
@@ -4748,8 +4810,9 @@ class TestScriptingSection(MainRunner, unittest.TestCase):
 
 
 class TestDevelopmentFileTree(unittest.TestCase):
-    # the tree under Development is the map of the repository: an entry it
-    # draws has to exist, and a file the repository carries has to be on it
+    # the tree on docs/development.md is the map of the repository: an
+    # entry it draws has to exist, and a file the repository carries has to
+    # be on it
 
     # what a reader is expected to find on the map, whether or not the
     # rest of the suite already reads it
@@ -4764,10 +4827,14 @@ class TestDevelopmentFileTree(unittest.TestCase):
         # Returns:
         #     str: The tree, without the fences around it
 
+        self.assertTrue(os.path.isfile(DEVELOPMENT_PATH),
+                        'docs/development.md is missing')
+
         drawn = re.search(r'The project structure:\n\n```\n(.*?)^```$',
-                          read_project_file(README_PATH),
+                          read_project_file(DEVELOPMENT_PATH),
                           re.DOTALL | re.MULTILINE)
-        self.assertIsNotNone(drawn, 'the README draws no project structure')
+        self.assertIsNotNone(drawn,
+                             'docs/development.md draws no project structure')
         return drawn.group(1)
 
     def test_it_lists_the_files_the_repository_carries(self):
@@ -4806,6 +4873,274 @@ class TestDevelopmentFileTree(unittest.TestCase):
             drawn += 1
 
         self.assertGreaterEqual(drawn, len(self.EXPECTED))
+
+
+class TestDocumentationSite(unittest.TestCase):
+    # the documentation is a site built out of docs/ by GitHub Pages, and
+    # the README is the front door to it. What is checked here is that the
+    # two agree with each other and that nothing published is unreachable
+
+    # every page of the site, and the file it is written in
+    PAGES = ('index.md', 'QUICKSTART.md', 'CHEATSHEET.md', 'installation.md',
+             'options.md', 'generating.md', 'saving.md', 'solving.md',
+             'playing.md', 'scripting.md', 'library.md', 'save-format.md',
+             'how-it-works.md', 'development.md')
+
+    def config(self):
+        return read_project_file(SITE_CONFIG_PATH)
+
+    def nav(self):
+        return read_project_file(SITE_NAV_PATH)
+
+    def published_pages(self):
+        # the Markdown files under docs/ that are pages, which is all of
+        # them: the layout, the menu and the assets sit in their own folders
+        #
+        # Returns:
+        #     set: The file names, without the folder in front of them
+
+        return {name for name in os.listdir(DOCS_DIR)
+                if name.endswith('.md')}
+
+    def test_every_page_the_site_publishes_is_there(self):
+        for name in self.PAGES:
+            self.assertTrue(os.path.isfile(os.path.join(DOCS_DIR, name)),
+                            'docs/%s is missing' % name)
+
+    def test_no_page_is_published_without_being_listed_here(self):
+        # a page added to docs/ and nowhere else is a page the rest of
+        # this class never checks
+        self.assertEqual(self.published_pages(), set(self.PAGES))
+
+    def test_every_page_carries_the_front_matter_the_layout_reads(self):
+        # a Markdown file with no front matter is copied out verbatim
+        # rather than built, so a reader downloads it instead of reading it
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                page = read_project_file(os.path.join(DOCS_DIR, name))
+
+                self.assertTrue(page.startswith('---\n'),
+                                'docs/%s opens with no front matter' % name)
+                front = page.split('---\n', 2)[1]
+                self.assertIn('title:', front,
+                              'docs/%s front matter names no title' % name)
+
+    def test_the_menu_lists_every_page_and_nothing_else(self):
+        listed = set(re.findall(r'^\s*file:\s*(\S+)$', self.nav(),
+                                re.MULTILINE))
+
+        self.assertEqual(listed, set(self.PAGES),
+                         'the side menu and the pages have drifted apart')
+
+    def test_every_menu_link_points_at_the_page_beside_it(self):
+        # the menu names a page by its file and links it by its URL, and a
+        # mismatch between the two silently unhighlights the current page
+        entries = re.findall(r'file:\s*(\S+)\s*\n\s*url:\s*(\S+)', self.nav())
+
+        self.assertEqual(len(entries), len(self.PAGES))
+        for name, url in entries:
+            with self.subTest(page=name):
+                self.assertEqual(url, '/%s.html' % name[:-len('.md')])
+
+    def test_every_link_a_page_writes_as_html_points_at_a_built_page(self):
+        # the site rewrites a Markdown link to a .md file into the .html the
+        # build writes, but a raw href in a page is left exactly as typed.
+        # One ending in .md therefore ships to the site pointing at a file
+        # the build never puts there, and 404s where it looked fine locally
+        for name in self.PAGES:
+            page = read_project_file(os.path.join(DOCS_DIR, name))
+
+            for link in re.findall(r'href="([^"]+)"', page):
+                if link.startswith(('http://', 'https://', 'mailto:', '#')):
+                    continue
+                with self.subTest(page=name, link=link):
+                    target = link.split('#', 1)[0]
+
+                    self.assertFalse(
+                        target.endswith('.md'),
+                        'docs/%s links %s as a raw href, which the site '
+                        'leaves pointing at a page it does not build'
+                        % (name, target))
+                    self.assertFalse(
+                        target.startswith('/'),
+                        'docs/%s links %s absolutely, which misses the base '
+                        'URL a project site is served from' % (name, target))
+                    self.assertTrue(
+                        os.path.isfile(os.path.join(
+                            DOCS_DIR, target[:-len('.html')] + '.md')),
+                        'docs/%s links %s, which no page of the site builds'
+                        % (name, target))
+
+    def test_the_readme_is_a_front_door_rather_than_a_manual(self):
+        readme = read_project_file(README_PATH)
+
+        self.assertLessEqual(len(readme.splitlines()), README_MAX_LINES)
+        self.assertLessEqual(len(readme), README_MAX_CHARACTERS)
+
+    def test_the_readme_points_at_every_page_of_the_site(self):
+        readme = read_project_file(README_PATH)
+
+        for name in self.PAGES:
+            if name == 'index.md':
+                continue
+            with self.subTest(page=name):
+                self.assertIn('docs/%s' % name, readme,
+                              'the README links no reader to docs/%s' % name)
+
+    def test_the_readme_links_the_site_itself(self):
+        readme = read_project_file(README_PATH)
+
+        # GitHub publishes at <owner>.github.io with the owner folded to
+        # lower case, and a project site is served from /<repo>/
+        self.assertIn('https://isocialpractice.github.io/py_maze/', readme)
+
+    def test_the_site_is_built_for_the_path_a_project_site_is_served_from(
+            self):
+        self.assertIn('baseurl: /py_maze', self.config())
+
+    def test_the_layout_builds_its_links_from_that_base(self):
+        # a bare absolute path resolves to the owner's root rather than the
+        # repository's, so every link the layout writes to a page of the
+        # site goes through relative_url and picks the base URL up
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        written = re.findall(r'(?:href|src)="([^"]+)"', layout)
+        self.assertTrue(written, 'the layout writes no links')
+
+        for link in written:
+            with self.subTest(link=link):
+                if link.startswith('{{'):
+                    self.assertRegex(
+                        link, r'relative_url|site\.source_url',
+                        '%s neither takes the base URL nor leaves the site'
+                        % link)
+                else:
+                    self.assertFalse(
+                        link.startswith('/'),
+                        '%s is absolute and would miss the base URL' % link)
+
+
+class TestDocumentationWorkflow(unittest.TestCase):
+    # the workflow is what turns the pages in docs/ into a site; without
+    # every part of it below, the deploy fails in ways that are tedious to
+    # diagnose rather than obviously
+
+    def workflow(self):
+        return read_project_file(PAGES_WORKFLOW_PATH)
+
+    def test_the_workflow_is_where_actions_looks_for_it(self):
+        self.assertTrue(os.path.isfile(PAGES_WORKFLOW_PATH),
+                        '.github/workflows/workflow.yml is missing')
+
+    def test_it_runs_on_a_push_to_the_default_branch_and_by_hand(self):
+        workflow = self.workflow()
+
+        self.assertIn('push:', workflow)
+        self.assertIn('- main', workflow)
+        self.assertIn('workflow_dispatch:', workflow)
+
+    def test_it_asks_for_the_permissions_a_pages_deploy_needs(self):
+        workflow = self.workflow()
+
+        for permission in ('contents: read', 'pages: write',
+                           'id-token: write'):
+            self.assertIn(permission, workflow)
+
+    def test_overlapping_deploys_cannot_race(self):
+        workflow = self.workflow()
+
+        self.assertIn('concurrency:', workflow)
+        self.assertIn('cancel-in-progress: false', workflow)
+
+    def test_it_runs_the_pages_action_sequence(self):
+        workflow = self.workflow()
+
+        for action in ('actions/configure-pages',
+                       'actions/jekyll-build-pages',
+                       'actions/upload-pages-artifact',
+                       'actions/deploy-pages'):
+            self.assertIn(action, workflow)
+
+    def test_it_builds_the_folder_the_pages_are_in(self):
+        self.assertIn('source: ./docs', self.workflow())
+
+    def test_the_deploy_is_bound_to_the_pages_environment(self):
+        self.assertIn('name: github-pages', self.workflow())
+
+    def test_it_is_not_the_workflow_that_runs_the_suite(self):
+        # two workflows sit in that folder now, and swapping them would
+        # leave the tests unrun and the site undeployed
+        self.assertNotIn('unittest discover', self.workflow())
+
+
+class TestDesignLanguage(unittest.TestCase):
+    # DESIGN_LANGUAGE.md records the palette and the contrast measured for
+    # each pair of it. Every ratio it writes down is recomputed here, so a
+    # colour changed in the document without being measured fails
+
+    # what body text has to reach against the ground it is read on
+    MINIMUM_CONTRAST = 4.5
+
+    def document(self):
+        return read_project_file(DESIGN_LANGUAGE_PATH)
+
+    def measured_pairs(self):
+        # every row tabling a colour, the ground it is read on and the
+        # ratio between them. A row whose ground is "-" is an accent
+        # rather than text, and is not one of these
+        #
+        # Returns:
+        #     list: (ink, ground, ratio as written) triples
+
+        return re.findall(
+            r'^\|[^|]+\|\s*`(#[0-9a-f]{6})`\s*\|\s*`(#[0-9a-f]{6})`\s*\|'
+            r'\s*(\d+\.\d+):1\s*\|$',
+            self.document(), re.MULTILINE)
+
+    def test_the_document_is_there(self):
+        self.assertTrue(os.path.isfile(DESIGN_LANGUAGE_PATH),
+                        'DESIGN_LANGUAGE.md is missing')
+
+    def test_it_measures_both_themes(self):
+        # four text pairs to a theme: text and muted text, each on the
+        # ground and on the panel
+        self.assertEqual(len(self.measured_pairs()), 8)
+
+    def test_every_ratio_it_writes_down_is_the_one_that_was_measured(self):
+        for ink, ground, written in self.measured_pairs():
+            with self.subTest(ink=ink, ground=ground):
+                self.assertEqual('%.2f' % contrast_ratio(ink, ground),
+                                 written)
+
+    def test_every_pair_it_tables_carries_text_legibly(self):
+        for ink, ground, _ in self.measured_pairs():
+            with self.subTest(ink=ink, ground=ground):
+                self.assertGreaterEqual(contrast_ratio(ink, ground),
+                                        self.MINIMUM_CONTRAST)
+
+    def test_the_stylesheet_uses_the_colours_the_document_records(self):
+        # the two are meant to agree, and a colour recorded in one and not
+        # the other is the drift that makes the record worthless
+        stylesheet = read_project_file(SITE_CSS_PATH)
+
+        tabled = set(re.findall(r'`(#[0-9a-f]{6})`', self.document()))
+        self.assertTrue(tabled, 'the document tables no colours')
+
+        for color in sorted(tabled):
+            with self.subTest(color=color):
+                self.assertIn(color, stylesheet,
+                              '%s is in DESIGN_LANGUAGE.md but not in the '
+                              'stylesheet' % color)
+
+    def test_the_stylesheet_names_no_colour_the_document_does_not(self):
+        stylesheet = read_project_file(SITE_CSS_PATH)
+
+        tabled = set(re.findall(r'`(#[0-9a-f]{6})`', self.document()))
+        for color in set(re.findall(r'(#[0-9a-f]{6})', stylesheet)):
+            with self.subTest(color=color):
+                self.assertIn(color, tabled,
+                              '%s is in the stylesheet but was never '
+                              'measured' % color)
 
 
 if __name__ == '__main__':
