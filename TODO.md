@@ -24,6 +24,34 @@ into a `## Complete` section at the bottom of this file.
   characters loads, so the check belongs where the maze is used rather than
   where the file is read
   - From: Runtime and Portability Fixes
+- [ ] Verify the documentation site deployed
+  - The site work was pushed, which only starts the deployment: GitHub
+    builds it afterwards and the build can fail on its own. Confirm the
+    workflow run for the commit that carried the site succeeded, then
+    check this off. If it failed, fix the cause and leave this open.
+  - From: Create and Deploy GitHub Pages Override
+
+### User Overrides
+
+#### After GitHub Pages Deployment is Verified and Marked Complete
+
+- [ ] Utilize media files in `docs/assets/` for GitHub Pages, and apply asset
+  according to:
+  - Light mode: Use `docs/assets/icon-dark.svg` and `docs/assets/logo-dark.svg`
+  - Dark mode: Use `docs/assets/icon-light.svg` and `docs/assets/logo-light.svg`
+  - Reference: `.support/menu-logo_per-mode.png`
+  - Apply logo: Desktop and large tablet display sizes
+    - **NOTE**: Both logo SVG files have the text `py_maze` vectorized, so the
+      raw string currently in the menu can be removed, but at a `title` and
+      `aria` attributes accordingly
+    - **IMPORTANT**: Ensure the SVG's are sized correctly. Scale them down to around
+      `width=40%`
+  - Apply icon: Small tablet and phone display sizes
+  - Applying both assets:
+    - Use an `img` element to hold the assets, keeping them both in the current
+      `<a class="brand" href="/py_maze/index.html">` tag, setting the `src`
+      according to the current mode
+- [ ] Use newly added `docs/assets/favicon.svg` as the deployed site's favicon
 
 ### Code Review Override - 2.2.1 Load and Document Edges
 

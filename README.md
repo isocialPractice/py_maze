@@ -1,9 +1,14 @@
-# py_maze
+# <img alt="py_maze" src="https://raw.githubusercontent.com/isocialPractice/py_maze/c50453adc891bc384adb557fc2669c9f0defc35b/logo.svg" width="180px"/>
 
 `Ctrl + click` to view [py_maze documentation](https://isocialpractice.github.io/py_maze/index.html)
 
 A command-line maze generator and game written in Python. Generate random,
 solvable mazes and navigate through them using your keyboard!
+
+<div align="left">
+  <img src="https://github.com/isocialPractice/py_maze/blob/main/banner.gif?raw=true" 
+       alt="Banner Image" width="367px"/>
+</div>
 
 ## Features
 
