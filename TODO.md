@@ -64,6 +64,35 @@ into a `## Complete` section at the bottom of this file.
     `unittest`, so decide first whether that dependency is wanted at all -
     if not, say so and close this
   - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+- [ ] The refusal added to `docs/save-format.md` is the one row of that table
+  the suite never runs
+  - **Issue**: `TestSaveFormatDocument.REFUSALS` in `test_py_maze.py` holds a
+    file for every refusal the page tables, and
+    `test_every_documented_refusal_is_one_the_reader_makes` reads each one
+    and asserts the message it raises appears in the page. `Puts a
+    collectible on a wall`, added this run, has no entry, so it is the only
+    row the reader is never run against. The message itself is pinned by
+    `test_a_document_may_not_put_a_pickup_on_a_wall`, so reworded it would
+    leave the page stale without failing anything
+  - **Goal**: Add `('a document with a collectible on a wall', '{"py_maze":
+    1, "grid": [[true]], "collectibles": [[0, 0]]}\n')` to `REFUSALS`, in the
+    place the table lists it, which raises `collectibles holds [0, 0], which
+    is a wall` and is already the text the page shows. Consider pinning the
+    other direction too, every row of the table being one some file
+    produces, since that is the direction this gap slipped through
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+- [ ] The 2.2.2 entry records the scrolling table without the measure it cost
+  - **Issue**: the `Fixed` bullet in `CHANGELOG.md` describes the table fix
+    as whole, and the release being cut carries the desktop regression queued
+    under **Resolve Issues** above: `width: fit-content` makes a table hug its
+    content, so at 1280px the two tables measured this run draw 588.6px and
+    474.6px against a 655.5px measure. Whoever reads the released entry is
+    told the narrow-screen half and not what it cost
+  - **Goal**: Either land the measure fix before 2.2.2 is cut, which makes
+    the entry true as written, or add a sentence to that bullet saying a
+    table now hugs its content rather than spanning the measure, to be
+    dropped again when the follow-up lands
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
 
 ## Fixes and Hardening
 
