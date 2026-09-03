@@ -1,4 +1,4 @@
-# <img alt="py_maze" src="https://raw.githubusercontent.com/isocialPractice/py_maze/main/logo.gig" width="180px"/>
+# <img alt="py_maze" src="https://raw.githubusercontent.com/isocialPractice/py_maze/main/logo.gif" width="180px"/>
 
 `Ctrl + click` to view [py_maze documentation](https://isocialpractice.github.io/py_maze/index.html)
 
