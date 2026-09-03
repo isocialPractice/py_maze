@@ -16,10 +16,6 @@ into a `## Complete` section at the bottom of this file.
   screen twice - and draw only what moved
   - From: UI/UX and Screen Drawing
 
-### Create and Deploy GitHub Pages Override
-
-- Line count over 1300
-
 ### UI/UX Override - Site Marks, Scrolling Tables and the Favicon
 
 #### Resolve Issues
