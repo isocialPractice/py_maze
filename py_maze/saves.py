@@ -275,16 +275,18 @@ def json_cells(cells, key, where, grid):
     #     cells: Whatever the document carried under that key
     #     key: Name of the key, for the messages
     #     where: The file name and its separator, for the messages
-    #     grid: The maze the cells have to be inside. A cell off the grid
-    #         is drawn by nothing and can be stepped on by nobody, so it
-    #         would be tallied and never picked up
+    #     grid: The maze the cells have to be open cells of. A cell off
+    #         the grid is drawn by nothing and can be stepped on by
+    #         nobody, and a cell on a wall is drawn over and can be stood
+    #         on by nobody either, so both would be tallied and never
+    #         picked up
     #
     # Returns:
     #     list: The cells as (x, y) pairs, empty when the key is absent
     #
     # Raises:
     #     SaveFileError: If any of them is not a pair of whole numbers
-    #         inside the maze
+    #         naming an open cell of the maze
 
     if cells is None:
         return []
@@ -304,6 +306,13 @@ def json_cells(cells, key, where, grid):
         x, y = cell
         if not (0 <= x < len(grid[0]) and 0 <= y < len(grid)):
             raise SaveFileError("%s%s holds %s, which is outside the maze"
+                                % (where, key, json.dumps(cell)))
+
+        # a picture cannot express this one either: save_lines draws the
+        # marker over the wall and parse_save reads it back as an open
+        # cell, so the round trip would turn that wall into a path
+        if grid[y][x]:
+            raise SaveFileError("%s%s holds %s, which is a wall"
                                 % (where, key, json.dumps(cell)))
 
         read.append((x, y))
@@ -355,8 +364,8 @@ def parse_json_save(text, source=None):
         raise SaveFileError("%sthe seed is not a number or a word" % where)
 
     # the grid is read first, the cells being checked against it: a
-    # pickup off the maze is drawn by nothing and reached by nobody, and
-    # would be tallied all the same
+    # pickup off the maze, or on one of its walls, is reached by nobody
+    # and would be tallied all the same
     grid = json_grid(document.get('grid'), where)
 
     return (grid,

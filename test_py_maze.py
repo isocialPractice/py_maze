@@ -61,8 +61,9 @@ SCRIPTING_PATH = os.path.join(DOCS_DIR, 'scripting.md')
 
 # what the site is built out of, beside the pages themselves
 DESIGN_LANGUAGE_PATH = os.path.join(PROJECT_ROOT, 'DESIGN_LANGUAGE.md')
+SITE_ASSETS_DIR = os.path.join(DOCS_DIR, 'assets')
 SITE_CONFIG_PATH = os.path.join(DOCS_DIR, '_config.yml')
-SITE_CSS_PATH = os.path.join(DOCS_DIR, 'assets', 'css', 'site.css')
+SITE_CSS_PATH = os.path.join(SITE_ASSETS_DIR, 'css', 'site.css')
 SITE_LAYOUT_PATH = os.path.join(DOCS_DIR, '_layouts', 'default.html')
 SITE_NAV_PATH = os.path.join(DOCS_DIR, '_data', 'nav.yml')
 
@@ -3401,20 +3402,59 @@ class TestFormatOption(MainRunner, unittest.TestCase):
 
         self.assertEqual(sorted(collectibles), [(0, 0), (1, 1)])
 
+    def test_a_document_may_not_put_a_pickup_on_a_wall(self):
+        # inside the maze is not enough: open_cells never yields a wall,
+        # so the player cannot stand on one, and MazeGame counts it in
+        # the tally all the same
+        with self.assertRaises(py_maze.SaveFileError) as caught:
+            py_maze.parse_json_save(
+                '{"py_maze": 1, "grid": [[true, false, true]], '
+                '"collectibles": [[0, 0]]}', 'maze.json')
+
+        self.assertEqual(str(caught.exception),
+                         'maze.json: collectibles holds [0, 0], which is '
+                         'a wall')
+
+    def test_a_pickup_on_a_wall_would_not_survive_the_round_trip(self):
+        # save_lines draws the marker over the wall and parse_save reads
+        # that marker back as an open cell, so a document the reader let
+        # through would come back as a picture with a path where the
+        # wall was. The document is refused instead
+        document = ('{"py_maze": 1, "grid": [[true, false, true]], '
+                    '"collectibles": [[0, 0]]}')
+        drawn = py_maze.save_lines([[True, False, True]], [(0, 0)])
+        grid, _, _ = py_maze.parse_save('\n'.join(drawn))
+
+        self.assertEqual(grid, [[False, False, True]])
+        with self.assertRaises(py_maze.SaveFileError):
+            py_maze.parse_json_save(document)
+
     def test_every_pickup_a_document_hands_back_is_one_that_can_be_had(self):
         # the tally MazeGame keeps is the count of what the reader
         # handed it, so a cell it can never reach leaves the summary
-        # unwinnable
-        generator = py_maze.MazeGenerator(6, 6, seed=2024)
-        grid = generator.generate()
-        placed = py_maze.place_collectibles(grid, 4, generator.random)
-        _, collectibles, _ = py_maze.parse_json_save(
-            py_maze.save_json(grid, placed))
+        # unwinnable. The document here is written by hand rather than by
+        # place_collectibles, which only ever picks an open cell: what is
+        # checked is the reader, not the placer
+        grid = [[True, False, True],
+                [True, False, True],
+                [True, False, True]]
+        document = ('{"py_maze": 1, "grid": '
+                    '[[true, false, true], [true, false, true], '
+                    '[true, false, true]], "collectibles": %s}')
 
+        _, collectibles, _ = py_maze.parse_json_save(document % '[[1, 1]]')
         self.assertEqual(py_maze.MazeGame(grid, collectibles)
-                         .total_collectibles, 4)
-        for x, y in collectibles:
-            self.assertIn((x, y), set(py_maze.open_cells(grid)))
+                         .total_collectibles, 1)
+        for cell in collectibles:
+            self.assertIn(cell, set(py_maze.open_cells(grid)))
+
+        # and every cell of that grid the reader turns down is one
+        # open_cells does not yield either, so the two agree
+        for cell in [[0, 0], [2, 2], [0, 1], [3, 1], [1, 3]]:
+            with self.subTest(cell=tuple(cell)):
+                self.assertNotIn(tuple(cell), set(py_maze.open_cells(grid)))
+                with self.assertRaises(py_maze.SaveFileError):
+                    py_maze.parse_json_save(document % json.dumps([cell]))
 
     def test_a_document_round_trips_through_the_library(self):
         generator = py_maze.MazeGenerator(6, 6, seed=2024)
@@ -3629,6 +3669,26 @@ class TestMazeWithNoEnds(MainRunner, unittest.TestCase):
         self.assertFalse(py_maze.has_ends([[True]]))
         self.assertFalse(py_maze.has_ends([[True, False]]))
         self.assertTrue(py_maze.has_ends([[True, False, True]]))
+
+    def test_the_two_columns_are_what_the_width_is_measured_against(self):
+        # what MIN_GRID_WIDTH is the narrowest of, read off the two
+        # finders rather than off the reason given for the constant: the
+        # exit column is len(row) - 2, so it climbs towards the entrance
+        # column as the maze narrows and passes it at two
+        for width, entrance, exit_column in ((2, 1, 0), (3, 1, 1),
+                                             (4, 1, 2), (5, 1, 3)):
+            with self.subTest(width=width):
+                row = [False] * width
+
+                self.assertEqual(py_maze.find_entrance([row])[0], entrance)
+                self.assertEqual(py_maze.find_exit([row])[0], exit_column)
+                self.assertEqual(py_maze.has_ends([row]),
+                                 exit_column >= entrance)
+
+        # one column short of that the entrance runs off the row, which
+        # is the only width either finder faults on
+        with self.assertRaises(IndexError):
+            py_maze.find_entrance([[False]])
 
     def test_a_generated_maze_always_has_room_for_them(self):
         grid = py_maze.MazeGenerator(py_maze.MIN_DIMENSION,
@@ -5004,7 +5064,10 @@ class TestDocumentationSite(unittest.TestCase):
         # site goes through relative_url and picks the base URL up
         layout = read_project_file(SITE_LAYOUT_PATH)
 
-        written = re.findall(r'(?:href|src)="([^"]+)"', layout)
+        # srcset is read too: a picture picks the mark it draws out of
+        # that attribute rather than out of src, so a link written there
+        # misses the base URL exactly as one written in an href would
+        written = re.findall(r'(?:href|src|srcset)="([^"]+)"', layout)
         self.assertTrue(written, 'the layout writes no links')
 
         for link in written:
@@ -5018,6 +5081,101 @@ class TestDocumentationSite(unittest.TestCase):
                     self.assertFalse(
                         link.startswith('/'),
                         '%s is absolute and would miss the base URL' % link)
+
+    def assets(self):
+        # the files under docs/assets that are marks rather than code
+        #
+        # Returns:
+        #     list: The file names, without the folder in front of them
+
+        return sorted(name for name in os.listdir(SITE_ASSETS_DIR)
+                      if name.endswith('.svg'))
+
+    def test_every_asset_the_layout_draws_is_one_the_site_carries(self):
+        # a mark the header points at and the repository does not hold is
+        # a broken image on every page, and the build reports nothing
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        named = re.findall(r"'(/assets/[^']+)'\s*\|\s*relative_url", layout)
+        self.assertTrue(named, 'the layout draws nothing out of assets')
+
+        for path in named:
+            with self.subTest(asset=path):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(DOCS_DIR, path.lstrip('/'))),
+                    'the layout draws %s, which docs/ does not carry' % path)
+
+    def test_every_mark_the_site_carries_is_one_the_layout_draws(self):
+        # the other way round: a mark added to docs/assets and drawn by
+        # nothing is a file the site publishes and no page ever shows
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        self.assertTrue(self.assets(), 'the site carries no marks')
+        for name in self.assets():
+            with self.subTest(mark=name):
+                self.assertIn(
+                    '/assets/%s' % name, layout,
+                    'docs/assets/%s is published and drawn by nothing'
+                    % name)
+
+    def test_the_header_carries_one_mark_for_each_theme(self):
+        # an <img> cannot inherit the page's ink, so the dark-ink art and
+        # the light-ink art are two files with the stylesheet showing one
+        # of them. A mark the layout names and the stylesheet does not is
+        # a mark drawn in both themes at once
+        layout = read_project_file(SITE_LAYOUT_PATH)
+        stylesheet = read_project_file(SITE_CSS_PATH)
+
+        for mark in ('logo-dark', 'logo-light', 'icon-dark', 'icon-light'):
+            with self.subTest(mark=mark):
+                self.assertIn('/assets/%s.svg' % mark, layout)
+
+        for rule in ('.brand-art.on-light', '.brand-art.on-dark'):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, stylesheet,
+                              '%s draws no mark' % rule)
+
+    def test_the_header_falls_back_to_the_icon_where_the_menu_does(self):
+        # the wordmark is 108px of lettering beside a menu button, which
+        # is why it gives way to the square icon at the same width the
+        # side menu gives way to a drawer
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        sources = re.findall(r'<source([^>]+)>', layout)
+        self.assertEqual(len(sources), 2,
+                         'the header draws neither icon, or draws one of '
+                         'them unconditionally')
+
+        for source in sources:
+            with self.subTest(source=source.strip()):
+                self.assertIn('media="(max-width: 900px)"', source)
+                self.assertIn('/assets/icon-', source)
+
+    def test_the_brand_link_is_named_where_its_lettering_is_artwork(self):
+        # the wordmark carries "py_maze" as vector rather than as text,
+        # so the header draws no lettering a reader or a screen reader
+        # can pick the link out by
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        brand = re.search(r'<a class="brand".*?</a>', layout, re.DOTALL)
+        self.assertIsNotNone(brand, 'the header carries no brand link')
+
+        for attribute in ('title=', 'aria-label='):
+            with self.subTest(attribute=attribute):
+                self.assertIn(attribute, brand.group(0))
+        self.assertEqual(brand.group(0).count('alt='), 2,
+                         'a mark in the header carries no alt text')
+
+    def test_the_favicon_is_the_file_rather_than_a_copy_of_it(self):
+        # a data URI is a second drawing of the icon to keep in step with
+        # the first, and the repository already carries the icon
+        layout = read_project_file(SITE_LAYOUT_PATH)
+
+        self.assertRegex(
+            layout,
+            r'<link rel="icon"[^>]*\'/assets/favicon\.svg\'[^>]*>')
+        self.assertNotIn('data:image/svg+xml', layout,
+                         'the tab icon is drawn inline as well as in a file')
 
 
 class TestDocumentationWorkflow(unittest.TestCase):
@@ -5097,9 +5255,54 @@ class TestDesignLanguage(unittest.TestCase):
             r'\s*(\d+\.\d+):1\s*\|$',
             self.document(), re.MULTILINE)
 
+    def stylesheet_rule(self, selector):
+        # the declarations of one rule of the stylesheet
+        #
+        # Args:
+        #     selector: The selector the rule opens with, exactly as it
+        #         is written
+        #
+        # Returns:
+        #     str: What is between that selector's braces
+
+        found = re.search(r'(?:^|\})[^{}]*?%s\s*\{([^}]*)\}'
+                          % re.escape(selector),
+                          read_project_file(SITE_CSS_PATH), re.DOTALL)
+        self.assertIsNotNone(found,
+                             'the stylesheet has no %s rule' % selector)
+        return found.group(1)
+
     def test_the_document_is_there(self):
         self.assertTrue(os.path.isfile(DESIGN_LANGUAGE_PATH),
                         'DESIGN_LANGUAGE.md is missing')
+
+    def test_a_table_scrolls_rather_than_taking_the_page_with_it(self):
+        # the Markdown a page is written in emits a bare <table>, so a
+        # rule wanting a wrapper class applies to nothing: the scroll has
+        # to be on the table itself. A cell holds names as long as
+        # collectible_overlay(collectibles), which no phone has room for
+        rule = self.stylesheet_rule('.page table')
+
+        self.assertIn('display: block', rule)
+        self.assertIn('overflow-x: auto', rule)
+        self.assertIn('max-width: 100%', rule)
+
+    def test_the_stylesheet_gives_a_table_one_answer_and_not_two(self):
+        # .table-scroll was the wrapper nothing ever wore. A stylesheet
+        # carrying both it and the rule above says a table scrolls twice
+        # over, and a reader of the stylesheet cannot tell which applies
+        self.assertNotIn('.table-scroll',
+                         read_project_file(SITE_CSS_PATH))
+
+    def test_it_records_what_a_wide_table_does(self):
+        # the document promises every page reads from a phone, and a
+        # table is the one thing on a page that cannot be made narrow
+        document = self.document()
+
+        layout = document.split('## Layout and menu', 1)[1].split('\n## ')[0]
+        self.assertIn('scroll', layout,
+                      'the layout section promises the phone rendering '
+                      'without saying what a wide table does')
 
     def test_it_measures_both_themes(self):
         # four text pairs to a theme: text and muted text, each on the

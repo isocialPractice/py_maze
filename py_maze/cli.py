@@ -363,11 +363,14 @@ def check_ends(grid, path):
     # refuse a loaded maze with no room for an entrance and an exit
     #
     # The solver, the JSON document and the game each read the two ends
-    # out of the grid, and every one of them faults on a maze too narrow
-    # to hold them. The refusal is made here, once, where the maze is
-    # settled on, rather than in each of the readers or in the reader of
-    # the file: docs/save-format.md promises that any rectangle of the
-    # allowed characters loads, and it still does.
+    # out of the grid, and a maze under MIN_GRID_WIDTH has nowhere to put
+    # them: at two characters the exit column falls left of the entrance
+    # column, and at one find_entrance runs off the end of the row. At
+    # MIN_GRID_WIDTH itself the two meet in the middle column, which is
+    # narrow but is a maze. The refusal is made here, once, where the
+    # maze is settled on, rather than in each of the readers or in the
+    # reader of the file: docs/save-format.md promises that any rectangle
+    # of the allowed characters loads, and it still does.
     #
     # Args:
     #     grid: 2D list of booleans (True = wall, False = path)

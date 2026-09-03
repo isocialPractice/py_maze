@@ -13,7 +13,7 @@ py_maze/
 │   └── algorithms/         # The ways a maze can be carved, one to a module
 ├── docs/                   # This site, one Markdown page to a file
 │   ├── _layouts/           # The one layout every page is drawn in
-│   ├── assets/             # The stylesheet and the one script
+│   ├── assets/             # The stylesheet, the one script and the marks
 │   └── save-format.md      # The save file, for a tool that writes one
 ├── .github/
 │   ├── instructions/       # Editor instructions for this repository
@@ -127,6 +127,11 @@ The palette, the type scale and the spacing are recorded in
 `DESIGN_LANGUAGE.md` in the repository root, with the contrast ratio measured
 for each text and background pair. That file and `docs/assets/css/site.css`
 are meant to agree: a value changed in one is changed in the other.
+
+The marks the header draws sit beside them in `docs/assets/`: a wordmark and
+an icon in each of the two inks, and the icon again as the tab's favicon. A
+file added there and drawn by nothing, or drawn by the layout and missing
+from there, fails the suite.
 
 The suite reads these pages as well as the code. The worked example on
 [the library page](library.md) is executed and its output compared character

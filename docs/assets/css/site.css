@@ -143,9 +143,6 @@ a:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: 700;
-  font-size: var(--type-lg);
-  font-family: var(--face-code);
   text-decoration: none;
 }
 
@@ -154,10 +151,45 @@ a:hover {
   color: var(--ink);
 }
 
-.brand-mark {
-  width: 22px;
-  height: 22px;
+/* The mark is artwork rather than lettering, so there is one file per
+ * ink: the light theme is shown the dark-ink art and the dark theme the
+ * light-ink art. Which one that is has to be settled in CSS, because the
+ * theme is a choice the reader can make as well as one the system makes,
+ * and the script that records the choice runs after the first paint. */
+.brand-art {
+  display: none;
   flex: none;
+}
+
+.brand-art.on-light {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] .brand-art.on-light {
+    display: none;
+  }
+
+  :root[data-theme="auto"] .brand-art.on-dark {
+    display: block;
+  }
+}
+
+:root[data-theme="dark"] .brand-art.on-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .brand-art.on-dark {
+  display: block;
+}
+
+/* every mark is drawn at 40% of its own size: 108px of the 271px
+ * wordmark, and 22px of the 54px icon the picture falls back to, which
+ * is the mark width the header was laid out around */
+.brand-art img {
+  display: block;
+  width: 108px;
+  height: auto;
 }
 
 .header-end {
@@ -475,9 +507,19 @@ pre code {
 
 /* ---- Tables ---------------------------------------------------------- */
 
+/* every table is its own scrolling block, no wrapper needed: the Markdown
+ * a page is written in emits a bare <table>, and a cell can hold a name
+ * too long to break - collectible_overlay(collectibles) is 33 characters
+ * of the monospace face, wider than a 360px phone leaves the page. A
+ * table that could not scroll would take the whole page sideways with
+ * it, so the table scrolls instead and the header scrolls with the rows
+ * it names. */
 .page table {
-  width: 100%;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
   margin: var(--space-4) 0;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: var(--type-sm);
   font-family: var(--face-code);
@@ -499,10 +541,6 @@ pre code {
 
 .page tbody tr:nth-child(even) {
   background: var(--panel);
-}
-
-.table-scroll {
-  overflow-x: auto;
 }
 
 /* ---- Cards, used on the overview ------------------------------------- */
@@ -555,8 +593,10 @@ pre code {
     display: inline-flex;
   }
 
-  .brand-name {
-    font-size: var(--type-base);
+  /* the picture has already fallen back to the square icon at this
+   * width, so the box it is drawn in follows it down */
+  .brand-art img {
+    width: 22px;
   }
 
   .shell {

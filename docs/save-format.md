@@ -285,7 +285,7 @@ picture:
 | `seed` | The seed the maze was generated from, as a number or a word, and `null` when there is none |
 | `entrance` | The `(x, y)` of the entrance, as a two-element list |
 | `exit` | The `(x, y)` of the exit |
-| `collectibles` | Every cell holding a pickup, in reading order. `[]` when there are none |
+| `collectibles` | Every open cell holding a pickup, in reading order. `[]` when there are none |
 | `solution` | The route from the entrance to the exit, cell by cell, when `--solve` or `--animate` asked for one. `null` otherwise, and `null` when there is no way through |
 | `grid` | The maze itself: a list of rows of `true` and `false`, `true` for a wall |
 
@@ -332,15 +332,20 @@ And for a document:
 | Has rows of different lengths | `row 2 is 1 cells, expected 2` |
 | Lists something that is not a cell | `collectibles holds [1], which is not an (x, y) cell` |
 | Puts a collectible off the maze | `collectibles holds [9, 9], which is outside the maze` |
+| Puts a collectible on a wall | `collectibles holds [0, 0], which is a wall` |
 | Records a seed that is neither | `the seed is not a number or a word` |
 
-A picture cannot express a collectible outside the maze, a `$` being one of
-the characters the maze is drawn with, so the document reader refuses one
-rather than admitting a maze the picture reader could not. A cell off the
-grid is drawn by nothing and can be stepped on by nobody, and it would be
-counted in the tally all the same, leaving a summary that reads
-`Collected: 0 of 1` however well the maze is played. Every cell from
-`[0, 0]` to the bottom right of the grid is inside it.
+A picture cannot express either of those collectibles, a `$` always being
+one of the characters the maze is drawn with and always an open cell, so
+the document reader refuses them rather than admitting a maze the picture
+reader could not. A cell off the grid is drawn by nothing, a cell on a wall
+is drawn over, and neither can be stepped on; both would be counted in the
+tally all the same, leaving a summary that reads `Collected: 0 of 1`
+however well the maze is played. A collectible on a wall would not survive
+the round trip either: saved as a picture it is drawn as `$`, and read back
+that `$` is an open cell, so the wall it stood on would have turned into a
+path. Every cell from `[0, 0]` to the bottom right of the grid is inside
+the maze, and a collectible must name one of the `false` ones.
 
 Line numbers count every line in the file, comments and blank lines
 included, and start at 1; a document's rows are counted from 1 as well.
@@ -355,9 +360,14 @@ Two things are deliberately **not** refused:
   it is the solver that reports there is no route, by returning `None`.
 - **A maze of no particular size.** Any rectangle of the allowed characters
   loads, whether or not its dimensions are the `2n + 1` of a carved maze.
-  The command line does draw one line here: a maze fewer than 3 characters
-  wide has no column for an entrance and an exit to be cut in, so
-  `py_maze --load` refuses it with
+  The command line does draw one line here: the entrance is cut in the
+  second column and the exit in the second from last, and three characters
+  is what it takes for the exit column to stop falling left of the entrance
+  column - at two the exit column falls left of the entrance, both of them
+  on the border, and at one the entrance column is off the row altogether.
+  At three the two meet in the middle column, the one column a maze that
+  narrow has that is not a border. `py_maze --load` refuses a maze
+  narrower than that with
   `the maze is too narrow for an entrance and an exit, which need 3
   characters` and exits with status **3**. The reader still hands the maze
   back, `py_maze.has_ends` being what reports whether a grid has room for

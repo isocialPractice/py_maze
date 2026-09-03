@@ -6,7 +6,9 @@
 <title>{% if page.path == "index.md" %}{{ site.title }} - {{ site.tagline }}{% else %}{{ page.title }} - {{ site.title }}{% endif %}</title>
 <meta name="description" content="{{ page.summary | default: site.description | strip_newlines }}">
 <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cg fill='%23373d42'%3E%3Crect x='0' y='0' width='4' height='4'/%3E%3Crect x='8' y='0' width='4' height='4'/%3E%3Crect x='12' y='0' width='4' height='4'/%3E%3Crect x='16' y='0' width='4' height='4'/%3E%3Crect x='0' y='4' width='4' height='4'/%3E%3Crect x='8' y='4' width='4' height='4'/%3E%3Crect x='16' y='4' width='4' height='4'/%3E%3Crect x='0' y='8' width='4' height='4'/%3E%3Crect x='8' y='8' width='4' height='4'/%3E%3Crect x='16' y='8' width='4' height='4'/%3E%3Crect x='0' y='12' width='4' height='4'/%3E%3Crect x='16' y='12' width='4' height='4'/%3E%3Crect x='0' y='16' width='4' height='4'/%3E%3Crect x='4' y='16' width='4' height='4'/%3E%3Crect x='8' y='16' width='4' height='4'/%3E%3Crect x='16' y='16' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E">
+<!-- the icon is drawn in the dark ink under a light outline, so it reads on
+     a light browser tab and on a dark one without a second file -->
+<link rel="icon" type="image/svg+xml" href="{{ '/assets/favicon.svg' | relative_url }}">
 <script>
 // set the theme before the first paint, so a reader who chose dark does
 // not get a white flash on every page load
@@ -32,20 +34,27 @@
     <span>Menu</span>
   </button>
 
-  <a class="brand" href="{{ '/index.html' | relative_url }}">
-    <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      <g fill="currentColor">
-        <rect x="0" y="0" width="4" height="4"/><rect x="8" y="0" width="4" height="4"/>
-        <rect x="12" y="0" width="4" height="4"/><rect x="16" y="0" width="4" height="4"/>
-        <rect x="0" y="4" width="4" height="4"/><rect x="8" y="4" width="4" height="4"/>
-        <rect x="16" y="4" width="4" height="4"/><rect x="0" y="8" width="4" height="4"/>
-        <rect x="8" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/>
-        <rect x="0" y="12" width="4" height="4"/><rect x="16" y="12" width="4" height="4"/>
-        <rect x="0" y="16" width="4" height="4"/><rect x="4" y="16" width="4" height="4"/>
-        <rect x="8" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/>
-      </g>
-    </svg>
-    <span class="brand-name">{{ site.title }}</span>
+  {%- comment -%}
+    The wordmark carries "py_maze" as artwork rather than as text, so the
+    link is named by its title and its label instead of by anything drawn
+    in the header. Each picture falls back to the icon below 900px, the
+    width the menu becomes a drawer at, and the pair of them is the light
+    ink and the dark: the stylesheet shows whichever the theme calls for.
+  {%- endcomment -%}
+  <a class="brand" href="{{ '/index.html' | relative_url }}"
+     title="{{ site.title }}" aria-label="{{ site.title }}">
+    <picture class="brand-art on-light">
+      <source media="(max-width: 900px)" width="54" height="54"
+              srcset="{{ '/assets/icon-dark.svg' | relative_url }}">
+      <img src="{{ '/assets/logo-dark.svg' | relative_url }}"
+           alt="{{ site.title }}" width="271" height="53">
+    </picture>
+    <picture class="brand-art on-dark">
+      <source media="(max-width: 900px)" width="54" height="54"
+              srcset="{{ '/assets/icon-light.svg' | relative_url }}">
+      <img src="{{ '/assets/logo-light.svg' | relative_url }}"
+           alt="{{ site.title }}" width="271" height="53">
+    </picture>
   </a>
 
   <div class="header-end">

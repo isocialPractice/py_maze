@@ -157,11 +157,13 @@ reading the message:
 | `5` | A maze with no way from the entrance to the exit |
 
 Code 3 also covers a loaded maze fewer than 3 characters wide. The entrance
-is cut in the second column and the exit in the second from last, so a maze
-that narrow has nowhere to put them, and the solver, the JSON document and
-the game all read the two out of the grid. The maze is refused once, before
-any of them sees it, rather than faulting in whichever the run reaches
-first.
+is cut in the second column and the exit in the second from last, and three
+characters is what it takes for the exit column to stop falling left of the
+entrance column: at two the exit column falls left of the entrance, both of
+them on the border, and at one the entrance column is off the row
+altogether. The solver, the JSON document and the game all read the two out
+of the grid, so the maze is refused once, before any of them sees it, rather
+than faulting in whichever the run reaches first.
 
 Code 5 is reported only when a solution was asked for. A generated maze
 always has a way through, so it is a loaded one that can lack it, and

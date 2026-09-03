@@ -5,12 +5,12 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.2] - 2026-09-03
 
-The documentation moved out of `README.md` and into a site. Nothing about
-the package changed: no option behaves differently, no name entered or left
-the public surface, and the version is where 2.2.1 left it. A documentation
-site is not a release.
+The documentation moved out of `README.md` and into a site, and this release
+is what carries it. Beside it, one more edge of the JSON document is closed:
+a collectible on a wall is refused as one off the grid already was. No
+option behaves differently, and no name entered or left the public surface.
 
 ### Added
 
@@ -40,6 +40,13 @@ site is not a release.
   a page has to name a page the build actually writes, since the site
   rewrites Markdown links from `.md` to `.html` but leaves an `href`
   untouched.
+- Tests covering the site's marks: that every asset the layout draws is one
+  the repository carries and every mark the repository carries is one the
+  layout draws, that the header holds a mark for each theme and falls back
+  to the icon where the menu becomes a drawer, that the brand link is named
+  now that its lettering is artwork, and that the tab icon is a file rather
+  than a second drawing of itself. A `srcset` is read for the base URL the
+  way an `href` and a `src` already were.
 
 ### Fixed
 
@@ -49,9 +56,51 @@ site is not a release.
   name the built pages directly. The same four pages are still linked as
   Markdown under "Where to go next", which is what a reader on GitHub
   follows.
+- A document may no longer put a collectible on a wall. Refusing one off the
+  grid was not enough: any cell inside the grid was taken, wall or not, so a
+  document whose rows are `[true, false, true]` and whose collectibles are
+  `[[0, 0]]` loaded with a pickup on a wall. `open_cells` never yields that
+  cell, so the player can never stand on it, while `MazeGame` counted it in
+  `total_collectibles` all the same and the summary read `Collected: 0 of 1`
+  however well the maze was played - the very thing the off-grid check was
+  written to stop. It broke the round trip too: `save_lines` drew `$` over
+  the wall and `parse_save` read that `$` back as an open cell, so saving
+  the document as a picture turned a wall into a path. The message reads
+  `collectibles holds [0, 0], which is a wall`, and the run exits with
+  status `3` as the other refusals do.
+- A table on the site scrolls on its own rather than taking the page
+  sideways with it. `.table-scroll` was written for a wrapper nothing ever
+  wore - kramdown emits a bare `<table>` - so the rule applied to nothing
+  and a table could not shrink below its widest unbreakable word. The name
+  table in `docs/library.md` holds `collectible_overlay(collectibles)`, 33
+  characters of the monospace face, which pushed the whole page past a
+  360px phone. Every table is now its own scrolling block, header included,
+  and `.table-scroll` is gone so the stylesheet has one answer.
+- The reason given for `MIN_GRID_WIDTH` was not the reason that applies. The
+  `has_ends` docstring, the `check_ends` comment and the documentation all
+  said a maze narrower than three characters put a column off the grid and
+  faulted in every reader. At two characters wide nothing faults:
+  `find_entrance` reads column 1 and `find_exit` column 0, both on the grid.
+  Only a one-column maze faults, and only in `find_entrance`. Refusing a
+  two-wide maze is still right - the exit column falls left of the entrance
+  column, both on the border - so the behaviour, the message and the status
+  code are unchanged and only the explanation is.
 
 ### Changed
 
+- The site's header draws the repository's own marks. The wordmark carries
+  "py_maze" as artwork above 900px and gives way to the icon below it, the
+  width the side menu becomes a drawer at, and each is a file per ink: the
+  dark-ink art for the light theme and the light-ink art for the dark. Both
+  the mark and its size are settled in the stylesheet and in a `<picture>`
+  rather than in the script, so the right one is painted before the first
+  frame. The header draws no lettering of its own now, so the brand link is
+  named by its `title`, its `aria-label` and the `alt` on each mark.
+- The tab icon is `docs/assets/favicon.svg` rather than a maze redrawn
+  inline as a data URI, which was a second copy of the mark to keep in step
+  with the first.
+- `DESIGN_LANGUAGE.md` records both: the marks the site draws and where each
+  is drawn, and what a table too wide for the screen does.
 - `README.md` is a front door rather than a manual. It went from 1315 lines
   to under 220: what it keeps is what the project is, how to install it, the
   options a run reaches for most, and a short stand-in for each section whose

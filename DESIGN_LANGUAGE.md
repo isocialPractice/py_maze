@@ -8,10 +8,11 @@ other.
 
 ## What it was derived from
 
-[logo.svg](logo.svg) and [icon.svg](icon.svg) are the whole of the source.
-Both draw their lettering as a field of small squares on a fixed pitch, ruled
-off by straight vignette lines, which is the same shape a maze has and the
-same shape a terminal has.
+[logo.svg](logo.svg) is the whole of the source, and the icon is the mark it
+opens with, drawn on its own in [docs/assets](docs/assets). Both draw their
+lettering as a field of small squares on a fixed pitch, ruled off by straight
+vignette lines, which is the same shape a maze has and the same shape a
+terminal has.
 
 | Read from the artwork | Value found | What it decides on the site |
 | --- | --- | --- |
@@ -114,6 +115,16 @@ Below 900px the side menu leaves the flow and becomes a drawer behind a
 button in the header. The button is the only thing that is added at that
 width; nothing is taken away, and every page reads from a phone.
 
+A table is the one thing on a page that cannot be made narrow. Its cells
+hold names set in the monospace face - `collectible_overlay(collectibles)`
+is 33 characters of it - and a name has nowhere to break, so a table of
+them is wider than a 360px phone whatever the page does. Every table is
+therefore a scrolling block of its own: it hugs its content up to the
+measure and scrolls sideways past it, taking its header along with the
+rows, and the page around it stays the width of the screen. Nothing is
+hidden and nothing is truncated - the reader drags the table rather than
+the page.
+
 Focus is drawn with a 2px outline in the ink tone at a 2px offset, on every
 control, and the menu is reachable by keyboard in the order it is read.
 Nothing on the site conveys meaning by colour alone: links are underlined
@@ -122,7 +133,30 @@ its weight.
 
 ## Graphics
 
-No image is sourced. The site's only marks are `logo.svg` and `icon.svg`,
-which the repository already carries, and the ruled ground behind the header,
+No image is sourced from outside the repository. The site's marks are the
+five files in [docs/assets](docs/assets), all of them drawn from the same
+artwork the palette was read out of, and the ruled ground behind the header,
 which is a CSS gradient. A documentation site about a program that draws
 mazes out of asterisks does not need photography.
+
+| File | Where it is drawn |
+| --- | --- |
+| `logo-dark.svg`, `logo-light.svg` | The header, above 900px |
+| `icon-dark.svg`, `icon-light.svg` | The header, at 900px and below |
+| `favicon.svg` | The browser tab |
+
+The wordmark carries "py_maze" as artwork rather than as text, so the header
+draws no lettering of its own; the link is named by its `title` and its
+`aria-label` instead, and each image carries the same name as its `alt`. It
+is set at 108px, and the icon at 22px, which is 40% of each file's own size
+and the mark width the header was laid out around.
+
+The pairs are one ink apiece rather than one file recoloured: `-dark` is the
+`#373d42` ink for a light background and `-light` the `#e6e8ea` ink for a
+dark one, the same two tones the palette above lists. An `<img>` cannot
+inherit the page's colour, so which of the pair is shown is a stylesheet
+rule keyed on the theme, and the size is a `<picture>` falling back to the
+icon at the same 900px the menu becomes a drawer at. Both are settled before
+the first paint, so no reader watches the wrong mark being replaced. The
+favicon needs no pair: it is the dark ink under a light outline, which reads
+on a light tab and on a dark one.
