@@ -15,135 +15,55 @@ into a `## Complete` section at the bottom of this file.
   every frame whether or not they changed, and the hint redraws the whole
   screen twice - and draw only what moved
   - From: UI/UX and Screen Drawing
-- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
-  of crashing on it. `find_entrance` reads column 1 and `find_exit` the
-  second-to-last column, so a file carrying a maze fewer than 3 characters
-  wide raises `IndexError` out of `py_maze/grid.py` rather than being
-  refused: `py_maze --load tiny.txt --solve` on a one-column picture ends in
-  a traceback. `docs/save-format.md` says a rectangle of the allowed
-  characters loads, so the check belongs where the maze is used rather than
-  where the file is read
-  - From: Runtime and Portability Fixes
-- [ ] Verify the documentation site deployed
-  - The site work was pushed, which only starts the deployment: GitHub
-    builds it afterwards and the build can fail on its own. Confirm the
-    workflow run for the commit that carried the site succeeded, then
-    check this off. If it failed, fix the cause and leave this open.
-  - From: Create and Deploy GitHub Pages Override
-
-### User Overrides
-
-#### After GitHub Pages Deployment is Verified and Marked Complete
-
-- [ ] Utilize media files in `docs/assets/` for GitHub Pages, and apply asset
-  according to:
-  - Light mode: Use `docs/assets/icon-dark.svg` and `docs/assets/logo-dark.svg`
-  - Dark mode: Use `docs/assets/icon-light.svg` and `docs/assets/logo-light.svg`
-  - Reference: `.support/menu-logo_per-mode.png`
-  - Apply logo: Desktop and large tablet display sizes
-    - **NOTE**: Both logo SVG files have the text `py_maze` vectorized, so the
-      raw string currently in the menu can be removed, but at a `title` and
-      `aria` attributes accordingly
-    - **IMPORTANT**: Ensure the SVG's are sized correctly. Scale them down to around
-      `width=40%`
-  - Apply icon: Small tablet and phone display sizes
-  - Applying both assets:
-    - Use an `img` element to hold the assets, keeping them both in the current
-      `<a class="brand" href="/py_maze/index.html">` tag, setting the `src`
-      according to the current mode
-- [ ] Use newly added `docs/assets/favicon.svg` as the deployed site's favicon
-
-### Code Review Override - 2.2.1 Load and Document Edges
-
-#### Resolve Issues
-
-- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
-  of crashing on it
-  - **Issue**: The work is done and shipped, but the queue does not say so.
-    `check_ends` in `py_maze/cli.py` refuses the maze, `has_ends` and
-    `MIN_GRID_WIDTH` are in `py_maze/grid.py` and on the public surface,
-    `TestMazeWithNoEnds` covers it, and the 2.2.1 `CHANGELOG.md` entry
-    records it - while the item itself sits unchecked in `## Current` and the
-    two override items the same run finished were archived into
-    `## Complete`. The next run to read the queue sees implemented work as
-    outstanding.
-  - **Goal**: Reconcile the record rather than building anything again.
-    Check the item off and archive it into `## Complete` where the work above
-    is what it asked for; where some part of it is genuinely missing, do only
-    that part.
-  - From: Runtime and Portability Fixes
-
-#### Found Issues
-
-- [ ] A document may still put a collectible on a wall
-  - **Issue**: `json_cells` in `py_maze/saves.py` now refuses a cell outside
-    the grid, but takes any cell inside it, wall or not. A document whose
-    grid is three rows of `[true, false, true]` and whose collectibles are
-    `[[0, 0]]` loads, and `(0, 0)` is a wall: `open_cells` never yields it,
-    the player can never stand on it, and `MazeGame` counts it in
-    `total_collectibles` all the same, so the summary reads
-    `Collected: 0 of 1` however well the maze is played - the very defect the
-    off-grid check was written to close. It also breaks the text round trip:
-    `save_lines` draws `$` over that wall and `parse_save` reads `$` back as
-    an open cell, so loading the document and saving it as a picture yields a
-    maze whose wall has turned into a path. `docs/save-format.md` now says
-    the document reader refuses such a cell "rather than admitting a maze the
-    picture reader could not", and a picture cannot express this one either,
-    `$` always being an open cell there.
-  - **Goal**: Refuse a collectible that is not on an open cell, in the style
-    of the message beside it, and table the refusal in the JSON section of
-    `docs/save-format.md`. Then make
-    `test_every_pickup_a_document_hands_back_is_one_that_can_be_had` verify
-    what its name claims: it reads a generated maze back, where
-    `place_collectibles` has already guaranteed open cells, so it passes with
-    or without any check in the reader.
-  - From: Code Review Override - 2.2.1 Load and Document Edges
-- [ ] `MIN_GRID_WIDTH` is explained by something that does not happen
-  - **Issue**: The `has_ends` docstring in `py_maze/grid.py` says a maze
-    narrower than `MIN_GRID_WIDTH` "has one of those columns off the grid and
-    neither function has anything to read", the `check_ends` comment in
-    `py_maze/cli.py` says "every one of them faults", and `README.md` says
-    such a maze "has nowhere to put them". None of that holds at two
-    characters wide: `find_entrance` reads column 1 and `find_exit` column 0,
-    both on the grid, and neither raises. Only a one-column maze faults, and
-    only in `find_entrance` - `find_exit` reads column `-1` there and quietly
-    hands back an `x` of `-1`. Refusing a two-wide maze is right, the exit
-    column sitting left of the entrance column with both on the border, but
-    the reason given for it is not the one that applies.
-  - **Goal**: Restate the reason in `py_maze/grid.py`, `py_maze/cli.py`,
-    `README.md` and `docs/save-format.md`: three characters is what it takes
-    for the entrance column and the exit column to be distinct and inside the
-    maze. Leave the behaviour, the message and the status code as they are.
-  - From: Code Review Override - 2.2.1 Load and Document Edges
-- [ ] A table on the site has no way to scroll on a narrow screen
-  - **Issue**: `docs/assets/css/site.css` defines `.table-scroll` with
-    `overflow-x: auto`, and nothing ever carries that class: kramdown writes
-    a bare `<table>` for a Markdown table, and no page wraps one by hand. So
-    the rule that was written to keep a wide table inside the screen is dead,
-    and `.page table { width: 100% }` is what applies instead. A table cannot
-    shrink below its widest unbreakable word, and the name table in
-    `docs/library.md` holds `collectible_overlay(collectibles)` - 33
-    characters set in the monospace face at `--type-sm`, roughly 277px, in a
-    cell with 24px of padding, beside two more columns. On a 360px phone the
-    shell leaves 328px, so that row pushes the page wider than the viewport
-    and the whole page scrolls sideways rather than the table.
-    `DESIGN_LANGUAGE.md` says "every page reads from a phone", and
-    `docs/save-format.md` and `docs/CHEATSHEET.md` carry tables of the same
-    shape.
-  - **Goal**: Give the tables the scroll the stylesheet already intends,
-    without a wrapper on every table by hand - `.page table { display: block;
-    overflow-x: auto }` or an equivalent that keeps the header readable - and
-    either use `.table-scroll` or drop it, so the stylesheet has one answer
-    rather than two. Then record the behaviour in the "Layout and menu"
-    section of `DESIGN_LANGUAGE.md`, which currently promises the phone
-    rendering without saying what a wide table does. Confirm it in a browser
-    at 360px: this was queued rather than fixed because it cannot be verified
-    without rendering the page.
-  - From: Code Review Override - 2.2.1 Load and Document Edges
 
 ### Create and Deploy GitHub Pages Override
 
-- [ ] Line count over 1300
+- Line count over 1300
+
+### UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+
+#### Resolve Issues
+
+- [ ] A table on the site has no way to scroll on a narrow screen
+  - **Issue**: the narrow-screen half works - at 360px the name table in
+    `docs/library.md` scrolls on its own, the page does not
+    (`document.documentElement.scrollWidth` stays at 360),
+    `collectible_overlay(collectibles)` reads in full once scrolled, each
+    heading stays over its column at every scroll position, and nothing is
+    ellipsised or broken mid-identifier. What it cost is the desktop
+    rendering: `width: 100%` became `width: fit-content`, so a table now
+    shrinks to its content instead of spanning the measure. Rendered in
+    Chromium at 1280px, where the measure is 655.5px, the `Key` / `Does`
+    table in `docs/CHEATSHEET.md` draws 588.6px (90%) and the status code
+    table in `docs/scripting.md` draws 474.6px (72%) - two tables on one
+    page ending 114px apart from each other and both short of the paragraph
+    edge. Most of the site's tables are narrower than `76ch`, so most of
+    them show it
+  - **Goal**: Resolve to [table-measure-regression.prompt.md](.claude/prompts/table-measure-regression.prompt.md)
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+
+#### Found Issues
+
+- [ ] The site's rendered behaviour is pinned by nothing the suite runs
+  - **Issue**: `TestDocumentationSite` in `test_py_maze.py` reads
+    `docs/assets/css/site.css` and `docs/_layouts/default.html` as text,
+    which is why this regression passed the suite - a stylesheet that says
+    `display: block` reads as correct whatever a browser then does with it.
+    Every claim behind the three site items was verified this run only
+    because an agent drove a browser by hand
+  - **Goal**: Add a browser test the project runs itself, asserting what
+    was checked here: that a table wider than the measure scrolls while the
+    page does not at 360px, that its heading stays over its column at every
+    scroll position, that two tables of different widths both reach the
+    paragraph edge at 1280px, that exactly one brand mark is drawn in each
+    of the four width-and-theme states with the ink the theme calls for,
+    that a stored dark theme paints the light-ink mark on the first frame,
+    and that the brand link still exposes `py_maze` with images blocked.
+    Playwright is the natural fit and is already on the machine at user
+    scope, but the project has no Node test setup and its suite is
+    `unittest`, so decide first whether that dependency is wanted at all -
+    if not, say so and close this
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
 
 ## Fixes and Hardening
 
@@ -168,6 +88,77 @@ Completing items in this section is a minor version update.
   walking the maze is not always `o`
 - [ ] Add obstacles that block or slow the way through, scattered like the
   collectibles are and reported in the end-of-game summary
+
+### New Game Modes
+
+Ways of playing a maze that are not the plain walk from the entrance to the
+exit. Each mode is the game that is already there played differently: the
+same grid, the same solver, the same renderer and the same key loop, with a
+bare run naming no mode playing exactly as it does today. Completing items
+in this section is a minor version update.
+
+- [ ] Add a chase mode: an antagonist that starts following the player once
+  a reasonable point in the maze has been reached, moving at a reasonable
+  speed, drawn with its own marker in `py_maze/rendering.py` and reported in
+  the end-of-game summary beside the timer, the moves and the pickups
+  - **Reasonable point**: far enough in that the chaser cannot reach the
+    player the moment it starts moving
+  - **Reasonable speed**: slow enough that a player who keeps moving cannot
+    be caught by the chaser alone
+  - The chaser walks the solution the breadth-first solver already computes,
+    so it never walks into a wall and never needs a second algorithm
+  - Being caught ends the run the way the exit does, with a summary saying
+    which of the two happened rather than a second screen
+- [ ] Add a `maze_progress(grid, cell)` reporting how far along the solution
+  a cell is, as a share of the whole, which is what the chase point is read
+  off and what a later `--stats` can report as well
+  - Measure the solution as the straight runs it is made of rather than as
+    a count of cells: sum the length of each run, and a cell's progress is
+    the distance walked to it over that sum. A solution of four runs of 4,
+    2, 5 and 3 totals 14, so 55% of it is 7.7, which falls in the third run
+  - It reads a solved grid and returns a number, so it belongs beside the
+    solver rather than in the game and can be tested without a terminal
+- [ ] Add a `--chase-point` option overruling the reasonable point with a
+  share of the maze the player must have walked before the chase begins
+  - Takes a whole number from 20 to 90, read against `maze_progress`, and
+    defaults to 55
+  - A value under 20 resolves to 20 and one over 90 to 90, so the option
+    cannot be set to a value that makes the mode unplayable either way
+  - A decimal rounds to the nearest whole number
+  - A value that is not a number at all, as in `--chase-point a34`, prints
+    a notice of its own naming the option and the value, and the run
+    carries on as though the option had not been given
+- [ ] Add a `--chase-speed` option overruling the reasonable speed with one
+  of six preset speeds, given as a whole number from 0 to 5
+  - The presets are the moves the chaser makes in a second: `0` is one,
+    rising by one to `5` at six, so the option names a speed rather than a
+    delay a player has to reason about
+  - A value under 0 resolves to 0 and one over 5 to 5, a decimal rounds to
+    the nearest whole number, and a value that is not a number prints the
+    same kind of notice `--chase-point` does and is otherwise ignored
+- [ ] Add a quest mode: an inventory the player fills from the maze, where
+  what is carried is what opens the way on, so a maze is played for what is
+  in it rather than only for the way out
+  - **Door**: closed until the matching item is carried, and opening one
+    reaches the next stage or the next part of the maze
+  - **Box**: holds an item, so one pickup leads to another
+  - Each is drawn with its own marker, refused by the save format the way
+    an unknown character already is, and carried through the JSON document
+    so a document round trips a quest maze as it does a plain one
+- [ ] Add a non-playable character to quest mode that hands out a hint on
+  the task in front of the player, shown on its own key the way the hint
+  along the solution already is
+  - It says what the next step of the quest is rather than where the exit
+    is, so it is a second kind of hint rather than a second way to ask for
+    the first
+- [ ] Add a `--mode` option choosing between the plain game, chase mode and
+  quest mode, defaulting to the plain game, with the names listed in its
+  help text as `--algorithm` lists its own, and say plainly which options
+  belong to which mode
+- [ ] Write `docs/modes.md` covering each mode, its options and its markers,
+  add it to `docs/_data/nav.yml` and the README's documentation table, and
+  add the new names to `py_maze/__init__.py` and the tables in
+  `docs/library.md`
 
 ## Maze Solver and Visualization
 
@@ -220,14 +211,7 @@ update.
 Faults found while evaluating the finished project, none of which change an
 interface. Completing items in this section is a patch version update.
 
-- [ ] Refuse a loaded maze too small to have an entrance and an exit instead
-  of crashing on it. `find_entrance` reads column 1 and `find_exit` the
-  second-to-last column, so a file carrying a maze fewer than 3 characters
-  wide raises `IndexError` out of `py_maze/grid.py` rather than being
-  refused: `py_maze --load tiny.txt --solve` on a one-column picture ends in
-  a traceback. `docs/save-format.md` says a rectangle of the allowed
-  characters loads, so the check belongs where the maze is used rather than
-  where the file is read
+No items are currently queued in this section.
 
 ## Maze Analysis and Statistics
 
@@ -604,3 +588,119 @@ No items are currently queued in this section.
   scripting section, the name tables and the project tree are still run
   against the package rather than left unchecked
   - From: Create and Deploy GitHub Pages Override
+- [x] Refuse a loaded maze too small to have an entrance and an exit instead
+  of crashing on it. `find_entrance` reads column 1 and `find_exit` the
+  second-to-last column, so a file carrying a maze fewer than 3 characters
+  wide raises `IndexError` out of `py_maze/grid.py` rather than being
+  refused: `py_maze --load tiny.txt --solve` on a one-column picture ends in
+  a traceback. `docs/save-format.md` says a rectangle of the allowed
+  characters loads, so the check belongs where the maze is used rather than
+  where the file is read
+  - From: Runtime and Portability Fixes
+- [x] Verify the documentation site deployed
+  - The site work was pushed, which only starts the deployment: GitHub
+    builds it afterwards and the build can fail on its own. Confirm the
+    workflow run for the commit that carried the site succeeded, then
+    check this off. If it failed, fix the cause and leave this open.
+  - From: Create and Deploy GitHub Pages Override
+- [x] Utilize media files in `docs/assets/` for GitHub Pages, and apply asset
+  according to:
+  - Light mode: Use `docs/assets/icon-dark.svg` and `docs/assets/logo-dark.svg`
+  - Dark mode: Use `docs/assets/icon-light.svg` and `docs/assets/logo-light.svg`
+  - Reference: `.support/menu-logo_per-mode.png`
+  - Apply logo: Desktop and large tablet display sizes
+    - **NOTE**: Both logo SVG files have the text `py_maze` vectorized, so the
+      raw string currently in the menu can be removed, but at a `title` and
+      `aria` attributes accordingly
+    - **IMPORTANT**: Ensure the SVG's are sized correctly. Scale them down to around
+      `width=40%`
+  - Apply icon: Small tablet and phone display sizes
+  - Applying both assets:
+    - Use an `img` element to hold the assets, keeping them both in the current
+      `<a class="brand" href="/py_maze/index.html">` tag, setting the `src`
+      according to the current mode
+  - From: User Overrides `->` After GitHub Pages Deployment is Verified and
+    Marked Complete
+- [x] Use newly added `docs/assets/favicon.svg` as the deployed site's favicon
+  - From: User Overrides `->` After GitHub Pages Deployment is Verified and
+    Marked Complete
+- [x] Refuse a loaded maze too small to have an entrance and an exit instead
+  of crashing on it
+  - **Issue**: The work is done and shipped, but the queue does not say so.
+    `check_ends` in `py_maze/cli.py` refuses the maze, `has_ends` and
+    `MIN_GRID_WIDTH` are in `py_maze/grid.py` and on the public surface,
+    `TestMazeWithNoEnds` covers it, and the 2.2.1 `CHANGELOG.md` entry
+    records it - while the item itself sits unchecked in `## Current` and the
+    two override items the same run finished were archived into
+    `## Complete`. The next run to read the queue sees implemented work as
+    outstanding.
+  - **Goal**: Reconcile the record rather than building anything again.
+    Check the item off and archive it into `## Complete` where the work above
+    is what it asked for; where some part of it is genuinely missing, do only
+    that part.
+  - From: Runtime and Portability Fixes
+- [x] A document may still put a collectible on a wall
+  - **Issue**: `json_cells` in `py_maze/saves.py` now refuses a cell outside
+    the grid, but takes any cell inside it, wall or not. A document whose
+    grid is three rows of `[true, false, true]` and whose collectibles are
+    `[[0, 0]]` loads, and `(0, 0)` is a wall: `open_cells` never yields it,
+    the player can never stand on it, and `MazeGame` counts it in
+    `total_collectibles` all the same, so the summary reads
+    `Collected: 0 of 1` however well the maze is played - the very defect the
+    off-grid check was written to close. It also breaks the text round trip:
+    `save_lines` draws `$` over that wall and `parse_save` reads `$` back as
+    an open cell, so loading the document and saving it as a picture yields a
+    maze whose wall has turned into a path. `docs/save-format.md` now says
+    the document reader refuses such a cell "rather than admitting a maze the
+    picture reader could not", and a picture cannot express this one either,
+    `$` always being an open cell there.
+  - **Goal**: Refuse a collectible that is not on an open cell, in the style
+    of the message beside it, and table the refusal in the JSON section of
+    `docs/save-format.md`. Then make
+    `test_every_pickup_a_document_hands_back_is_one_that_can_be_had` verify
+    what its name claims: it reads a generated maze back, where
+    `place_collectibles` has already guaranteed open cells, so it passes with
+    or without any check in the reader.
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+- [x] `MIN_GRID_WIDTH` is explained by something that does not happen
+  - **Issue**: The `has_ends` docstring in `py_maze/grid.py` says a maze
+    narrower than `MIN_GRID_WIDTH` "has one of those columns off the grid and
+    neither function has anything to read", the `check_ends` comment in
+    `py_maze/cli.py` says "every one of them faults", and `README.md` says
+    such a maze "has nowhere to put them". None of that holds at two
+    characters wide: `find_entrance` reads column 1 and `find_exit` column 0,
+    both on the grid, and neither raises. Only a one-column maze faults, and
+    only in `find_entrance` - `find_exit` reads column `-1` there and quietly
+    hands back an `x` of `-1`. Refusing a two-wide maze is right, the exit
+    column sitting left of the entrance column with both on the border, but
+    the reason given for it is not the one that applies.
+  - **Goal**: Restate the reason in `py_maze/grid.py`, `py_maze/cli.py`,
+    `README.md` and `docs/save-format.md`: three characters is what it takes
+    for the entrance column and the exit column to be distinct and inside the
+    maze. Leave the behaviour, the message and the status code as they are.
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+- [x] A table on the site has no way to scroll on a narrow screen
+  - **Issue**: `docs/assets/css/site.css` defines `.table-scroll` with
+    `overflow-x: auto`, and nothing ever carries that class: kramdown writes
+    a bare `<table>` for a Markdown table, and no page wraps one by hand. So
+    the rule that was written to keep a wide table inside the screen is dead,
+    and `.page table { width: 100% }` is what applies instead. A table cannot
+    shrink below its widest unbreakable word, and the name table in
+    `docs/library.md` holds `collectible_overlay(collectibles)` - 33
+    characters set in the monospace face at `--type-sm`, roughly 277px, in a
+    cell with 24px of padding, beside two more columns. On a 360px phone the
+    shell leaves 328px, so that row pushes the page wider than the viewport
+    and the whole page scrolls sideways rather than the table.
+    `DESIGN_LANGUAGE.md` says "every page reads from a phone", and
+    `docs/save-format.md` and `docs/CHEATSHEET.md` carry tables of the same
+    shape.
+  - **Goal**: Give the tables the scroll the stylesheet already intends,
+    without a wrapper on every table by hand - `.page table { display: block;
+    overflow-x: auto }` or an equivalent that keeps the header readable - and
+    either use `.table-scroll` or drop it, so the stylesheet has one answer
+    rather than two. Then record the behaviour in the "Layout and menu"
+    section of `DESIGN_LANGUAGE.md`, which currently promises the phone
+    rendering without saying what a wide table does. Confirm it in a browser
+    at 360px: this was queued rather than fixed because it cannot be verified
+    without rendering the page.
+  - From: Code Review Override - 2.2.1 Load and Document Edges

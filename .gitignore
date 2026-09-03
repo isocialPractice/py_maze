@@ -20,6 +20,11 @@ MANIFEST
 htmlcov/
 .tox/
 
+# Verification output: the UI/UX agent's running log and its screenshots,
+# and anything else a browser test run drops here. Machine output, not
+# project history.
+test-results/
+
 # Virtual environments
 .venv/
 venv/
