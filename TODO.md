@@ -16,79 +16,35 @@ into a `## Complete` section at the bottom of this file.
   screen twice - and draw only what moved
   - From: UI/UX and Screen Drawing
 
-### UI/UX Override - Site Marks, Scrolling Tables and the Favicon
-
-#### Resolve Issues
-
-- [ ] A table on the site has no way to scroll on a narrow screen
-  - **Issue**: the narrow-screen half works - at 360px the name table in
-    `docs/library.md` scrolls on its own, the page does not
-    (`document.documentElement.scrollWidth` stays at 360),
-    `collectible_overlay(collectibles)` reads in full once scrolled, each
-    heading stays over its column at every scroll position, and nothing is
-    ellipsised or broken mid-identifier. What it cost is the desktop
-    rendering: `width: 100%` became `width: fit-content`, so a table now
-    shrinks to its content instead of spanning the measure. Rendered in
-    Chromium at 1280px, where the measure is 655.5px, the `Key` / `Does`
-    table in `docs/CHEATSHEET.md` draws 588.6px (90%) and the status code
-    table in `docs/scripting.md` draws 474.6px (72%) - two tables on one
-    page ending 114px apart from each other and both short of the paragraph
-    edge. Most of the site's tables are narrower than `76ch`, so most of
-    them show it
-  - **Goal**: Resolve to [table-measure-regression.prompt.md](.claude/prompts/table-measure-regression.prompt.md)
-  - From: Code Review Override - 2.2.1 Load and Document Edges
+### UI/UX Override - The Table Measure Regression
 
 #### Found Issues
 
-- [ ] The site's rendered behaviour is pinned by nothing the suite runs
-  - **Issue**: `TestDocumentationSite` in `test_py_maze.py` reads
-    `docs/assets/css/site.css` and `docs/_layouts/default.html` as text,
-    which is why this regression passed the suite - a stylesheet that says
-    `display: block` reads as correct whatever a browser then does with it.
-    Every claim behind the three site items was verified this run only
-    because an agent drove a browser by hand
-  - **Goal**: Add a browser test the project runs itself, asserting what
-    was checked here: that a table wider than the measure scrolls while the
-    page does not at 360px, that its heading stays over its column at every
-    scroll position, that two tables of different widths both reach the
-    paragraph edge at 1280px, that exactly one brand mark is drawn in each
-    of the four width-and-theme states with the ink the theme calls for,
-    that a stored dark theme paints the light-ink mark on the first frame,
-    and that the brand link still exposes `py_maze` with images blocked.
-    Playwright is the natural fit and is already on the machine at user
-    scope, but the project has no Node test setup and its suite is
-    `unittest`, so decide first whether that dependency is wanted at all -
-    if not, say so and close this
-  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
-- [ ] The refusal added to `docs/save-format.md` is the one row of that table
-  the suite never runs
-  - **Issue**: `TestSaveFormatDocument.REFUSALS` in `test_py_maze.py` holds a
-    file for every refusal the page tables, and
-    `test_every_documented_refusal_is_one_the_reader_makes` reads each one
-    and asserts the message it raises appears in the page. `Puts a
-    collectible on a wall`, added this run, has no entry, so it is the only
-    row the reader is never run against. The message itself is pinned by
-    `test_a_document_may_not_put_a_pickup_on_a_wall`, so reworded it would
-    leave the page stale without failing anything
-  - **Goal**: Add `('a document with a collectible on a wall', '{"py_maze":
-    1, "grid": [[true]], "collectibles": [[0, 0]]}\n')` to `REFUSALS`, in the
-    place the table lists it, which raises `collectibles holds [0, 0], which
-    is a wall` and is already the text the page shows. Consider pinning the
-    other direction too, every row of the table being one some file
-    produces, since that is the direction this gap slipped through
-  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
-- [ ] The 2.2.2 entry records the scrolling table without the measure it cost
-  - **Issue**: the `Fixed` bullet in `CHANGELOG.md` describes the table fix
-    as whole, and the release being cut carries the desktop regression queued
-    under **Resolve Issues** above: `width: fit-content` makes a table hug its
-    content, so at 1280px the two tables measured this run draw 588.6px and
-    474.6px against a 655.5px measure. Whoever reads the released entry is
-    told the narrow-screen half and not what it cost
-  - **Goal**: Either land the measure fix before 2.2.2 is cut, which makes
-    the entry true as written, or add a sentence to that bullet saying a
-    table now hugs its content rather than spanning the measure, to be
-    dropped again when the follow-up lands
-  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+- [ ] The width `CHANGELOG.md` records for the key table is two characters
+  short of what the page drew
+  - **Issue**: verifying the 2.2.3 fix meant reproducing the regression
+    first, so the four pages were rendered against the 2.2.2 stylesheet
+    from `HEAD` as a control. The status code table on `docs/scripting.md`
+    came back at 474.6px, the recorded figure to a tenth of a pixel. The
+    `Key` / `Does` table on `docs/CHEATSHEET.md` came back at 605.0px, not
+    the 588.6px recorded, and the 16.4px is exactly two characters of the
+    8.2px monospace cell face. A block table is as wide as its widest row,
+    and that table's widest row is `The "would you like to play" prompt,
+    one keypress`: deleting the two straight quotes from the cell in the
+    browser returns the table to 588.6px exactly. The 09.03.2026 run wrote
+    its preview tables by hand and dropped them; this run converted the
+    Markdown itself, so 605.0px is what that page drew under 2.2.2. The
+    regression and the fix are unaffected - the table was short of the
+    measure either way, and now draws the full 655.5px - but three
+    published numbers derived from the wrong one
+  - **Goal**: In the 2.2.3 `### Fixed` entry, `588.6px` becomes `605.0px`
+    and `114px apart` becomes `130.4px apart`. In the 2.2.2 entry, `90% of
+    the measure` becomes `92%` and its `114px apart` becomes `130.4px`.
+    The 474.6px, the 72% and the 655.5px measure are all confirmed and
+    stay. The same figures in the completed item at the foot of this file
+    are a record of what that run measured rather than a claim about the
+    page, so leave them
+  - From: UI/UX Override - The Table Measure Regression
 
 ## Fixes and Hardening
 
@@ -184,6 +140,71 @@ in this section is a minor version update.
   add it to `docs/_data/nav.yml` and the README's documentation table, and
   add the new names to `py_maze/__init__.py` and the tables in
   `docs/library.md`
+
+### Further Game Modes
+
+Modes proposed but not yet specified, held apart from the two above so that
+"queued and worked out" does not read the same as "an idea worth having".
+Each is the game that is already there under a different rule, reachable
+through the same `--mode` option and playable with the same keys, and each
+names what it reuses so none of them is a second engine. An item here is
+worked up into its own items before it is built. Completing items in this
+section is a minor version update.
+
+- [ ] Add a time attack mode: the run is against a clock rather than
+  against the maze, and the clock running out ends it the way the exit does
+  - The timer and the move counter are already drawn on the status line and
+    already summarized on the win screen, so what is new is a limit to count
+    down to and a second way for the run to end
+  - The limit is read off the maze rather than fixed, the solution length
+    the breadth-first solver already computes being what a fair one is
+    measured from, with an option overruling it as `--chase-point` overrules
+    its own reasonable point
+  - The summary says which of the two happened, as chase mode's does
+- [ ] Add a fog of war mode: only the cells within a few steps of the player
+  are drawn, so the maze is walked rather than read
+  - `maze_lines` draws every cell it is given, so the mode is a filter on
+    what it is handed rather than a second renderer
+  - The distance is counted through the maze rather than across it, so a
+    wall between two cells hides what is behind it and the solver's own
+    breadth-first walk is what measures it
+  - Cells already visited stay drawn, so the mode reveals a map rather than
+    forgetting one, and `--solve` and the hint are refused rather than
+    quietly defeating it
+- [ ] Add a collect-all mode: the exit stays shut until every collectible
+  has been picked up, so the pickups are the game rather than a tally
+  - Collectibles, the tally and the end-of-game summary all exist; what is
+    new is the exit refusing to open and saying why
+  - The shut exit is drawn with its own marker until the last pickup is
+    taken, so a player can see the rule rather than being told it once
+  - `place_collectibles` already picks open cells, so every maze it makes is
+    winnable in this mode without a second check
+- [ ] Add a memory mode: the maze is drawn in full for a few seconds, then
+  hidden, and the player walks it from what they remember
+  - It is fog of war with the fog arriving late rather than a mode of its
+    own, so it is built on whatever that one leaves behind
+  - How long the maze is shown is read off its size, with an option
+    overruling it, and the countdown is drawn on the status line
+  - A wall walked into is reported rather than silently refused, that being
+    the only feedback a player has once the drawing is gone
+- [ ] Add an endless mode: finishing a maze carves the next one instead of
+  ending the run, with the score carried across
+  - Each maze is seeded from the one before it, so a whole run is repeatable
+    from the seed of its first maze and can be reported as one number
+  - The size, or the algorithm, or the braiding steps up as the run goes on,
+    so the tenth maze is not the first one again
+  - The summary counts the mazes finished, the moves and the pickups across
+    the whole run rather than the last maze of it
+- [ ] Add a ghost mode: a run recorded to a file is replayed beside the
+  player, so a maze can be raced against an earlier attempt
+  - The recording is the moves and the times they were made at, written the
+    way a save file is written and refused the way one is, so it is a format
+    another tool can produce
+  - The ghost is drawn with its own marker and walks into nothing, its route
+    having already been walked
+  - It is the same maze or it is refused: the recording carries the seed and
+    the grid it was made on, and a mismatch is reported rather than replayed
+    over the wrong maze
 
 ## Maze Solver and Visualization
 
@@ -729,3 +750,69 @@ No items are currently queued in this section.
     at 360px: this was queued rather than fixed because it cannot be verified
     without rendering the page.
   - From: Code Review Override - 2.2.1 Load and Document Edges
+- [x] A table on the site has no way to scroll on a narrow screen
+  - **Issue**: the narrow-screen half works - at 360px the name table in
+    `docs/library.md` scrolls on its own, the page does not
+    (`document.documentElement.scrollWidth` stays at 360),
+    `collectible_overlay(collectibles)` reads in full once scrolled, each
+    heading stays over its column at every scroll position, and nothing is
+    ellipsised or broken mid-identifier. What it cost is the desktop
+    rendering: `width: 100%` became `width: fit-content`, so a table now
+    shrinks to its content instead of spanning the measure. Rendered in
+    Chromium at 1280px, where the measure is 655.5px, the `Key` / `Does`
+    table in `docs/CHEATSHEET.md` draws 588.6px (90%) and the status code
+    table in `docs/scripting.md` draws 474.6px (72%) - two tables on one
+    page ending 114px apart from each other and both short of the paragraph
+    edge. Most of the site's tables are narrower than `76ch`, so most of
+    them show it
+  - **Goal**: Resolve to [table-measure-regression.prompt.md](.claude/prompts/table-measure-regression.prompt.md)
+  - From: Code Review Override - 2.2.1 Load and Document Edges
+- [x] The site's rendered behaviour is pinned by nothing the suite runs
+  - **Issue**: `TestDocumentationSite` in `test_py_maze.py` reads
+    `docs/assets/css/site.css` and `docs/_layouts/default.html` as text,
+    which is why this regression passed the suite - a stylesheet that says
+    `display: block` reads as correct whatever a browser then does with it.
+    Every claim behind the three site items was verified this run only
+    because an agent drove a browser by hand
+  - **Goal**: Add a browser test the project runs itself, asserting what
+    was checked here: that a table wider than the measure scrolls while the
+    page does not at 360px, that its heading stays over its column at every
+    scroll position, that two tables of different widths both reach the
+    paragraph edge at 1280px, that exactly one brand mark is drawn in each
+    of the four width-and-theme states with the ink the theme calls for,
+    that a stored dark theme paints the light-ink mark on the first frame,
+    and that the brand link still exposes `py_maze` with images blocked.
+    Playwright is the natural fit and is already on the machine at user
+    scope, but the project has no Node test setup and its suite is
+    `unittest`, so decide first whether that dependency is wanted at all -
+    if not, say so and close this
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+- [x] The refusal added to `docs/save-format.md` is the one row of that table
+  the suite never runs
+  - **Issue**: `TestSaveFormatDocument.REFUSALS` in `test_py_maze.py` holds a
+    file for every refusal the page tables, and
+    `test_every_documented_refusal_is_one_the_reader_makes` reads each one
+    and asserts the message it raises appears in the page. `Puts a
+    collectible on a wall`, added this run, has no entry, so it is the only
+    row the reader is never run against. The message itself is pinned by
+    `test_a_document_may_not_put_a_pickup_on_a_wall`, so reworded it would
+    leave the page stale without failing anything
+  - **Goal**: Add `('a document with a collectible on a wall', '{"py_maze":
+    1, "grid": [[true]], "collectibles": [[0, 0]]}\n')` to `REFUSALS`, in the
+    place the table lists it, which raises `collectibles holds [0, 0], which
+    is a wall` and is already the text the page shows. Consider pinning the
+    other direction too, every row of the table being one some file
+    produces, since that is the direction this gap slipped through
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
+- [x] The 2.2.2 entry records the scrolling table without the measure it cost
+  - **Issue**: the `Fixed` bullet in `CHANGELOG.md` describes the table fix
+    as whole, and the release being cut carries the desktop regression queued
+    under **Resolve Issues** above: `width: fit-content` makes a table hug its
+    content, so at 1280px the two tables measured this run draw 588.6px and
+    474.6px against a 655.5px measure. Whoever reads the released entry is
+    told the narrow-screen half and not what it cost
+  - **Goal**: Either land the measure fix before 2.2.2 is cut, which makes
+    the entry true as written, or add a sentence to that bullet saying a
+    table now hugs its content rather than spanning the measure, to be
+    dropped again when the follow-up lands
+  - From: UI/UX Override - Site Marks, Scrolling Tables and the Favicon
