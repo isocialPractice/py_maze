@@ -46,6 +46,61 @@ into a `## Complete` section at the bottom of this file.
     page, so leave them
   - From: UI/UX Override - The Table Measure Regression
 
+### Code Review Override - The 2.2.3 Table Measure Fix
+
+#### Found Issues
+
+- [ ] The 2.2.3 entry names the wrong box as the one `width: 100%` widens
+  - **Issue**: the last sentence of the 2.2.3 `### Fixed` bullet in
+    `CHANGELOG.md` reads "Putting `width: 100%` back on the block table was
+    measured and does not work, the box it widens being the anonymous one
+    rather than the cells". That inverts it. `width: 100%` applies to the
+    element's own principal box, which `display: block` has made a block
+    box, and widening that box is exactly what it does; the anonymous table
+    box generated inside it to hold the rows keeps an auto width and stays
+    shrink-to-fit, which is why the cells do not follow. The other three
+    places this run wrote the same fact all say so - `DESIGN_LANGUAGE.md`
+    line 125 "a box that shrinks to their content and that no selector can
+    reach", the new "What the suite cannot tell you about the site" section
+    of `CONTRIBUTING.md` "wraps the rows in a box no selector reaches", and
+    the comment on `test_a_table_fills_the_measure_where_there_is_one_to_fill`
+    in `test_py_maze.py` line 5405 "an anonymous box that is shrink-to-fit
+    and that no selector reaches". A reader who takes the changelog at its
+    word has the anonymous box being reached by a declaration the other
+    three say cannot reach it, and the changelog is the one that is wrong
+  - **Goal**: Reword that clause so the box `width: 100%` widens is the
+    table's own block box and the anonymous box holding the rows is the one
+    it does not reach. Leave the measurement claim itself - putting
+    `width: 100%` back on the block table genuinely does not work, and the
+    reason is that the widened box is not the box the cells are laid out in.
+    The sentence carries none of the figures the **Found Issues** item above
+    corrects, so the two edits do not collide
+  - From: Code Review Override - The 2.2.3 Table Measure Fix
+- [ ] `stylesheet_rule` does not read the stylesheet the way its comment says
+  - **Issue**: the comment added to `stylesheet_rule` in `test_py_maze.py`
+    line 5346 says it returns a rule "before any at-rule narrows it", and
+    the helper does not do that. It hands the whole file to `declarations`,
+    which is one `re.search` returning the first textual match, inside an
+    at-rule block or not. It returns the base `.page table` today only
+    because that rule is written at line 514 of
+    `docs/assets/css/site.css`, above the `@media (max-width: 900px)` block
+    at line 642 that this run moved the scroll into. Two
+    `@media (prefers-color-scheme: dark)` blocks already sit above it at
+    lines 50 and 168: a `.page table` rule added to either - a border colour
+    for the dark theme is the obvious one - is returned instead, and
+    `test_a_table_fills_the_measure_where_there_is_one_to_fill` then asserts
+    `width: 100%` against the dark-mode declarations while its failure
+    message still says "the stylesheet". `narrow_screen_rule` has the
+    problem solved beside it, brace-counting its block rather than matching
+    it, so only the base-rule side is unguarded
+  - **Goal**: Make the helper match its comment: read the declarations from
+    outside every at-rule block - the counterpart of what `narrow_screen_rule`
+    already does - or assert the match it found is not inside one, so a
+    selector defined in two places cannot silently return the wrong rule.
+    Behaviour today is correct, so no assertion in either table test should
+    need to change
+  - From: Code Review Override - The 2.2.3 Table Measure Fix
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
