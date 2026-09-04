@@ -5,6 +5,56 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-09-04
+
+A follow-up to the site work in 2.2.2, which fixed a table on a phone at the
+cost of every table on a desktop screen. The measure is back, the scroll is
+kept where it is needed, and two gaps in the suite that let both of these
+through are closed. No option behaves differently, and no name entered or
+left the public surface.
+
+### Added
+
+- A test that a document putting a collectible on a wall is refused. The
+  refusal shipped in 2.2.2 and the page tabled it, but the reader was never
+  run against it: it was the one row of that table with no file behind it,
+  so a reworded message would have left the page stale without failing
+  anything.
+- A test reading the refusal tables on `docs/save-format.md` the other way
+  round, so every row of them is a message some file the suite holds
+  actually raises. That is the direction the missing row slipped through,
+  a row being addable to the page without anything reading it back.
+- A test that a table fills the measure where there is a measure to fill,
+  beside the one that it scrolls where there is not. Each of the two rules
+  is now pinned to the width it belongs to rather than to its declarations
+  alone, which is what let one replace the other unnoticed.
+
+### Changed
+
+- `DESIGN_LANGUAGE.md` records what a wide table does at each width rather
+  than reading as though every table scrolls at every one, and says why the
+  scroll is not simply left switched on: a table drawn as a block wraps its
+  rows in a box that shrinks to their content and that no selector reaches.
+- `CONTRIBUTING.md` records what the suite cannot tell you about the site -
+  it reads the stylesheet as text, and a rule that reads as correct is not a
+  rule a browser draws as intended - along with the decision not to take a
+  browser test dependency for it, and the two widths a layout change is
+  checked at by hand instead.
+
+### Fixed
+
+- A table fills the measure again on a desktop screen. 2.2.2 gave every
+  table `display: block` at every width to get it scrolling on a phone, and
+  a block table shrinks to its content: at 1280px, against a 655.5px
+  measure, the key table on `docs/CHEATSHEET.md` drew 588.6px and the status
+  code table on `docs/scripting.md` 474.6px, two tables on one page ending
+  114px apart and both short of the paragraph edge. Most of the site's
+  tables are narrower than the measure, so most of them showed it. The
+  scroll now belongs to the narrow-screen block alone, below the 900px the
+  menu becomes a drawer at, where there is no measure left to fill anyway.
+  Putting `width: 100%` back on the block table was measured and does not
+  work, the box it widens being the anonymous one rather than the cells.
+
 ## [2.2.2] - 2026-09-03
 
 The documentation moved out of `README.md` and into a site, and this release
@@ -75,7 +125,12 @@ option behaves differently, and no name entered or left the public surface.
   table in `docs/library.md` holds `collectible_overlay(collectibles)`, 33
   characters of the monospace face, which pushed the whole page past a
   360px phone. Every table is now its own scrolling block, header included,
-  and `.table-scroll` is gone so the stylesheet has one answer.
+  and `.table-scroll` is gone so the stylesheet has one answer. What this
+  release cost for it is the desktop rendering: a table drawn as a block
+  hugs its content instead of spanning the measure, so at 1280px the key
+  table on `docs/CHEATSHEET.md` draws 90% of the measure and the status code
+  table on `docs/scripting.md` 72%, and two tables on one page end 114px
+  apart. 2.2.3 gives the measure back above the drawer breakpoint.
 - The reason given for `MIN_GRID_WIDTH` was not the reason that applies. The
   `has_ends` docstring, the `check_ends` comment and the documentation all
   said a maze narrower than three characters put a column off the grid and

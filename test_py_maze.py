@@ -4398,9 +4398,34 @@ class TestSaveFormatDocument(unittest.TestCase):
          '{"py_maze": 1, "grid": [[true]], "collectibles": [[1]]}\n'),
         ('a document with a collectible off the maze',
          '{"py_maze": 1, "grid": [[true]], "collectibles": [[9, 9]]}\n'),
+        ('a document with a collectible on a wall',
+         '{"py_maze": 1, "grid": [[true]], "collectibles": [[0, 0]]}\n'),
         ('a document whose seed is neither a number nor a word',
          '{"py_maze": 1, "grid": [[true]], "seed": {}}\n'),
     )
+
+    # the one refusal the page cannot show in full, and so cannot be one
+    # of the rows above: the JSON parser's own account of what it choked
+    # on follows the message, and that text belongs to the standard
+    # library rather than to py_maze. The page tables the part py_maze
+    # writes and says the rest is appended
+    PART_REFUSALS = (
+        ('a document the JSON parser cannot read', '{"py_maze": 1,\n'),
+    )
+
+    def tabled_refusals(self):
+        # every message the "What a Reader Must Refuse" section tables,
+        # taken from the second column of both of its tables. A row
+        # names one message, in backticks, whatever prose follows it
+        #
+        # Returns:
+        #     list: The messages, in the order the section lists them
+
+        section = self.document().split('## What a Reader Must Refuse', 1)
+        self.assertEqual(len(section), 2,
+                         'the document tables no refusals')
+        return re.findall(r'^\|[^|]+\|\s*`([^`]+)`',
+                          section[1].split('\n## ')[0], re.MULTILINE)
 
     def document(self):
         return read_project_file(SAVE_FORMAT_PATH)
@@ -4467,6 +4492,44 @@ class TestSaveFormatDocument(unittest.TestCase):
                     py_maze.parse_save(text)
 
                 self.assertIn(str(caught.exception), document)
+
+    def test_the_refusal_the_page_shows_in_part_is_one_too(self):
+        # the parser's account of the JSON is appended to a message the
+        # page can only show the front of, so the front is what is
+        # checked and the appendix is only checked to be there
+        document = self.document()
+        for description, text in self.PART_REFUSALS:
+            with self.subTest(refusal=description):
+                with self.assertRaises(py_maze.SaveFileError) as caught:
+                    py_maze.parse_save(text)
+
+                message = str(caught.exception)
+                stem, _, appended = message.partition(': ')
+                self.assertIn(stem, document)
+                self.assertTrue(appended,
+                                'the page says the parser adds its own '
+                                'account and nothing was added')
+
+    def test_every_refusal_it_tables_is_one_some_file_produces(self):
+        # the direction the missing wall row slipped through: a row can
+        # be added to the page, or a message reworded on it, and every
+        # test above still passes because nothing reads the page back
+        # against the reader. Each row here has to be a message some file
+        # in REFUSALS or PART_REFUSALS actually raises
+        produced = []
+        for _, text in self.REFUSALS + self.PART_REFUSALS:
+            with self.assertRaises(py_maze.SaveFileError) as caught:
+                py_maze.parse_save(text)
+            produced.append(str(caught.exception))
+
+        tabled = self.tabled_refusals()
+        self.assertTrue(tabled, 'the section tables no messages')
+        for message in tabled:
+            with self.subTest(refusal=message):
+                self.assertTrue(
+                    any(raised.startswith(message) for raised in produced),
+                    'the page tables "%s" and no file the suite reads '
+                    'raises it' % message)
 
     def test_the_line_numbers_count_the_comments_and_the_blanks(self):
         text = "# py_maze save 1\n# seed: 2024\n\n***\n*.*\n"
@@ -5239,6 +5302,11 @@ class TestDesignLanguage(unittest.TestCase):
     # what body text has to reach against the ground it is read on
     MINIMUM_CONTRAST = 4.5
 
+    # the width the menu becomes a drawer at, and with it the width a
+    # table stops having a measure to fill and starts scrolling instead
+    NARROW_SCREEN_WIDTH = '900px'
+    NARROW_SCREEN_AT_RULE = '@media (max-width: %s)' % NARROW_SCREEN_WIDTH
+
     def document(self):
         return read_project_file(DESIGN_LANGUAGE_PATH)
 
@@ -5255,22 +5323,68 @@ class TestDesignLanguage(unittest.TestCase):
             r'\s*(\d+\.\d+):1\s*\|$',
             self.document(), re.MULTILINE)
 
-    def stylesheet_rule(self, selector):
-        # the declarations of one rule of the stylesheet
+    def declarations(self, text, selector, where):
+        # the declarations of one rule, out of the stylesheet or out of
+        # one at-rule block of it
         #
         # Args:
+        #     text: The stylesheet, or the inside of a block of it
         #     selector: The selector the rule opens with, exactly as it
         #         is written
+        #     where: What to call the text in the failure message
         #
         # Returns:
         #     str: What is between that selector's braces
 
         found = re.search(r'(?:^|\})[^{}]*?%s\s*\{([^}]*)\}'
-                          % re.escape(selector),
-                          read_project_file(SITE_CSS_PATH), re.DOTALL)
+                          % re.escape(selector), text, re.DOTALL)
         self.assertIsNotNone(found,
-                             'the stylesheet has no %s rule' % selector)
+                             '%s has no %s rule' % (where, selector))
         return found.group(1)
+
+    def stylesheet_rule(self, selector):
+        # the declarations of one rule of the stylesheet, before any
+        # at-rule narrows it
+        #
+        # Args:
+        #     selector: The selector the rule opens with
+        #
+        # Returns:
+        #     str: What is between that selector's braces
+
+        return self.declarations(read_project_file(SITE_CSS_PATH), selector,
+                                 'the stylesheet')
+
+    def narrow_screen_rule(self, selector):
+        # the declarations of one rule inside the block that turns the
+        # layout into the phone layout. The block holds rules of its
+        # own, so it is brace-counted rather than matched
+        #
+        # Args:
+        #     selector: The selector the rule opens with
+        #
+        # Returns:
+        #     str: What is between that selector's braces
+
+        stylesheet = read_project_file(SITE_CSS_PATH)
+        opened = stylesheet.find(self.NARROW_SCREEN_AT_RULE)
+        self.assertNotEqual(opened, -1, 'the stylesheet has no %s block'
+                            % self.NARROW_SCREEN_AT_RULE)
+
+        start = stylesheet.index('{', opened) + 1
+        depth = 1
+        for position in range(start, len(stylesheet)):
+            if stylesheet[position] == '{':
+                depth += 1
+            elif stylesheet[position] == '}':
+                depth -= 1
+                if depth == 0:
+                    return self.declarations(
+                        stylesheet[start:position], selector,
+                        'the %s block' % self.NARROW_SCREEN_AT_RULE)
+
+        self.fail('the %s block is never closed'
+                  % self.NARROW_SCREEN_AT_RULE)
 
     def test_the_document_is_there(self):
         self.assertTrue(os.path.isfile(DESIGN_LANGUAGE_PATH),
@@ -5281,11 +5395,23 @@ class TestDesignLanguage(unittest.TestCase):
         # rule wanting a wrapper class applies to nothing: the scroll has
         # to be on the table itself. A cell holds names as long as
         # collectible_overlay(collectibles), which no phone has room for
-        rule = self.stylesheet_rule('.page table')
+        rule = self.narrow_screen_rule('.page table')
 
         self.assertIn('display: block', rule)
         self.assertIn('overflow-x: auto', rule)
         self.assertIn('max-width: 100%', rule)
+
+    def test_a_table_fills_the_measure_where_there_is_one_to_fill(self):
+        # display: block on a <table> wraps the rows in an anonymous box
+        # that is shrink-to-fit and that no selector reaches, so a table
+        # given the scroll at every width hugs its content instead of
+        # spanning the measure, and two tables on a page end in two
+        # places. The scroll therefore belongs to the phone layout alone
+        rule = self.stylesheet_rule('.page table')
+
+        self.assertIn('width: 100%', rule)
+        self.assertNotIn('display: block', rule)
+        self.assertNotIn('overflow-x', rule)
 
     def test_the_stylesheet_gives_a_table_one_answer_and_not_two(self):
         # .table-scroll was the wrapper nothing ever wore. A stylesheet
@@ -5296,13 +5422,24 @@ class TestDesignLanguage(unittest.TestCase):
 
     def test_it_records_what_a_wide_table_does(self):
         # the document promises every page reads from a phone, and a
-        # table is the one thing on a page that cannot be made narrow
+        # table is the one thing on a page that cannot be made narrow.
+        # What it does is not the same at every width, so the width is
+        # part of what has to be written down: a table left scrolling at
+        # every width hugs its content on a desktop screen rather than
+        # spanning the measure, which is the regression this pins
         document = self.document()
 
         layout = document.split('## Layout and menu', 1)[1].split('\n## ')[0]
         self.assertIn('scroll', layout,
                       'the layout section promises the phone rendering '
                       'without saying what a wide table does')
+        self.assertIn(self.NARROW_SCREEN_WIDTH, layout,
+                      'the layout section says a table scrolls without '
+                      'saying below what width it does')
+        self.assertIn('measure', layout,
+                      'the layout section says a table scrolls without '
+                      'saying what it does where there is a measure to '
+                      'fill')
 
     def test_it_measures_both_themes(self):
         # four text pairs to a theme: text and muted text, each on the

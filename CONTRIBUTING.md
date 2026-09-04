@@ -217,6 +217,31 @@ tables are checked against every `__all__` they cover, and the project tree
 on `docs/development.md` is resolved against the repository. Documentation
 that drifts from the package fails the suite rather than a reader.
 
+### What the suite cannot tell you about the site
+
+It reads the stylesheet and the layout as text. That catches a rule that
+was deleted, renamed or contradicted by a second rule, and it is why the
+table rules are pinned to the width each one belongs to rather than to the
+declarations alone. What it cannot catch is what a browser then does with
+them: `display: block` on a `<table>` reads as correct and wraps the rows
+in a box no selector reaches, which is how a fix for the phone rendering
+once cost every table on a desktop screen its width.
+
+**The project takes no browser test dependency for this.** A rendered check
+means Playwright and the browser binaries it downloads, on three operating
+systems and every Python version in the matrix, for a static site of
+fourteen pages - against a project that installs nothing to run, nothing to
+test and nothing to build its documentation. The cost is not worth the
+coverage, and the decision is recorded here rather than left to be
+rediscovered.
+
+So a change to a layout rule is checked by rendering it, by hand, at the
+two widths the rules are written for: **360px**, where the menu is a drawer
+and the wide name table on `docs/library.md` has to scroll while the page
+does not, and **1280px**, where two tables of different widths on one page
+both have to end at the paragraph edge. Say in the pull request that you
+did it and what you saw.
+
 ## The Version Number
 
 The version lives in exactly one place, `__version__` in

@@ -507,19 +507,13 @@ pre code {
 
 /* ---- Tables ---------------------------------------------------------- */
 
-/* every table is its own scrolling block, no wrapper needed: the Markdown
- * a page is written in emits a bare <table>, and a cell can hold a name
- * too long to break - collectible_overlay(collectibles) is 33 characters
- * of the monospace face, wider than a 360px phone leaves the page. A
- * table that could not scroll would take the whole page sideways with
- * it, so the table scrolls instead and the header scrolls with the rows
- * it names. */
+/* a table fills the measure the paragraphs above and below it use, so
+ * the rules under its rows end where their text ends. The scroll a wide
+ * table needs is in the narrow-screen block at the foot of this file,
+ * where the page is too narrow to give it the measure instead. */
 .page table {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
   margin: var(--space-4) 0;
-  overflow-x: auto;
   border-collapse: collapse;
   font-size: var(--type-sm);
   font-family: var(--face-code);
@@ -635,6 +629,21 @@ pre code {
 
   .menu-veil[hidden] {
     display: none;
+  }
+
+  /* no wrapper needed, and none available: the Markdown a page is
+   * written in emits a bare <table>. A cell can hold a name too long to
+   * break - collectible_overlay(collectibles) is 33 characters of the
+   * monospace face, wider than a 360px phone leaves the page - so below
+   * the drawer breakpoint the table becomes its own scrolling block and
+   * the header scrolls with the rows it names, rather than taking the
+   * whole page sideways with it. Above this width the rule higher up
+   * applies and the table fills the measure. */
+  .page table {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
   }
 }
 

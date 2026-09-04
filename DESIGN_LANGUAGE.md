@@ -118,12 +118,21 @@ width; nothing is taken away, and every page reads from a phone.
 A table is the one thing on a page that cannot be made narrow. Its cells
 hold names set in the monospace face - `collectible_overlay(collectibles)`
 is 33 characters of it - and a name has nowhere to break, so a table of
-them is wider than a 360px phone whatever the page does. Every table is
-therefore a scrolling block of its own: it hugs its content up to the
-measure and scrolls sideways past it, taking its header along with the
-rows, and the page around it stays the width of the screen. Nothing is
-hidden and nothing is truncated - the reader drags the table rather than
-the page.
+them is wider than a 360px phone whatever the page does. What a table does
+about that is decided by the same 900px the menu is: above it a table fills
+the measure, as the paragraphs around it do, so the rules under its rows
+end where their text ends and two tables on one page end in the same place.
+Below it there is no measure left to fill, and the table becomes a
+scrolling block of its own instead: it hugs its content, scrolls sideways
+past the screen and takes its header along with the rows, while the page
+around it stays the width of the screen. Nothing is hidden and nothing is
+truncated - on a phone the reader drags the table rather than the page.
+
+The scroll is not simply left switched on at every width. Making a
+`<table>` a block wraps its rows in a box that shrinks to their content and
+that no selector can reach, so a table given the scroll on a desktop screen
+stops at its widest row rather than at the measure, and a page of tables
+ends as raggedly as its content happens to be wide.
 
 Focus is drawn with a 2px outline in the ink tone at a 2px offset, on every
 control, and the menu is reachable by keyboard in the order it is read.
