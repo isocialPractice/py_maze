@@ -5342,9 +5342,91 @@ class TestDesignLanguage(unittest.TestCase):
                              '%s has no %s rule' % (where, selector))
         return found.group(1)
 
+    def without_comments(self, text):
+        # the stylesheet with its comments taken out. A comment is prose
+        # rather than CSS and the helpers below read the file as text,
+        # so an @ written in one reads as an at-rule and a brace written
+        # in one is counted as a block: either cuts the rule under the
+        # comment out of what the tests then search. The comment above
+        # the table rules names the narrow-screen block in words, and
+        # naming it @media (max-width: 900px) instead - the way the rest
+        # of the project writes it - is all it takes
+        #
+        # Args:
+        #     text: The stylesheet
+        #
+        # Returns:
+        #     str: The stylesheet with every comment removed
+
+        return re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+
+    def block_end(self, text, brace, where):
+        # the position just past the } that closes the block opening at
+        # the given {. A block holds rules of its own, so the braces are
+        # counted rather than matched
+        #
+        # Args:
+        #     text: The stylesheet
+        #     brace: The position of the { the block opens with
+        #     where: What to call the block in the failure message
+        #
+        # Returns:
+        #     int: The position just past the } that closes it
+
+        depth = 0
+        for position in range(brace, len(text)):
+            if text[position] == '{':
+                depth += 1
+            elif text[position] == '}':
+                depth -= 1
+                if depth == 0:
+                    return position + 1
+
+        self.fail('%s is never closed' % where)
+
+    def outside_at_rules(self, stylesheet):
+        # the stylesheet with every at-rule block cut out of it. This is
+        # the counterpart of narrow_screen_rule: that one reads a block,
+        # this one reads everything that is not one. Without it a
+        # selector written both at the top level and inside a block
+        # comes back as whichever of the two is higher up the file, so a
+        # dark-theme rule added above the base one would answer for it
+        #
+        # Args:
+        #     stylesheet: The whole stylesheet
+        #
+        # Returns:
+        #     str: What is left once the comments and every at-rule
+        #         block are removed
+
+        stylesheet = self.without_comments(stylesheet)
+        kept = []
+        copied = 0
+        searched = 0
+        while True:
+            opened = stylesheet.find('@', searched)
+            if opened == -1:
+                break
+
+            brace = stylesheet.find('{', opened)
+            ended = stylesheet.find(';', opened)
+            if brace == -1 or (ended != -1 and ended < brace):
+                # an at-rule that carries no block, as @charset does
+                searched = opened + 1
+                continue
+
+            kept.append(stylesheet[copied:opened])
+            copied = self.block_end(stylesheet, brace, 'the %s block'
+                                    % stylesheet[opened:brace].strip())
+            searched = copied
+
+        kept.append(stylesheet[copied:])
+        return ''.join(kept)
+
     def stylesheet_rule(self, selector):
         # the declarations of one rule of the stylesheet, before any
-        # at-rule narrows it
+        # at-rule narrows it: the at-rule blocks are cut out first, so
+        # what comes back is the rule as it is written at the top level
         #
         # Args:
         #     selector: The selector the rule opens with
@@ -5352,8 +5434,9 @@ class TestDesignLanguage(unittest.TestCase):
         # Returns:
         #     str: What is between that selector's braces
 
-        return self.declarations(read_project_file(SITE_CSS_PATH), selector,
-                                 'the stylesheet')
+        stylesheet = self.outside_at_rules(read_project_file(SITE_CSS_PATH))
+        return self.declarations(stylesheet, selector,
+                                 'the stylesheet outside its at-rules')
 
     def narrow_screen_rule(self, selector):
         # the declarations of one rule inside the block that turns the
@@ -5366,25 +5449,16 @@ class TestDesignLanguage(unittest.TestCase):
         # Returns:
         #     str: What is between that selector's braces
 
-        stylesheet = read_project_file(SITE_CSS_PATH)
+        stylesheet = self.without_comments(read_project_file(SITE_CSS_PATH))
+        where = 'the %s block' % self.NARROW_SCREEN_AT_RULE
         opened = stylesheet.find(self.NARROW_SCREEN_AT_RULE)
         self.assertNotEqual(opened, -1, 'the stylesheet has no %s block'
                             % self.NARROW_SCREEN_AT_RULE)
 
-        start = stylesheet.index('{', opened) + 1
-        depth = 1
-        for position in range(start, len(stylesheet)):
-            if stylesheet[position] == '{':
-                depth += 1
-            elif stylesheet[position] == '}':
-                depth -= 1
-                if depth == 0:
-                    return self.declarations(
-                        stylesheet[start:position], selector,
-                        'the %s block' % self.NARROW_SCREEN_AT_RULE)
-
-        self.fail('the %s block is never closed'
-                  % self.NARROW_SCREEN_AT_RULE)
+        start = stylesheet.index('{', opened)
+        ended = self.block_end(stylesheet, start, where)
+        return self.declarations(stylesheet[start + 1:ended - 1], selector,
+                                 where)
 
     def test_the_document_is_there(self):
         self.assertTrue(os.path.isfile(DESIGN_LANGUAGE_PATH),
@@ -5412,6 +5486,75 @@ class TestDesignLanguage(unittest.TestCase):
         self.assertIn('width: 100%', rule)
         self.assertNotIn('display: block', rule)
         self.assertNotIn('overflow-x', rule)
+
+    def test_a_rule_is_read_from_outside_the_at_rules(self):
+        # declarations is one search returning the first textual match,
+        # so a selector written both inside an at-rule block and at the
+        # top level answers with whichever is higher up the file. The
+        # stylesheet defines .page table twice and carries two dark-theme
+        # blocks above the base rule, so a border colour added to either
+        # would be what the measure above reads. Cutting the blocks out
+        # first is what keeps the base rule the one that answers
+        stylesheet = ('@media (prefers-color-scheme: dark) {\n'
+                      '  :root { --ink: #eeeeee }\n'
+                      '  .page table { border-color: #333333 }\n'
+                      '}\n'
+                      '.page table { width: 100% }\n')
+
+        outside = self.outside_at_rules(stylesheet)
+
+        self.assertNotIn('border-color', outside)
+        self.assertEqual(
+            self.declarations(outside, '.page table',
+                              'the stylesheet').strip(), 'width: 100%')
+
+    def test_an_at_rule_with_no_block_leaves_the_rules_after_it(self):
+        # @charset and @import close on a ; rather than a block, so
+        # there is nothing to cut out and the stylesheet after one has
+        # to survive rather than being read as a block that never ends
+        stylesheet = ('@charset "utf-8";\n'
+                      '.page table { width: 100% }\n')
+
+        self.assertEqual(
+            self.declarations(self.outside_at_rules(stylesheet),
+                              '.page table', 'the stylesheet').strip(),
+            'width: 100%')
+
+    def test_an_at_rule_named_in_a_comment_cuts_nothing_out(self):
+        # the comment above the table rules says the scroll is in "the
+        # narrow-screen block at the foot of this file", and naming that
+        # block the way NARROW_SCREEN_AT_RULE and the rest of the
+        # project write it puts an @ in prose. Read as CSS it opens a
+        # block that runs to the end of the rule under the comment, and
+        # the rule the tests above read is cut out of the stylesheet
+        # they read it from
+        stylesheet = ('/* the scroll a wide table needs is in the\n'
+                      ' * @media (max-width: 900px) block below */\n'
+                      '.page table { width: 100% }\n')
+
+        self.assertEqual(
+            self.declarations(self.outside_at_rules(stylesheet),
+                              '.page table', 'the stylesheet').strip(),
+            'width: 100%')
+
+    def test_a_brace_in_a_comment_is_not_counted_as_a_block(self):
+        # the same prose reaches the brace counting. The comment inside
+        # the narrow-screen block already names the rule it introduces,
+        # and quoting the brace with it leaves the count one deep at the
+        # end of the file, so a block that is closed is reported as one
+        # that is never closed
+        stylesheet = ('@media (max-width: 900px) {\n'
+                      '  /* .page table { is the rule below */\n'
+                      '  .page table { overflow-x: auto }\n'
+                      '}\n'
+                      '.page table { width: 100% }\n')
+
+        outside = self.outside_at_rules(stylesheet)
+
+        self.assertNotIn('overflow-x', outside)
+        self.assertEqual(
+            self.declarations(outside, '.page table',
+                              'the stylesheet').strip(), 'width: 100%')
 
     def test_the_stylesheet_gives_a_table_one_answer_and_not_two(self):
         # .table-scroll was the wrapper nothing ever wore. A stylesheet

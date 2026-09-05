@@ -5,6 +5,71 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2026-09-05
+
+Three corrections to what 2.2.3 wrote down. Two of them are figures and a
+sentence in this file, and the third is the helper that reads the site
+stylesheet in a different way from the one its own comment describes. The
+stylesheet is unchanged, no option behaves differently, and no name entered
+or left the public surface.
+
+### Added
+
+- Four tests over the helper that reads a rule out of the site stylesheet:
+  that a selector written both inside an at-rule block and at the top level
+  answers with the top-level rule, that an at-rule closing on a `;` rather
+  than a block leaves the rules after it readable, and that an at-rule
+  named in a comment and a brace quoted in one are read as the prose they
+  are rather than as CSS. The first fails against the helper as 2.2.3
+  shipped it, and the last two against the first draft of the fix.
+
+### Fixed
+
+- The helper reads the rule its comment says it reads. `stylesheet_rule`
+  promised the rule "before any at-rule narrows it" and then handed the
+  whole file to a single search, which returns the first textual match
+  whether or not that match sits inside a block. `.page table` is written
+  twice in `docs/assets/css/site.css`, and two
+  `@media (prefers-color-scheme: dark)` blocks are written above the base
+  rule, so a border colour added to either for the dark theme would have
+  become what `test_a_table_fills_the_measure_where_there_is_one_to_fill`
+  asserted `width: 100%` against, under a failure message still naming the
+  stylesheet. The at-rule blocks are now cut out before the search,
+  brace-counted the way `narrow_screen_rule` already counted its own block,
+  and the two helpers share that counting rather than each carrying a copy
+  of it. The comments come out ahead of the cut, since an `@` and a brace
+  read the same in prose as in CSS: the comment above the table rules names
+  the narrow-screen block in words today, and naming it
+  `@media (max-width: 900px)` the way the rest of the project writes it
+  would have taken the rule under the comment out of the stylesheet the
+  tests search, while quoting a brace inside the narrow-screen block would
+  have reported a block that is closed as one that is never closed. Every
+  assertion in both table tests is unchanged.
+- The width this file recorded for the key table was two characters short
+  of what the page drew. Verifying the 2.2.3 fix meant rendering the pages
+  against the 2.2.2 stylesheet first as a control, and the `Key` / `Does`
+  table on `docs/CHEATSHEET.md` came back at 605.0px rather than the 588.6px
+  recorded. A block table is as wide as its widest row, and the 16.4px
+  between the two figures is exactly two characters of the 8.2px monospace
+  cell face: the pair of straight quotes in
+  `The "would you like to play" prompt, one keypress`. The 2.2.3 entry now
+  reads 605.0px and 130.4px apart, and the 2.2.2 entry 92% rather than 90%.
+  The 474.6px for the status code table on `docs/scripting.md`, the 72%
+  beside it and the 655.5px measure were confirmed against the same
+  rendering and stand. Neither the regression nor its fix is affected: the
+  table was short of the measure on either figure, and draws the full
+  655.5px now.
+- The 2.2.3 entry named the wrong box as the one `width: 100%` widens. It
+  read that the box widened was "the anonymous one rather than the cells",
+  which inverts what happens. The declaration applies to the table's own
+  principal box, which `display: block` has made a block box, and widening
+  that box is exactly what it does; what keeps a shrink-to-fit width is the
+  anonymous table box generated inside it to hold the rows, which no
+  selector reaches, and that is why the cells do not follow.
+  `DESIGN_LANGUAGE.md`, `CONTRIBUTING.md` and the comment on the test all
+  described it that way already, so this file was the one place out of the
+  four with it backwards.
+
 ## [2.2.3] - 2026-09-04
 
 A follow-up to the site work in 2.2.2, which fixed a table on a phone at the
@@ -46,14 +111,16 @@ left the public surface.
 - A table fills the measure again on a desktop screen. 2.2.2 gave every
   table `display: block` at every width to get it scrolling on a phone, and
   a block table shrinks to its content: at 1280px, against a 655.5px
-  measure, the key table on `docs/CHEATSHEET.md` drew 588.6px and the status
+  measure, the key table on `docs/CHEATSHEET.md` drew 605.0px and the status
   code table on `docs/scripting.md` 474.6px, two tables on one page ending
-  114px apart and both short of the paragraph edge. Most of the site's
+  130.4px apart and both short of the paragraph edge. Most of the site's
   tables are narrower than the measure, so most of them showed it. The
   scroll now belongs to the narrow-screen block alone, below the 900px the
   menu becomes a drawer at, where there is no measure left to fill anyway.
   Putting `width: 100%` back on the block table was measured and does not
-  work, the box it widens being the anonymous one rather than the cells.
+  work: it widens the table's own block box, and the anonymous box holding
+  the rows inside it keeps a shrink-to-fit width no selector reaches, so the
+  cells never follow.
 
 ## [2.2.2] - 2026-09-03
 
@@ -128,8 +195,8 @@ option behaves differently, and no name entered or left the public surface.
   and `.table-scroll` is gone so the stylesheet has one answer. What this
   release cost for it is the desktop rendering: a table drawn as a block
   hugs its content instead of spanning the measure, so at 1280px the key
-  table on `docs/CHEATSHEET.md` draws 90% of the measure and the status code
-  table on `docs/scripting.md` 72%, and two tables on one page end 114px
+  table on `docs/CHEATSHEET.md` draws 92% of the measure and the status code
+  table on `docs/scripting.md` 72%, and two tables on one page end 130.4px
   apart. 2.2.3 gives the measure back above the drawer breakpoint.
 - The reason given for `MIN_GRID_WIDTH` was not the reason that applies. The
   `has_ends` docstring, the `check_ends` comment and the documentation all
