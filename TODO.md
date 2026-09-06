@@ -7,6 +7,68 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
+- [ ] Add a `maze_progress(grid, cell)` reporting how far along the solution
+  a cell is, as a share of the whole, which is what the chase point is read
+  off and what a later `--stats` can report as well
+  - Measure the solution as the straight runs it is made of rather than as
+    a count of cells: sum the length of each run, and a cell's progress is
+    the distance walked to it over that sum. A solution of four runs of 4,
+    2, 5 and 3 totals 14, so 55% of it is 7.7, which falls in the third run
+  - It reads a solved grid and returns a number, so it belongs beside the
+    solver rather than in the game and can be tested without a terminal
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Add a chase mode: an antagonist that starts following the player once
+  a reasonable point in the maze has been reached, moving at a reasonable
+  speed, drawn with its own marker in `py_maze/rendering.py` and reported in
+  the end-of-game summary beside the timer, the moves and the pickups
+  - **Reasonable point**: far enough in that the chaser cannot reach the
+    player the moment it starts moving
+  - **Reasonable speed**: slow enough that a player who keeps moving cannot
+    be caught by the chaser alone
+  - The chaser walks the solution the breadth-first solver already computes,
+    so it never walks into a wall and never needs a second algorithm
+  - Being caught ends the run the way the exit does, with a summary saying
+    which of the two happened rather than a second screen
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Add a `--mode` option choosing between the plain game, chase mode and
+  quest mode, defaulting to the plain game, with the names listed in its
+  help text as `--algorithm` lists its own, and say plainly which options
+  belong to which mode
+  - Quest mode is not built yet, so the option lists the modes that exist:
+    build the names as a registry, the way `ALGORITHMS`, `DIFFICULTIES` and
+    `FORMATS` already are, so quest mode joins the list rather than editing
+    the option
+  - It is queued ahead of the two chase options because without it chase
+    mode has no entry point, a bare run naming no mode playing exactly as it
+    does today by design
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Add a `--chase-point` option overruling the reasonable point with a
+  share of the maze the player must have walked before the chase begins
+  - Takes a whole number from 20 to 90, read against `maze_progress`, and
+    defaults to 55
+  - A value under 20 resolves to 20 and one over 90 to 90, so the option
+    cannot be set to a value that makes the mode unplayable either way
+  - A decimal rounds to the nearest whole number
+  - A value that is not a number at all, as in `--chase-point a34`, prints
+    a notice of its own naming the option and the value, and the run
+    carries on as though the option had not been given
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Add a `--chase-speed` option overruling the reasonable speed with one
+  of six preset speeds, given as a whole number from 0 to 5
+  - The presets are the moves the chaser makes in a second: `0` is one,
+    rising by one to `5` at six, so the option names a speed rather than a
+    delay a player has to reason about
+  - A value under 0 resolves to 0 and one over 5 to 5, a decimal rounds to
+    the nearest whole number, and a value that is not a number prints the
+    same kind of notice `--chase-point` does and is otherwise ignored
+  - It shares its whole validation shape with `--chase-point`, so whichever
+    of the two is written first decides that shape for the other
+  - From: Gameplay Enhancements `->` New Game Modes
+
+### Code Review Override - The 2.2.5 Partial Redraw
+
+#### Resolve Issues
+
 - [ ] Resolve the flicker still visible in the play screen and its HUD.
   2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
   and writing the frame in one call, and the flicker a player sees is
@@ -14,6 +76,23 @@ into a `## Complete` section at the bottom of this file.
   than it has to - the status line and the controls line are rewritten
   every frame whether or not they changed, and the hint redraws the whole
   screen twice - and draw only what moved
+  - **Issue**: the partial redraw addresses absolute screen rows, but
+    nothing keeps frame line 1 on screen row 1. `frame_text` ends its last
+    line with a newline, so a frame as tall as the terminal scrolls the
+    screen by one row as it is drawn, and every partial redraw after it
+    writes each line one row below the line it is replacing. The maze is
+    left holding rows from older frames and never repairs, because only
+    changed lines are written again. Playing the default `normal` maze in a
+    terminal 28 rows tall reaches it with no options at all, and
+    `fit_to_terminal` produces the same shape on every terminal with an
+    even number of rows, because `RENDER_ROW_OVERHEAD` reserves exactly the
+    5 lines the frame adds and no row for the cursor below it
+  - **Goal**: keep the row a line is written on true for the whole game.
+    Three candidate fixes, their costs and what was measured are in
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-06-the-partial-redraw-draws-on-the-wrong-rows).
+    Pin it first: the suite's `TerminalScreen` models a screen of unbounded
+    height and so never scrolls, so it cannot catch this until it is given
+    a height and the scroll behaviour
   - From: UI/UX and Screen Drawing
 
 ## Fixes and Hardening
@@ -214,13 +293,7 @@ everything a player watches move. Verifying an item here means watching the
 screen rather than reading a test, and completing one is a patch version
 update.
 
-- [ ] Resolve the flicker still visible in the play screen and its HUD.
-  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
-  and writing the frame in one call, and the flicker a player sees is
-  reported as noticeable all the same. Find what is still redrawing more
-  than it has to - the status line and the controls line are rewritten
-  every frame whether or not they changed, and the hint redraws the whole
-  screen twice - and draw only what moved
+No items are currently queued in this section.
 
 ## Runtime and Portability Fixes
 
@@ -861,3 +934,11 @@ No items are currently queued in this section.
     Behaviour today is correct, so no assertion in either table test should
     need to change
   - From: Code Review Override - The 2.2.3 Table Measure Fix
+- [x] Resolve the flicker still visible in the play screen and its HUD.
+  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
+  and writing the frame in one call, and the flicker a player sees is
+  reported as noticeable all the same. Find what is still redrawing more
+  than it has to - the status line and the controls line are rewritten
+  every frame whether or not they changed, and the hint redraws the whole
+  screen twice - and draw only what moved
+  - From: UI/UX and Screen Drawing
