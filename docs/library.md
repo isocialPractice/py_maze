@@ -233,7 +233,9 @@ carved grid with its entrance and exit already opened:
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
 | `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |
-| `clear_screen`, `frame_text`, `ansi_enabled`, `can_encode` | The escape sequence machinery behind a redraw |
+| `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
+| `frame_diff(previous, current)` | The same for the lines that changed, and nothing else |
+| `clear_screen`, `ansi_enabled`, `can_encode` | The rest of the escape sequence machinery behind a redraw |
 
 An overlay is a `(marker, cells)` pair, and `maze_lines` takes a sequence of
 them running from the most important marker to the least: the first pair

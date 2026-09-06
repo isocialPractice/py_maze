@@ -106,17 +106,27 @@ hint at, so nothing is highlighted.
 
 ## Redrawing the Screen
 
-Each move redraws the whole screen. The cursor is put back at the top left
-with an ANSI escape sequence and the new frame is written over the old one in
-a single call, so the maze, the status line and the controls are replaced
-together and the screen never stands empty part-way through a redraw.
+The first frame is drawn whole. The cursor is put back at the top left with
+an ANSI escape sequence and the frame is written in a single call, so the
+maze, the status line and the controls arrive together and the screen never
+stands empty part-way through a redraw.
+
+Every frame after it draws only what moved. The frame that would be shown is
+compared line by line against the frame already on screen, and each line that
+differs is written on its own, addressed by the row it belongs on. A step
+rewrites the maze rows it touched - two for a step up or down, one for a step
+left or right - and the tally that counted it; the blank spacer and the
+controls line are left standing, because neither has changed since the game
+began. A step into a wall changes nothing, so nothing is written at all, and
+a hint lights up one row rather than redrawing the screen to show it and
+redrawing it again to take it away.
 
 Terminals that read escape sequences are drawn on this way, which is every
 terminal on Linux and macOS and every Windows console that takes virtual
 terminal processing (Windows 10 and later). Where the escapes would be
 printed as text instead, py_maze falls back to clearing the screen through
-`cls` or `clear`, exactly as it always did. Setting `TERM=dumb` forces the
-fallback.
+`cls` or `clear` and writing every frame whole, exactly as it always did.
+Setting `TERM=dumb` forces the fallback.
 
 The same escape wipes the screen between the frames of `--animate`, so an
 animated search no longer starts a shell for every frame it draws.

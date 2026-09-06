@@ -14,8 +14,8 @@ import time
 from .grid import find_entrance, find_exit
 from .keys import read_key, read_key_posix, read_key_windows
 from .rendering import (COLLECTIBLE_MARKER, HINT_MARKER, PLAYER_MARKER,
-                        ansi_enabled, can_encode, clear_screen, frame_text,
-                        maze_lines, status_line, summary_lines)
+                        ansi_enabled, can_encode, clear_screen, frame_diff,
+                        frame_text, maze_lines, status_line, summary_lines)
 from .solving import solve_maze
 
 __all__ = [
@@ -107,6 +107,10 @@ class MazeGame:
         # screen and every one after it draws over its predecessor
         self.drawn = False
 
+        # the lines of the frame that is on screen, which the next frame
+        # is compared against so only the lines that changed are written
+        self.drawn_lines = []
+
         # the clock runs from the first render to the end of the game, so
         # the summary reports how long the maze took rather than how long
         # the process has been alive
@@ -196,10 +200,12 @@ class MazeGame:
     def render(self, stream=None):
         """Draw the play screen over the frame already on it.
 
-        The whole frame goes out in a single write, and the cursor is
-        put back at the top left rather than the screen being wiped, so
-        the player never sees the screen stand empty between one move
-        and the next.
+        The first frame goes out whole, in a single write. Every frame
+        after it is compared against the one on screen and only the
+        lines that changed are written, so a step redraws the maze rows
+        it touched and the tally that counted it, leaving the blank
+        spacer and the controls line standing. A frame that changed
+        nothing writes nothing at all.
 
         Args:
             stream: Where the frame is written, defaulting to standard
@@ -210,16 +216,27 @@ class MazeGame:
             stream = sys.stdout
 
         homed = ansi_enabled(stream)
+        lines = self.frame()
 
         # the first frame wipes whatever the run printed before the game
         # started. Where the cursor cannot be moved there is no way to
         # draw over the last frame either, so the screen is wiped for
-        # every one, as it always was
+        # every one and every one is written whole, as it always was
         if not homed or not self.drawn:
             self.clear_screen(stream)
             self.drawn = True
+            self.drawn_lines = lines
+            stream.write(frame_text(lines, home=homed))
+            stream.flush()
+            return
 
-        stream.write(frame_text(self.frame(), home=homed))
+        text = frame_diff(self.drawn_lines, lines)
+        self.drawn_lines = lines
+
+        if not text:
+            return
+
+        stream.write(text)
         stream.flush()
 
     def clear_screen(self, stream=None):

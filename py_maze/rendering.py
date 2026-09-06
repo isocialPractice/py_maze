@@ -23,6 +23,7 @@ __all__ = [
     'ANSI_CLEAR',
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
+    'ANSI_ROW',
     'COLLECTIBLE_MARKER',
     'FRAME_DELAY',
     'FRONTIER_MARKER',
@@ -41,6 +42,7 @@ __all__ = [
     'fit_dimension',
     'fit_to_terminal',
     'format_duration',
+    'frame_diff',
     'frame_text',
     'maze_lines',
     'print_maze',
@@ -76,6 +78,11 @@ RENDER_ROW_OVERHEAD = 5
 ANSI_CLEAR = '\x1b[2J\x1b[H'
 ANSI_HOME = '\x1b[H'
 ANSI_CLEAR_LINE = '\x1b[K'
+
+# the escape that puts the cursor at the start of a numbered row, with
+# the top of the screen as row 1. Taking a row number is what lets a
+# redraw address one line rather than walking the cursor down to it
+ANSI_ROW = '\x1b[%d;1H'
 
 # console mode flag that makes a Windows console read an escape sequence
 # rather than print it, and the handle of the device to set it on
@@ -304,6 +311,46 @@ def frame_text(lines, home=None, stream=None):
     # each line wipes whatever it lands on rather than the screen being
     # wiped first, so there is no moment where the screen is empty
     return ANSI_HOME + ''.join(line + ANSI_CLEAR_LINE + '\n' for line in lines)
+
+
+def frame_diff(previous, current):
+    """Build the writes that turn the frame on screen into the next one.
+
+    Only the lines that differ are written, each addressed by the row it
+    belongs on, so a step that moves the player one cell rewrites the
+    maze rows it touched rather than every line of the screen. The lines
+    that did not change are left alone, which is what a player reads as
+    a still controls line instead of a screen that blinks whole.
+
+    Args:
+        previous: Lines of the frame already on screen
+        current: Lines of the frame that should be on it
+
+    Returns:
+        str: The escapes and the text that turn the one frame into the
+        other, leaving the cursor on the line below the frame where
+        writing the whole of it would have left it. Empty when the two
+        frames are the same, since drawing nothing is what keeps a
+        still screen still
+    """
+
+    writes = []
+
+    for row, line in enumerate(current, start=1):
+        if row <= len(previous) and previous[row - 1] == line:
+            continue
+
+        writes.append(ANSI_ROW % row + line + ANSI_CLEAR_LINE)
+
+    # a frame shorter than the one it replaces would leave the tail of
+    # the older one on screen, so every row it no longer covers is wiped
+    for row in range(len(current) + 1, len(previous) + 1):
+        writes.append(ANSI_ROW % row + ANSI_CLEAR_LINE)
+
+    if not writes:
+        return ''
+
+    return ''.join(writes) + ANSI_ROW % (len(current) + 1)
 
 
 def solution_overlay(path):

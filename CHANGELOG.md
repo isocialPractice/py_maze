@@ -5,6 +5,82 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] - 2026-09-06
+
+The rest of the flicker 2.0.1 went after. That release stopped the screen
+standing empty between a wipe and a redraw; what was left was every line of
+the frame going out again on every move, whether or not anything on it had
+changed. A frame is now compared against the one on screen and only the
+lines that differ are written. No option behaves differently and the frame a
+player reads is the same frame.
+
+### Fixed
+
+- The play screen and its HUD draw only what moved. `render` wrote the whole
+  frame on every keypress, so the status line, the blank spacer and the
+  controls line were rewritten by every step even though the controls line
+  has not changed since the game began and the spacer never changes at all.
+  A step now writes the maze rows it touched and the tally that counted it.
+  On the default maze the play screen is 28 lines and 645 characters, and a
+  step up or down redraws three of those lines for 92 characters; a step
+  left or right redraws two, the one maze row it stayed on and the tally. A
+  step into a wall changes nothing and writes nothing at all. The first
+  frame of a game is still drawn whole, and still the only one that wipes
+  the screen.
+- A hint lights up one row. `show_hint` drew the whole screen to put the `?`
+  on it and the game loop drew the whole screen again to take it away, which
+  is the two full redraws a player saw as a blink around every hint. Both go
+  through the same comparison now, so each writes the single maze row the
+  hint sits on.
+- A terminal that prints escape sequences rather than reading them is
+  unaffected: there is no way to address a row on one, so every frame is
+  wiped and written whole exactly as before. `TERM=dumb` still forces that
+  path.
+
+### Added
+
+- `py_maze.frame_diff(previous, current)`, which builds the escapes and the
+  text that turn one frame into the next. It writes only the lines that
+  differ, addresses each by its row, wipes the rows a shorter frame gives up
+  so no tail of the older frame is left on screen, and leaves the cursor
+  below the frame where writing the whole of it would have left it, so the
+  summary and the win banner still land under the maze. Two frames that are
+  the same answer with an empty string, because drawing nothing is what
+  keeps a still screen still.
+- `py_maze.ANSI_ROW`, the escape that puts the cursor at the start of a
+  numbered row, counting the top of the screen as row 1.
+- `MazeGame.drawn_lines`, the frame that is on screen, which the next frame
+  is compared against.
+- Thirty tests over the new drawing, and the renamed one below. Thirteen
+  cover `frame_diff` and `render` directly: that an unchanged frame is
+  nothing to write, that a changed line is addressed by its row and wipes
+  what it lands on, that a longer frame draws the rows it gained and a
+  shorter one wipes the rows it gave up, that the cursor ends below the
+  frame, and that a step down the suite's five-row maze redraws rows 2, 3
+  and 8 of the play screen while leaving the controls line alone.
+- The other seventeen read the screen back rather than the call. A model
+  terminal honouring the four escapes the game writes - the wipe, the home,
+  the row address and the clear to end of line - is fed everything a
+  scripted play session sends to standard output, and the screen it
+  reconstructs is compared against the frame the game meant to draw. That
+  is what catches a stale marker left on the maze or a banner printed over
+  it rather than under it, which `frame_diff` on its own cannot: a hint
+  leaves no marker behind, a walked-over collectible is gone from the
+  screen, a route leaves exactly one player on the maze, and the summary
+  lands below it whether the game was won or quit.
+- Seventeen of the thirty fail against 2.2.4, as does the renamed test
+  below. Nine of those eighteen error there because `frame_diff` and
+  `ANSI_ROW` do not exist yet, and nine fail because the old renderer
+  writes every line of every frame.
+
+### Changed
+
+- `test_every_frame_puts_the_cursor_back_at_the_top_left` is now
+  `test_the_first_frame_puts_the_cursor_back_at_the_top_left`, and expects
+  one `ANSI_HOME` across three frames rather than three. Homing the cursor
+  is what a whole-frame write does, and only the first frame is written
+  whole; the frames after it address the rows they draw on instead.
+
 ## [2.2.4] - 2026-09-05
 
 Three corrections to what 2.2.3 wrote down. Two of them are figures and a
