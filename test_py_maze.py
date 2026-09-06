@@ -440,6 +440,10 @@ class TestMazeGame(unittest.TestCase):
         "*** *",
     ]
 
+    # the same single path walked as keypresses, for the tests that play
+    # the maze through rather than moving the player themselves
+    ROUTE = ['s', 'd', 'd', 's', 's', 's']
+
     def setUp(self):
         self.game = py_maze.MazeGame(grid_from_strings(self.MAZE))
 
@@ -1005,6 +1009,62 @@ class TestFrameText(unittest.TestCase):
                          'first\nsecond\nthird\n')
 
 
+class TestFrameDiff(unittest.TestCase):
+    BEFORE = ['first', 'second', 'third']
+
+    def test_a_frame_that_changed_nothing_is_nothing_to_write(self):
+        # drawing nothing is what keeps a still screen still
+        self.assertEqual(py_maze.frame_diff(self.BEFORE, list(self.BEFORE)),
+                         '')
+
+    def test_only_the_line_that_changed_is_written(self):
+        diff = py_maze.frame_diff(self.BEFORE, ['first', 'SECOND', 'third'])
+
+        self.assertIn('SECOND', diff)
+        self.assertNotIn('first', diff)
+        self.assertNotIn('third', diff)
+
+    def test_a_changed_line_is_addressed_by_its_row(self):
+        # rows count from 1 at the top of the screen, so the second line
+        # of a frame is row 2
+        diff = py_maze.frame_diff(self.BEFORE, ['first', 'SECOND', 'third'])
+
+        self.assertTrue(diff.startswith(py_maze.ANSI_ROW % 2))
+
+    def test_a_changed_line_wipes_what_it_lands_on(self):
+        # a line shorter than the one it replaces would otherwise leave
+        # the tail of the longer one behind it
+        diff = py_maze.frame_diff(self.BEFORE, ['first', 'two', 'third'])
+
+        self.assertIn('two' + py_maze.ANSI_CLEAR_LINE, diff)
+
+    def test_the_cursor_is_left_below_the_frame(self):
+        # whatever is printed once the game ends has to land under the
+        # maze rather than over the row that happened to change last
+        diff = py_maze.frame_diff(self.BEFORE, ['first', 'SECOND', 'third'])
+
+        self.assertTrue(diff.endswith(py_maze.ANSI_ROW % 4))
+
+    def test_a_longer_frame_draws_the_rows_it_gained(self):
+        diff = py_maze.frame_diff(self.BEFORE, self.BEFORE + ['fourth'])
+
+        self.assertIn(py_maze.ANSI_ROW % 4 + 'fourth', diff)
+        self.assertTrue(diff.endswith(py_maze.ANSI_ROW % 5))
+
+    def test_a_shorter_frame_wipes_the_rows_it_gave_up(self):
+        # the tail of the older frame would otherwise stay on screen
+        diff = py_maze.frame_diff(self.BEFORE, ['first'])
+
+        self.assertIn(py_maze.ANSI_ROW % 2 + py_maze.ANSI_CLEAR_LINE, diff)
+        self.assertIn(py_maze.ANSI_ROW % 3 + py_maze.ANSI_CLEAR_LINE, diff)
+
+    def test_a_frame_with_nothing_on_screen_to_beat_is_drawn_whole(self):
+        diff = py_maze.frame_diff([], self.BEFORE)
+
+        for row, line in enumerate(self.BEFORE, start=1):
+            self.assertIn(py_maze.ANSI_ROW % row + line, diff)
+
+
 class TestRenderFrame(unittest.TestCase):
     def setUp(self):
         self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
@@ -1023,6 +1083,15 @@ class TestRenderFrame(unittest.TestCase):
 
         return stream, wipe.call_count
 
+    def drawn_rows(self, text):
+        # Returns:
+        #     list: The frame rows a write drew on, in the order it drew
+        #     them. Every write ends by moving the cursor below the
+        #     frame, and that move is not one of them
+
+        rows = re.findall(r'\x1b\[(\d+);1H', text)
+        return [int(row) for row in rows[:-1]]
+
     def test_the_whole_frame_goes_out_in_a_single_write(self):
         # the flicker was the screen standing empty while the maze, the
         # tally and the controls went out a line at a time
@@ -1035,10 +1104,43 @@ class TestRenderFrame(unittest.TestCase):
 
         self.assertEqual(wipes, 1, "only the first frame wipes the screen")
 
-    def test_every_frame_puts_the_cursor_back_at_the_top_left(self):
+    def test_the_first_frame_puts_the_cursor_back_at_the_top_left(self):
         stream, _ = self.render(times=3)
 
-        self.assertEqual(stream.getvalue().count(py_maze.ANSI_HOME), 3)
+        self.assertEqual(stream.getvalue().count(py_maze.ANSI_HOME), 1,
+                         "only the frame drawn whole starts at the top left")
+
+    def test_a_frame_that_changed_nothing_is_not_drawn_again(self):
+        # the flicker left after 2.0.1 was every line going out again
+        # whether or not anything on it had moved
+        stream, _ = self.render(times=3)
+
+        self.assertEqual(len(stream.writes), 1)
+
+    def test_only_the_rows_that_moved_are_drawn_again(self):
+        stream, _ = self.render()
+        self.game.move_player(0, 1)
+        self.render(stream=stream)
+
+        # the maze row the player left, the row it stepped on to and the
+        # tally that counted the step: rows 2, 3 and 8 of the frame
+        self.assertEqual(self.drawn_rows(stream.writes[-1]), [2, 3, 8])
+
+    def test_the_lines_that_did_not_move_are_left_alone(self):
+        stream, _ = self.render()
+        self.game.move_player(0, 1)
+        self.render(stream=stream)
+
+        self.assertNotIn(py_maze.CONTROLS_LINE, stream.writes[-1])
+
+    def test_a_redraw_leaves_the_cursor_below_the_frame(self):
+        # the summary and the banner are printed where the cursor stands
+        stream, _ = self.render()
+        self.game.move_player(0, 1)
+        self.render(stream=stream)
+
+        below = py_maze.ANSI_ROW % (len(self.game.frame()) + 1)
+        self.assertTrue(stream.writes[-1].endswith(below))
 
     def test_a_terminal_that_prints_escapes_is_wiped_for_every_frame(self):
         stream, wipes = self.render(homed=False, times=3)
@@ -1068,6 +1170,360 @@ class TestRenderFrame(unittest.TestCase):
         self.game.move_player(0, 1)
 
         self.assertEqual(len(self.game.frame()), first)
+
+
+# A terminal honouring exactly the escapes the game writes: the wipe, the
+# home, the row address and the clear to end of line. Feeding it
+# everything a play session wrote gives back the screen the player was
+# looking at, which is the only way to tell a partial redraw that left
+# the right picture from one that left a marker behind.
+class TerminalScreen:
+    ESCAPE = re.compile(r'\x1b\[(?:(\d+)(?:;(\d+))?)?([A-Za-z])')
+
+    def __init__(self):
+        self.rows = {}
+        self.row = 1
+        self.column = 1
+        self.wipes = 0
+
+    def put(self, text):
+        # write text where the cursor stands, padding the row out to it
+        line = self.rows.get(self.row, '')
+        if len(line) < self.column - 1:
+            line += ' ' * (self.column - 1 - len(line))
+        self.rows[self.row] = (line[:self.column - 1] + text +
+                               line[self.column - 1 + len(text):])
+        self.column += len(text)
+
+    def put_lines(self, text):
+        # write text that holds no escapes, a newline returning the
+        # cursor to the start of the row below
+        pieces = text.split('\n')
+        for index, piece in enumerate(pieces):
+            if piece:
+                self.put(piece)
+            if index < len(pieces) - 1:
+                self.row += 1
+                self.column = 1
+
+    def feed(self, written):
+        # replay everything written to the terminal, in order
+        #
+        # Args:
+        #     written: Every character the game sent to the stream
+        #
+        # Returns:
+        #     TerminalScreen: The screen itself, for chaining
+
+        position = 0
+        for match in self.ESCAPE.finditer(written):
+            self.put_lines(written[position:match.start()])
+            position = match.end()
+            first, second, final = match.groups()
+
+            if final == 'J' and first == '2':
+                self.rows = {}
+                self.wipes += 1
+            elif final == 'H':
+                self.row = int(first) if first else 1
+                self.column = int(second) if second else 1
+            elif final == 'K':
+                self.rows[self.row] = self.rows.get(self.row,
+                                                    '')[:self.column - 1]
+
+        self.put_lines(written[position:])
+        return self
+
+    def lines(self):
+        # Returns:
+        #     list: The rows of the screen, top to bottom
+
+        if not self.rows:
+            return []
+        return [self.rows.get(row, '') for row in range(1, max(self.rows) + 1)]
+
+
+# One play-through, captured the way the terminal received it. The keys
+# are scripted, so the loop runs to its end without anyone at the
+# keyboard, and every write is kept so a single keypress can be charged
+# for what it drew.
+class PlaySession:
+    MOVES = {'w': (0, -1), 's': (0, 1), 'a': (-1, 0), 'd': (1, 0)}
+
+    def __init__(self, keys, maze=None, grid=None, collectibles=(),
+                 ticking=False):
+        # Args:
+        #     keys: The keypresses the game is fed, in order
+        #     maze: Picture of the maze to play, defaulting to the
+        #         hand-built one
+        #     grid: A grid to play instead, for a generated maze
+        #     collectibles: Cells holding something to pick up
+        #     ticking: True for a clock that moves a second between one
+        #         keypress and the next, so the tally changes
+
+        self.keys = list(keys)
+        self.ticking = ticking
+        self.clock = FakeClock()
+        self.boundaries = []
+        self.writes = []
+        self.output = self.tap()
+        if grid is None:
+            grid = grid_from_strings(maze or TestMazeGame.MAZE)
+        self.game = py_maze.MazeGame(grid, collectibles=collectibles,
+                                     clock=self.clock)
+
+    def tap(self):
+        # a stream keeping each write on its own as well as the whole
+        recorder = self.writes
+
+        class Tap(io.StringIO):
+            def write(self, text):
+                recorder.append(text)
+                return io.StringIO.write(self, text)
+
+        return Tap()
+
+    def key(self):
+        # the write count when a key was asked for marks the boundary
+        # between what one keypress drew and what the next one drew
+        self.boundaries.append(len(self.writes))
+        if self.ticking:
+            self.clock.advance(1)
+        if not self.keys:
+            raise AssertionError("the game asked for more keys than scripted")
+        return self.keys.pop(0)
+
+    def play(self, homed=True, wipe=False):
+        # run the loop to its end
+        #
+        # Args:
+        #     homed: Whether the terminal honours escape sequences
+        #     wipe: True to mock the wipe, for the path that shells out
+        #         to cls or clear and would wipe the terminal running
+        #         the suite
+        #
+        # Returns:
+        #     PlaySession: The session itself, for chaining
+
+        with contextlib.ExitStack() as stack:
+            for target, name in ((py_maze.game, 'ansi_enabled'),
+                                 (py_maze.rendering, 'ansi_enabled')):
+                stack.enter_context(mock.patch.object(target, name,
+                                                      return_value=homed))
+            stack.enter_context(mock.patch.object(py_maze.game.time, 'sleep'))
+            stack.enter_context(mock.patch.object(self.game, 'get_key',
+                                                  side_effect=self.key))
+            stack.enter_context(mock.patch.object(sys, 'stdout', self.output))
+            if wipe:
+                self.wipe = stack.enter_context(
+                    mock.patch.object(self.game, 'clear_screen'))
+
+            self.game.play()
+
+        return self
+
+    def after(self, index):
+        # Returns:
+        #     list: The writes the game made while handling keypress
+        #     `index`, which is nothing at all when it drew nothing
+
+        start = self.boundaries[index]
+        end = (self.boundaries[index + 1]
+               if index + 1 < len(self.boundaries) else len(self.writes))
+        return self.writes[start:end]
+
+    def screen(self):
+        return TerminalScreen().feed(self.output.getvalue())
+
+    def maze_rows(self):
+        # the maze alone, without the markers around it. The controls
+        # line carries the letter the player is drawn with, so counting
+        # markers over the whole screen would count those too
+        return self.screen().lines()[1:1 + len(self.game.maze)]
+
+    def rows(self):
+        return len(self.game.frame())
+
+    def park(self):
+        # the row the cursor is left on once a redraw is finished
+        return self.rows() + 1
+
+
+def cursor_rows(text):
+    # Returns:
+    #     list: The rows a write moved the cursor to, in order
+
+    return [int(row) for row in re.findall(r'\x1b\[(\d+);1H', text)]
+
+
+class TestPlayScreenReplay(unittest.TestCase):
+    # the partial redraw is judged by what it leaves on the screen, so
+    # these drive the loop to its end and read the screen back rather
+    # than checking a single call to render
+
+    def test_walking_into_a_wall_draws_nothing_at_all(self):
+        # the entrance has walls to its left, its right and above it, so
+        # none of these steps is taken and none is counted
+        session = PlaySession(['a', 'w', 'd', 'a', 'q']).play()
+
+        for index in range(4):
+            self.assertEqual(session.after(index), [],
+                             "a blocked step must not repaint anything")
+        self.assertEqual(session.game.moves, 0)
+
+    def test_the_tally_is_redrawn_when_the_clock_moved_on(self):
+        # the status line is the one thing a blocked step can change
+        session = PlaySession(['a', 'a', 'q'], ticking=True).play()
+        blocked = ''.join(session.after(0) + session.after(1))
+
+        self.assertEqual(cursor_rows(blocked),
+                         [8, session.park(), 8, session.park()])
+        self.assertNotIn(py_maze.CONTROLS_LINE, blocked)
+
+    def test_a_hint_and_its_removal_light_only_the_hinted_row(self):
+        # both the hint going up and the hint coming down used to redraw
+        # the whole screen
+        session = PlaySession(['h', 'q']).play()
+        lit, unlit = session.after(0)
+
+        self.assertIn(py_maze.HINT_MARKER, lit)
+        self.assertEqual(cursor_rows(lit), [3, session.park()])
+        self.assertEqual(cursor_rows(unlit), [3, session.park()])
+        self.assertNotIn(py_maze.CONTROLS_LINE, lit + unlit)
+
+    def test_a_hint_leaves_no_marker_behind(self):
+        session = PlaySession(['h', 'q']).play()
+
+        self.assertNotIn(py_maze.HINT_MARKER, ''.join(session.maze_rows()))
+
+    def test_the_screen_matches_the_frame_after_a_route(self):
+        session = PlaySession(TestMazeGame.ROUTE[:-1] + ['q']).play()
+
+        self.assertEqual(session.screen().lines()[:session.rows()],
+                         session.game.frame())
+
+    def test_a_route_leaves_exactly_one_player_on_the_maze(self):
+        session = PlaySession(TestMazeGame.ROUTE[:-1] + ['q']).play()
+        marks = sum(row.count(py_maze.PLAYER_MARKER)
+                    for row in session.maze_rows())
+
+        self.assertEqual(marks, 1)
+
+    def test_a_collectible_walked_over_is_wiped_from_the_screen(self):
+        session = PlaySession(TestMazeGame.ROUTE[:-1] + ['q'],
+                              collectibles=[(2, 1)]).play()
+
+        self.assertEqual(session.game.collected, 1)
+        self.assertNotIn(py_maze.COLLECTIBLE_MARKER,
+                         ''.join(session.maze_rows()))
+
+    def test_a_collectible_not_walked_over_is_still_drawn(self):
+        session = PlaySession(['s', 'q'], collectibles=[(3, 3)]).play()
+
+        self.assertIn(py_maze.COLLECTIBLE_MARKER,
+                      ''.join(session.maze_rows()))
+
+    def test_the_first_frame_wipes_what_the_run_printed_before_it(self):
+        # the prompt asking whether to play must not survive above the
+        # maze once the maze is drawn
+        session = PlaySession(['q']).play()
+        screen = TerminalScreen().feed("Would you like to play? y\n" +
+                                       session.output.getvalue())
+
+        self.assertEqual(screen.wipes, 1)
+        self.assertEqual(screen.lines()[0], 'start')
+
+    def test_the_win_banner_and_summary_land_under_the_maze(self):
+        # the cursor is parked below the frame after a partial redraw,
+        # so what the end of the game prints lands under it
+        session = PlaySession(TestMazeGame.ROUTE + ['x']).play()
+        lines = session.screen().lines()
+
+        self.assertEqual(lines[:session.rows()], session.game.frame())
+        self.assertIn('Time', '\n'.join(lines[session.rows():]))
+        self.assertIn('Moves', '\n'.join(lines[session.rows():]))
+
+    def test_the_won_maze_still_shows_the_player_on_the_exit(self):
+        session = PlaySession(TestMazeGame.ROUTE + ['x']).play()
+
+        self.assertEqual(session.maze_rows(), py_maze.maze_lines(
+            session.game.maze, [(py_maze.PLAYER_MARKER, {(3, 4)})]))
+
+    def test_quitting_prints_its_message_under_the_maze(self):
+        session = PlaySession(['s', 'q']).play()
+        lines = session.screen().lines()
+
+        self.assertEqual(lines[:session.rows()], session.game.frame())
+        self.assertIn('Thanks for playing!',
+                      '\n'.join(lines[session.rows():]))
+
+    def test_a_terminal_that_prints_escapes_still_plays_the_game(self):
+        # the old behaviour, which flickers and is meant to: every frame
+        # is written whole with the screen wiped before it
+        session = PlaySession(['s', 'd', 'a', 'q']).play(homed=False,
+                                                         wipe=True)
+        written = session.output.getvalue()
+
+        self.assertEqual(session.wipe.call_count, 4)
+        self.assertNotIn('\x1b', written)
+        self.assertEqual(written.count(py_maze.CONTROLS_LINE), 4)
+        self.assertEqual(session.game.moves, 3)
+        self.assertIn('Thanks for playing!', written)
+
+
+class TestPlayScreenReplayOnAGeneratedMaze(unittest.TestCase):
+    # the hand-built maze is five rows, so the screen is checked against
+    # a generated one at the size a player would see, and after every
+    # keypress rather than only once the route is walked
+
+    KEYS = {(0, -1): 'w', (0, 1): 's', (-1, 0): 'a', (1, 0): 'd'}
+
+    def setUp(self):
+        random.seed(2024)
+        self.session = PlaySession([],
+                                   grid=py_maze.MazeGenerator(8, 6).generate())
+
+    def route(self, game):
+        # Returns:
+        #     list: A keypress for each step of the solution
+
+        path = py_maze.solve_maze(game.maze, (game.player_x, game.player_y),
+                                  (game.end_x, game.end_y))
+        return [self.KEYS[(after[0] - cell[0], after[1] - cell[1])]
+                for cell, after in zip(path, path[1:])]
+
+    def test_the_screen_tracks_the_frame_at_every_step_of_the_route(self):
+        session = self.session
+        keys = self.route(session.game)
+        self.assertGreater(len(keys), 15, "a route worth calling long")
+
+        session.keys = keys + ['x']
+        session.play()
+        screen = session.screen()
+
+        self.assertTrue(session.game.check_win())
+        self.assertEqual(screen.lines()[:session.rows()],
+                         session.game.frame())
+        self.assertEqual(sum(row.count(py_maze.PLAYER_MARKER)
+                             for row in session.maze_rows()), 1)
+
+    def test_a_step_costs_a_fraction_of_a_whole_frame(self):
+        # what the change bought: a step writes the two maze rows it
+        # touched and the tally rather than the whole screen
+        session = self.session
+        keys = self.route(session.game)
+        session.keys = keys + ['x']
+        session.play()
+
+        # the whole frame is the second write, after the wipe. The last
+        # step is left out of the average because the banner and the
+        # summary are printed while it is still being charged for
+        whole = len(session.writes[1])
+        walked = keys[:-1]
+        drawn = sum(len(''.join(session.after(index)))
+                    for index in range(len(walked)))
+
+        self.assertLess(drawn / len(walked), whole / 2)
 
 
 class TestVersion(unittest.TestCase):
@@ -2232,6 +2688,25 @@ class TestHint(unittest.TestCase):
         self.assertNotIn(py_maze.HINT_MARKER, output.rsplit('start', 1)[-1])
         self.assertEqual((self.game.player_x, self.game.player_y), (1, 0),
                          "a hint should not move the player")
+
+    def test_a_hint_draws_the_row_it_lights_up_and_no_more(self):
+        # the hint used to write the whole screen twice, once to light
+        # the step up and once to take it away again
+        screen = RecordingStream()
+        with mock.patch.object(py_maze.game, 'ansi_enabled',
+                               return_value=True), \
+                mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(time, 'sleep'), \
+                contextlib.redirect_stdout(screen):
+            self.game.render()
+            self.game.show_hint()
+            self.game.render()
+
+        # the frame drawn whole, then the hint lit and taken away again
+        self.assertEqual(len(screen.writes), 3)
+        for write in screen.writes[1:]:
+            self.assertEqual(write.count(py_maze.ANSI_CLEAR_LINE), 1,
+                             "a hint should redraw the row it lights up")
 
     def test_the_controls_offer_the_hint_key(self):
         stdout = io.StringIO()
