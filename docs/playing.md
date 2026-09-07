@@ -106,10 +106,9 @@ hint at, so nothing is highlighted.
 
 ## Redrawing the Screen
 
-The first frame is drawn whole. The cursor is put back at the top left with
-an ANSI escape sequence and the frame is written in a single call, so the
-maze, the status line and the controls arrive together and the screen never
-stands empty part-way through a redraw.
+The first frame is drawn whole, in a single call, so the maze, the status
+line and the controls arrive together and the screen never stands empty
+part-way through a redraw.
 
 Every frame after it draws only what moved. The frame that would be shown is
 compared line by line against the frame already on screen, and each line that
@@ -120,6 +119,16 @@ controls line are left standing, because neither has changed since the game
 began. A step into a wall changes nothing, so nothing is written at all, and
 a hint lights up one row rather than redrawing the screen to show it and
 redrawing it again to take it away.
+
+Every line is addressed by the row it belongs on, the first frame's included,
+and no newline is written at all. A newline written on the bottom row of the
+screen scrolls everything up one, and a frame as tall as the terminal ends on
+that row - which is what a maze capped to fit any terminal with an even
+number of rows draws, the lines the frame adds around the maze leaving no row
+for the cursor below it. Addressing the rows rather than ending the lines is
+what keeps the row a line was drawn on true for the rest of the game. A maze
+too big for the terminal to hold is drawn as far down the screen as there is
+room for, a row addressed below the last one landing on the last one.
 
 Terminals that read escape sequences are drawn on this way, which is every
 terminal on Linux and macOS and every Windows console that takes virtual

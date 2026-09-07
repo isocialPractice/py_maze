@@ -1008,6 +1008,38 @@ class TestFrameText(unittest.TestCase):
         self.assertEqual(py_maze.frame_text(self.LINES, stream=io.StringIO()),
                          'first\nsecond\nthird\n')
 
+    def test_a_homed_frame_ends_no_line_with_a_newline(self):
+        # the newline after the last line landed on the bottom row of a
+        # screen the frame filled and scrolled it, leaving every line of
+        # the frame a row above the row a redraw would address it by
+        frame = py_maze.frame_text(self.LINES, home=True)
+
+        self.assertFalse(frame.endswith('\n'))
+        self.assertEqual(frame.count('\n'), len(self.LINES) - 1)
+
+    def test_a_homed_frame_leaves_the_cursor_below_itself(self):
+        # frame_diff parks it there, so whatever is printed once the
+        # game ends lands under the maze whichever drew the last frame
+        frame = py_maze.frame_text(self.LINES, home=True)
+
+        self.assertTrue(frame.endswith(py_maze.ANSI_ROW % 4))
+
+    def test_a_homed_frame_of_no_lines_is_the_home_and_nothing_else(self):
+        self.assertEqual(py_maze.frame_text([], home=True), py_maze.ANSI_HOME)
+
+    def test_a_homed_frame_does_not_scroll_a_screen_it_fills(self):
+        screen = TerminalScreen(height=len(self.LINES)).feed(
+            py_maze.frame_text(self.LINES, home=True))
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines(), self.LINES)
+
+    def test_a_frame_that_cannot_home_still_ends_every_line(self):
+        # nothing addresses a row on that terminal, so the newline that
+        # separates the lines is also what ends the last of them
+        self.assertTrue(
+            py_maze.frame_text(self.LINES, home=False).endswith('third\n'))
+
 
 class TestFrameDiff(unittest.TestCase):
     BEFORE = ['first', 'second', 'third']
@@ -1104,11 +1136,18 @@ class TestRenderFrame(unittest.TestCase):
 
         self.assertEqual(wipes, 1, "only the first frame wipes the screen")
 
-    def test_the_first_frame_puts_the_cursor_back_at_the_top_left(self):
+    def test_the_first_frame_is_addressed_by_row_like_the_rest(self):
+        # the first frame used to be written as lines and newlines,
+        # which scrolls a screen it fills and leaves every row a later
+        # redraw addresses one below the line it means to replace
         stream, _ = self.render(times=3)
+        text = stream.getvalue()
 
-        self.assertEqual(stream.getvalue().count(py_maze.ANSI_HOME), 1,
-                         "only the frame drawn whole starts at the top left")
+        self.assertNotIn('\n', text)
+        self.assertTrue(text.startswith(py_maze.ANSI_ROW % 1),
+                        "the frame drawn whole starts at the top left")
+        self.assertEqual(self.drawn_rows(text),
+                         list(range(1, len(self.game.frame()) + 1)))
 
     def test_a_frame_that_changed_nothing_is_not_drawn_again(self):
         # the flicker left after 2.0.1 was every line going out again
@@ -1177,14 +1216,49 @@ class TestRenderFrame(unittest.TestCase):
 # everything a play session wrote gives back the screen the player was
 # looking at, which is the only way to tell a partial redraw that left
 # the right picture from one that left a marker behind.
+#
+# A height gives it a bottom, which is what a redraw addressing absolute
+# rows can be measured against: a newline written on the last row takes
+# the whole screen up one and drops the top row, and a row addressed
+# below the last one lands on the last one instead. Without a height it
+# is a screen of unbounded depth that never scrolls, which is what it
+# was before and what the tests that are not about the bottom of the
+# screen still read it as.
 class TerminalScreen:
     ESCAPE = re.compile(r'\x1b\[(?:(\d+)(?:;(\d+))?)?([A-Za-z])')
 
-    def __init__(self):
+    def __init__(self, height=None):
+        # Args:
+        #     height: Rows the screen holds, or None for a screen deep
+        #         enough that nothing is ever scrolled off it
+
+        self.height = height
         self.rows = {}
         self.row = 1
         self.column = 1
         self.wipes = 0
+        self.scrolls = 0
+
+    def clamp(self, row):
+        # the row an address lands on, there being no row above the
+        # first of the screen and none below its last
+        row = max(row, 1)
+        return row if self.height is None else min(row, self.height)
+
+    def scroll(self):
+        # every row moves up one and the top row falls off the screen
+        self.rows = {row - 1: text
+                     for row, text in self.rows.items() if row > 1}
+        self.scrolls += 1
+
+    def newline(self):
+        # the cursor drops to the start of the row below, taking the
+        # screen up with it when it is already on the bottom row
+        if self.height is not None and self.row >= self.height:
+            self.scroll()
+        else:
+            self.row += 1
+        self.column = 1
 
     def put(self, text):
         # write text where the cursor stands, padding the row out to it
@@ -1203,8 +1277,7 @@ class TerminalScreen:
             if piece:
                 self.put(piece)
             if index < len(pieces) - 1:
-                self.row += 1
-                self.column = 1
+                self.newline()
 
     def feed(self, written):
         # replay everything written to the terminal, in order
@@ -1225,7 +1298,7 @@ class TerminalScreen:
                 self.rows = {}
                 self.wipes += 1
             elif final == 'H':
-                self.row = int(first) if first else 1
+                self.row = self.clamp(int(first) if first else 1)
                 self.column = int(second) if second else 1
             elif final == 'K':
                 self.rows[self.row] = self.rows.get(self.row,
@@ -1236,8 +1309,13 @@ class TerminalScreen:
 
     def lines(self):
         # Returns:
-        #     list: The rows of the screen, top to bottom
+        #     list: The rows of the screen, top to bottom. A screen with
+        #     a height is read back as deep as that however little was
+        #     written on it, a row nothing reached reading as blank
 
+        if self.height is not None:
+            return [self.rows.get(row, '')
+                    for row in range(1, self.height + 1)]
         if not self.rows:
             return []
         return [self.rows.get(row, '') for row in range(1, max(self.rows) + 1)]
@@ -1332,8 +1410,27 @@ class PlaySession:
                if index + 1 < len(self.boundaries) else len(self.writes))
         return self.writes[start:end]
 
-    def screen(self):
-        return TerminalScreen().feed(self.output.getvalue())
+    def screen(self, height=None, text=None):
+        # Args:
+        #     height: Rows the screen holds, for the faults that only
+        #         show on a screen the frame fills
+        #     text: What to replay, defaulting to everything written
+        #
+        # Returns:
+        #     TerminalScreen: The screen the writes left
+
+        if text is None:
+            text = self.output.getvalue()
+        return TerminalScreen(height).feed(text)
+
+    def played(self):
+        # Returns:
+        #     str: Everything written while the game was still running,
+        #     which ends at the last frame the player was looking at.
+        #     What the end of the game prints is left out of it, since
+        #     printing anything scrolls a screen the frame already fills
+
+        return ''.join(self.writes[:self.boundaries[-1]])
 
     def maze_rows(self):
         # the maze alone, without the markers around it. The controls
@@ -1354,6 +1451,120 @@ def cursor_rows(text):
     #     list: The rows a write moved the cursor to, in order
 
     return [int(row) for row in re.findall(r'\x1b\[(\d+);1H', text)]
+
+
+class TestTerminalScreenBottom(unittest.TestCase):
+    # the model is the instrument the redraw is measured with, so what
+    # it does at the bottom of the screen is checked before it is
+    # trusted to catch a redraw that wrote a row too low
+
+    def test_a_screen_with_no_height_never_scrolls(self):
+        screen = TerminalScreen().feed('first\nsecond\nthird\n')
+
+        self.assertEqual(screen.lines(), ['first', 'second', 'third'])
+        self.assertEqual(screen.scrolls, 0)
+
+    def test_a_newline_on_the_bottom_row_takes_the_screen_up_with_it(self):
+        screen = TerminalScreen(height=3).feed('first\nsecond\nthird\nfourth')
+
+        self.assertEqual(screen.lines(), ['second', 'third', 'fourth'])
+        self.assertEqual(screen.scrolls, 1)
+
+    def test_a_row_addressed_below_the_screen_lands_on_the_last_one(self):
+        screen = TerminalScreen(height=3).feed(py_maze.ANSI_ROW % 9 + 'below')
+
+        self.assertEqual(screen.lines(), ['', '', 'below'])
+
+    def test_a_screen_with_a_height_is_read_back_as_deep_as_it_is(self):
+        screen = TerminalScreen(height=4).feed('only')
+
+        self.assertEqual(screen.lines(), ['only', '', '', ''])
+
+
+class TestPlayScreenOnAScreenItFills(unittest.TestCase):
+    # 2.2.5 drew only the lines that changed, addressing each by an
+    # absolute screen row on the understanding that frame line 1 sits on
+    # screen row 1. The first frame used to break that understanding as
+    # it was drawn: its last line ended with a newline, which on the
+    # bottom row scrolled the screen up one, and every redraw after it
+    # wrote a row below the line it was replacing. The maze was left
+    # holding rows of older frames and never repaired, because only
+    # changed lines are ever written again.
+
+    def walk(self, keys, short=0):
+        # play a route and read back the screen it was played on
+        #
+        # Args:
+        #     keys: The route walked before the game is quit
+        #     short: Rows fewer than the frame the screen holds, 0 for a
+        #         screen the frame fills exactly
+        #
+        # Returns:
+        #     tuple: (the session, the screen it left)
+
+        session = PlaySession(list(keys) + ['q']).play()
+
+        return session, session.screen(height=session.rows() - short,
+                                       text=session.played())
+
+    def test_a_fitted_maze_fills_an_even_terminal_exactly(self):
+        # the size is not an unlucky one: RENDER_ROW_OVERHEAD reserves
+        # exactly the lines the frame adds around the maze and no row
+        # for the cursor below it, so a maze capped to a terminal with
+        # an even number of rows draws a frame as tall as the screen
+        for rows in (24, 26, 28, 30):
+            _, height = py_maze.fit_to_terminal(
+                9, 99, size=terminal_size(80, rows), stream=io.StringIO())
+
+            self.assertEqual(height * 2 + 1 + py_maze.RENDER_ROW_OVERHEAD,
+                             rows, "a maze fitted to %d rows" % rows)
+
+    def test_the_first_frame_does_not_scroll_the_screen_it_fills(self):
+        session, screen = self.walk([])
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines(), session.game.frame())
+
+    def test_the_game_writes_no_newline_to_scroll_the_screen_with(self):
+        session, _ = self.walk(TestMazeGame.ROUTE[:-1] + ['h'])
+
+        self.assertNotIn('\n', session.played())
+
+    def test_the_screen_still_matches_the_frame_after_a_route(self):
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1])
+
+        self.assertEqual(screen.lines(), session.game.frame())
+
+    def test_no_row_of_an_older_frame_is_left_on_the_maze(self):
+        # the fault a player saw: rows the redraw wrote a line too low,
+        # leaving the row above them holding a frame that had gone
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1])
+        game = session.game
+
+        self.assertEqual(
+            screen.lines()[1:1 + len(game.maze)],
+            py_maze.maze_lines(game.maze, [(py_maze.PLAYER_MARKER,
+                                            {(game.player_x, game.player_y)})]))
+
+    def test_a_hint_leaves_no_marker_behind_on_a_screen_it_fills(self):
+        session, screen = self.walk(['h'])
+
+        self.assertNotIn(py_maze.HINT_MARKER,
+                         ''.join(screen.lines()[1:1 + len(session.game.maze)]))
+
+    def test_a_frame_taller_than_the_screen_keeps_the_rows_it_has_true(self):
+        # a maze the terminal has no room for cannot be drawn whole, and
+        # fit_to_terminal says so rather than shrinking it below the
+        # smallest maze there is. The rows there is room for still hold
+        # the frame's own lines, and the bottom row holds its last one,
+        # because a row addressed below the screen lands on the last row
+        # rather than scrolling the screen to reach it
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1], short=1)
+        frame = session.game.frame()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines()[:-1], frame[:len(frame) - 2])
+        self.assertEqual(screen.lines()[-1], frame[-1])
 
 
 class TestPlayScreenReplay(unittest.TestCase):

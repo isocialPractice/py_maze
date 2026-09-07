@@ -207,6 +207,13 @@ class MazeGame:
         spacer and the controls line standing. A frame that changed
         nothing writes nothing at all.
 
+        Every line is addressed by the row it belongs on, the first
+        frame's included, and no newline is written at all. A frame
+        written as lines and newlines scrolls a screen it fills as its
+        last line goes out, and every row a later redraw addresses is
+        then one below the line it meant to replace, which is a picture
+        that never repairs because only changed lines are written again.
+
         Args:
             stream: Where the frame is written, defaulting to standard
                 output
@@ -218,17 +225,23 @@ class MazeGame:
         homed = ansi_enabled(stream)
         lines = self.frame()
 
-        # the first frame wipes whatever the run printed before the game
-        # started. Where the cursor cannot be moved there is no way to
-        # draw over the last frame either, so the screen is wiped for
-        # every one and every one is written whole, as it always was
-        if not homed or not self.drawn:
+        # where the cursor cannot be moved there is no way to draw over
+        # the last frame either, so the screen is wiped for every frame
+        # and every frame is written whole, as it always was
+        if not homed:
             self.clear_screen(stream)
             self.drawn = True
             self.drawn_lines = lines
             stream.write(frame_text(lines, home=homed))
             stream.flush()
             return
+
+        # the first frame wipes whatever the run printed before the game
+        # started, and has nothing on screen to be compared against, so
+        # every row of it is drawn
+        if not self.drawn:
+            self.clear_screen(stream)
+            self.drawn = True
 
         text = frame_diff(self.drawn_lines, lines)
         self.drawn_lines = lines

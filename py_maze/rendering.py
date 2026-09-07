@@ -299,7 +299,10 @@ def frame_text(lines, home=None, stream=None):
 
     Returns:
         str: The whole frame, ready to be written in a single call so
-        the screen never stands part-drawn
+        the screen never stands part-drawn. A homed frame ends by
+        parking the cursor on the row below itself, the way
+        :func:`frame_diff` parks it, rather than by ending its last
+        line with a newline
     """
 
     if home is None:
@@ -308,9 +311,18 @@ def frame_text(lines, home=None, stream=None):
     if not home:
         return ''.join(line + '\n' for line in lines)
 
+    if not lines:
+        return ANSI_HOME
+
     # each line wipes whatever it lands on rather than the screen being
-    # wiped first, so there is no moment where the screen is empty
-    return ANSI_HOME + ''.join(line + ANSI_CLEAR_LINE + '\n' for line in lines)
+    # wiped first, so there is no moment where the screen is empty. The
+    # last line ends without a newline: one written on the bottom row of
+    # the screen scrolls everything up a row, and every line of the
+    # frame is then sitting a row above where a redraw addressing rows
+    # would look for it
+    body = (ANSI_CLEAR_LINE + '\n').join(lines) + ANSI_CLEAR_LINE
+
+    return ANSI_HOME + body + ANSI_ROW % (len(lines) + 1)
 
 
 def frame_diff(previous, current):
