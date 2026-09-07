@@ -293,7 +293,31 @@ everything a player watches move. Verifying an item here means watching the
 screen rather than reading a test, and completing one is a patch version
 update.
 
-No items are currently queued in this section.
+- [ ] Pin the partial redraw against a real Windows console, not against the
+  suite's own `TerminalScreen`, so the model and the thing it models are
+  checked against each other rather than the model being trusted alone
+  - The verification of the 2.2.6 redraw fix drove a console allocated with
+    `AllocConsole`, sized to exactly 100x28 with `SetConsoleScreenBufferSize`
+    and `SetConsoleWindowInfo`, spawned the game into it with `CONIN$` and
+    `CONOUT$` as its streams, pushed keys in as `KEY_EVENT` records through
+    `WriteConsoleInputW`, and read the screen back with
+    `ReadConsoleOutputCharacterW`. It passed on the fix and failed on the
+    code before it, at 28 rows and at 24
+  - What it would assert, on a console the frame fills exactly: `start` on
+    row 1 and the controls line on the bottom row; exactly one `start`, one
+    `end`, one status line and one controls line on screen; exactly one `o`
+    on the maze; no `?` left once a hint has gone; and at most two maze
+    cells differing between consecutive frames, which is all a step can
+    account for
+  - It cannot go into `test_py_maze.py` as it stands: that file is 574
+    stdlib-only tests running in under a second on ubuntu, windows and macos
+    across four Python versions, and this is Win32-only, takes about half a
+    minute per size and allocates a console window. It needs either a
+    `skipUnless` guard and an opt-in environment variable, or a second
+    suite of its own that CI runs on the windows leg only
+  - The driver and its checker were left at `.tmp/ui-ux/` on the machine
+    that ran the verification, and the run is written up in the UI/UX
+    agent's log under 09.07.2026
 
 ## Runtime and Portability Fixes
 
