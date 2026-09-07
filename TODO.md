@@ -65,7 +65,7 @@ into a `## Complete` section at the bottom of this file.
     of the two is written first decides that shape for the other
   - From: Gameplay Enhancements `->` New Game Modes
 
-### Code Review Override - The 2.2.5 Partial Redraw
+### Code Review Override - The 2.2.6 Redraw Origin
 
 #### Resolve Issues
 
@@ -76,23 +76,29 @@ into a `## Complete` section at the bottom of this file.
   than it has to - the status line and the controls line are rewritten
   every frame whether or not they changed, and the hint redraws the whole
   screen twice - and draw only what moved
-  - **Issue**: the partial redraw addresses absolute screen rows, but
-    nothing keeps frame line 1 on screen row 1. `frame_text` ends its last
-    line with a newline, so a frame as tall as the terminal scrolls the
-    screen by one row as it is drawn, and every partial redraw after it
-    writes each line one row below the line it is replacing. The maze is
-    left holding rows from older frames and never repairs, because only
-    changed lines are written again. Playing the default `normal` maze in a
-    terminal 28 rows tall reaches it with no options at all, and
-    `fit_to_terminal` produces the same shape on every terminal with an
-    even number of rows, because `RENDER_ROW_OVERHEAD` reserves exactly the
-    5 lines the frame adds and no row for the cursor below it
-  - **Goal**: keep the row a line is written on true for the whole game.
-    Three candidate fixes, their costs and what was measured are in
-    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-06-the-partial-redraw-draws-on-the-wrong-rows).
-    Pin it first: the suite's `TerminalScreen` models a screen of unbounded
-    height and so never scrolls, so it cannot catch this until it is given
-    a height and the scroll behaviour
+  - **Issue**: 2.2.6 kept the row a line is written on true only against
+    the game's own writes. It stopped the game writing the newline that
+    scrolled the screen, but nothing re-establishes the origin when
+    something else scrolls it, and the picture never repairs because only
+    changed lines are ever written again. Two triggers are measured in
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-07-the-partial-redraw-drifts-once-anything-else-scrolls-the-screen).
+    The reachable one needs no resize and no unusual options:
+    `CONTROLS_LINE` is 66 characters and is the last line of the frame,
+    `fit_to_terminal` measures only the maze against the terminal's
+    columns, so any terminal under 66 columns wraps the controls line - and
+    on a screen the frame fills, that wrap is on the bottom row and scrolls
+    it before a key is pressed. A 60 by 24 terminal caps the maze to 9 by 9
+    for a 24 line frame and reaches it on the first frame; after four steps
+    21 of the 24 rows hold lines from frames that have gone
+  - **Goal**: keep the row a line is written on true for the whole game
+    against a scroll from any cause, not only the game's own. Three
+    candidates and their costs are in the same `KNOWN_BUGS.md` section, and
+    only the third covers a resize: measure the terminal each frame and
+    draw the frame whole whenever the size has changed, which is what 2.2.4
+    did every frame and why the same scroll was merely cosmetic then. Pin
+    it first: the suite's `TerminalScreen` models rows but not columns, so
+    it cannot catch the wrap until it is given a width and wraps a line
+    past the last column the way a terminal does
   - From: UI/UX and Screen Drawing
 
 ## Fixes and Hardening
@@ -965,4 +971,30 @@ No items are currently queued in this section.
   than it has to - the status line and the controls line are rewritten
   every frame whether or not they changed, and the hint redraws the whole
   screen twice - and draw only what moved
+  - From: UI/UX and Screen Drawing
+- [x] Resolve the flicker still visible in the play screen and its HUD.
+  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
+  and writing the frame in one call, and the flicker a player sees is
+  reported as noticeable all the same. Find what is still redrawing more
+  than it has to - the status line and the controls line are rewritten
+  every frame whether or not they changed, and the hint redraws the whole
+  screen twice - and draw only what moved
+  - **Issue**: the partial redraw addresses absolute screen rows, but
+    nothing keeps frame line 1 on screen row 1. `frame_text` ends its last
+    line with a newline, so a frame as tall as the terminal scrolls the
+    screen by one row as it is drawn, and every partial redraw after it
+    writes each line one row below the line it is replacing. The maze is
+    left holding rows from older frames and never repairs, because only
+    changed lines are written again. Playing the default `normal` maze in a
+    terminal 28 rows tall reaches it with no options at all, and
+    `fit_to_terminal` produces the same shape on every terminal with an
+    even number of rows, because `RENDER_ROW_OVERHEAD` reserves exactly the
+    5 lines the frame adds and no row for the cursor below it
+  - **Goal**: keep the row a line is written on true for the whole game.
+    Three candidate fixes and their costs were weighed in `KNOWN_BUGS.md`;
+    what was measured and what was done about it is in the
+    [2.2.6 changelog entry](CHANGELOG.md#226---2026-09-07).
+    Pin it first: the suite's `TerminalScreen` models a screen of unbounded
+    height and so never scrolls, so it cannot catch this until it is given
+    a height and the scroll behaviour
   - From: UI/UX and Screen Drawing

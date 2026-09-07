@@ -5,6 +5,105 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2026-09-07
+
+The picture 2.2.5 left on a screen its frame fills exactly. Drawing only the
+lines that changed means addressing each by the row it sits on, and that
+holds only while line 1 of the frame is on row 1 of the screen. The first
+frame was written as lines and newlines, and the newline after its last line
+scrolls a screen the frame fills, so every redraw after it wrote a row below
+the line it meant to replace. Every line is now addressed by its row, the
+first frame included, and the game writes no newline at all. What this does
+not do is defend that understanding against a scroll the game did not cause:
+a terminal resized mid-game, or one narrow enough to wrap the controls line
+on the bottom row, drifts the same way it always did, and `KNOWN_BUGS.md`
+records both. No option behaves differently, no name entered or left the
+public surface, and the frame a player reads is the same frame.
+
+### Fixed
+
+- The play screen stays the frame it was drawn as on a terminal the frame
+  fills and is no wider than. `render` wrote the first frame through
+  `frame_text`, which ends
+  every line with a newline including the last one. On a screen the frame
+  fills that last newline lands on the bottom row and scrolls everything up
+  one, so frame line `k` sat on row `k - 1` while `frame_diff` went on
+  writing it to row `k`. The maze was left holding rows from older frames
+  between the rows that had been redrawn, and nothing repaired it, because
+  only changed lines are ever written again. The first frame is now drawn
+  through `frame_diff` against an empty screen, which addresses every row
+  and writes no newline to scroll anything with.
+- It was not an unlucky terminal size. `RENDER_ROW_OVERHEAD` is 5, exactly
+  the number of lines the frame adds around the maze and no row for the
+  cursor below it, so `fit_to_terminal` caps a maze to a frame as tall as
+  the screen on every terminal with an even number of rows: 24 rows fit a
+  maze 9 cells high, 26 fit 10, 28 fit 11, 30 fit 12. The default `normal`
+  maze is 11 cells high and draws a 28 line play screen, so playing it in a
+  28 row terminal reached the fault with no options at all.
+- A frame taller than the screen keeps the rows there is room for. That is
+  what `fit_to_terminal` leaves behind when the terminal cannot hold even
+  the smallest maze and it says so rather than shrinking one further. A row
+  addressed below the last row of the screen lands on the last row instead,
+  so nothing scrolls and every row there is room for goes on holding the
+  line of the frame that belongs on it.
+- `frame_text(lines, home=True)` no longer ends its last line with a
+  newline either. It parks the cursor on the row below the frame with
+  `ANSI_ROW`, where `frame_diff` already parks it, so what is printed once a
+  game ends still lands under the maze. Nothing in the package draws a homed
+  frame with it now, but it is exported, and a caller drawing one had the
+  same fault to run into. A frame that cannot home is unchanged, newline
+  after every line: no row can be addressed on that terminal, so there is
+  nothing for a scroll to put out of step. A homed frame of no lines is the
+  home escape and nothing else.
+- The first frame of a game costs more to write and no frame after it does.
+  On the default maze it is 808 characters rather than 645, a row address
+  being six characters where a newline was one, and a step still redraws
+  three lines for 92 characters.
+
+### Added
+
+- Sixteen tests. Seven play a maze on a screen its frame fills exactly and
+  read the screen back: that the first frame does not scroll it, that the
+  screen still matches the frame after a route, that no row of an older
+  frame is left on the maze, that a hint leaves no marker behind, that the
+  game writes no newline at all, and that a frame one row taller than the
+  screen keeps the rows there is room for. The seventh is the arithmetic
+  above, that a maze fitted to a terminal with an even number of rows draws
+  a frame as tall as the screen.
+- Four of the sixteen cover the model terminal itself, which had to grow a
+  bottom before it could catch any of this: that a newline on the last row
+  scrolls the screen and drops the top row, that a row addressed below the
+  screen lands on the last row, that a screen with a height reads back as
+  deep as it is, and that one without a height still never scrolls.
+- The last five cover `frame_text` directly: that a homed frame ends no line
+  with a newline, that it parks the cursor below itself, that a homed frame
+  of no lines is the home escape alone, that it does not scroll a screen it
+  fills, and that a frame which cannot home still ends its last line.
+- Eight of the sixteen fail against 2.2.5 - five of the seven play-throughs
+  and three of the five over `frame_text` - as does the renamed test below.
+  The four over the model terminal measure the model, so they hold either
+  way.
+
+### Changed
+
+- The suite's `TerminalScreen` takes a height. It modelled a screen of
+  unbounded depth, which never scrolls and so could not catch a redraw
+  drawing a row too low however faithfully it replayed the escapes. Given
+  one it scrolls when a newline is written on its bottom row, lands a row
+  addressed below the screen on the last row, and reads back as deep as its
+  height. Left without one it is the screen it always was, which is how the
+  tests that are not about the bottom of the screen still read it.
+- `test_the_first_frame_puts_the_cursor_back_at_the_top_left` is now
+  `test_the_first_frame_is_addressed_by_row_like_the_rest`. It asserted one
+  `ANSI_HOME` across three frames, which was the whole-frame write the first
+  frame no longer uses; it now asserts that the write holds no newline, that
+  it starts at row 1 and that it addresses every row of the frame in turn.
+- `KNOWN_BUGS.md` drops the entry for the redraw drawing on the wrong rows,
+  which this version fixed, and records what reviewing the fix turned up in
+  its place: the same drift follows any scroll the game did not cause, and a
+  terminal narrower than the 66 character controls line wraps it on the
+  bottom row and scrolls the screen before a key is pressed.
+
 ## [2.2.5] - 2026-09-06
 
 The rest of the flicker 2.0.1 went after. That release stopped the screen
