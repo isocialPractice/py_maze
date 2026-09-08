@@ -65,49 +65,33 @@ into a `## Complete` section at the bottom of this file.
     of the two is written first decides that shape for the other
   - From: Gameplay Enhancements `->` New Game Modes
 
-### User Overrides
+### UI/UX Override - a console shorter than the frame drawn on it
 
-- [ ] Add a timer and move counter displayed during play and summarized
-  on the win screen
-  - **Issue**: The timer only increments on arrow-key press
-  - **Goal**: Ensure the timer and move counter are independent of each other
-  - From: Gameplay Enhancements
+#### Found Issues
 
-### Code Review Override - The 2.2.6 Redraw Origin
-
-#### Resolve Issues
-
-- [ ] Resolve the flicker still visible in the play screen and its HUD.
-  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
-  and writing the frame in one call, and the flicker a player sees is
-  reported as noticeable all the same. Find what is still redrawing more
-  than it has to - the status line and the controls line are rewritten
-  every frame whether or not they changed, and the hint redraws the whole
-  screen twice - and draw only what moved
-  - **Issue**: 2.2.6 kept the row a line is written on true only against
-    the game's own writes. It stopped the game writing the newline that
-    scrolled the screen, but nothing re-establishes the origin when
-    something else scrolls it, and the picture never repairs because only
-    changed lines are ever written again. Two triggers are measured in
-    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-07-the-partial-redraw-drifts-once-anything-else-scrolls-the-screen).
-    The reachable one needs no resize and no unusual options:
-    `CONTROLS_LINE` is 66 characters and is the last line of the frame,
-    `fit_to_terminal` measures only the maze against the terminal's
-    columns, so any terminal under 66 columns wraps the controls line - and
-    on a screen the frame fills, that wrap is on the bottom row and scrolls
-    it before a key is pressed. A 60 by 24 terminal caps the maze to 9 by 9
-    for a 24 line frame and reaches it on the first frame; after four steps
-    21 of the 24 rows hold lines from frames that have gone
-  - **Goal**: keep the row a line is written on true for the whole game
-    against a scroll from any cause, not only the game's own. Three
-    candidates and their costs are in the same `KNOWN_BUGS.md` section, and
-    only the third covers a resize: measure the terminal each frame and
-    draw the frame whole whenever the size has changed, which is what 2.2.4
-    did every frame and why the same scroll was merely cosmetic then. Pin
-    it first: the suite's `TerminalScreen` models rows but not columns, so
-    it cannot catch the wrap until it is given a width and wraps a line
-    past the last column the way a terminal does
-  - From: UI/UX and Screen Drawing
+- [ ] A console shortened below the height of the play screen stacks the
+  frame's last lines onto its bottom row, taking the controls line and the
+  foot of the maze off screen without saying so
+  - **Issue**: the 2.3.0 redraw was verified and passes; this is the case
+    next to it. On a 100x28 console the frame is 28 lines. Shrinking the
+    console to 22 rows under a running game makes `render` redraw the frame
+    whole, which is correct, but 28 lines cannot go on 22 rows: the console
+    clamps every row address past the screen onto the bottom row, so the
+    last maze rows, the `end` marker, the blank spacer and the controls line
+    are each written there in turn and the once-a-second tally write is what
+    stays. Read back off the console buffer after shrinking the window
+    mid-game. The visible part of the picture is right - one `o`, no rows
+    from a frame that has gone - but the foot of the maze and the controls
+    line are simply not on screen, and a player standing on one of those
+    rows would not be drawn at all
+  - **Goal**: fit the frame to the terminal it is being drawn on rather than
+    to the one the maze was generated for, drawing at most as many lines as
+    the screen has rows and keeping the tally and the controls line on the
+    bottom of them, so what a shrunken console costs is maze rather than the
+    whole foot of the screen. `fit_to_terminal` in `py_maze/rendering.py`
+    already answers this question at generation time and is where the
+    redraw-time answer belongs
+  - From: UI/UX Override - a console shorter than the frame drawn on it
 
 ## Fixes and Hardening
 
@@ -329,9 +313,24 @@ update.
     minute per size and allocates a console window. It needs either a
     `skipUnless` guard and an opt-in environment variable, or a second
     suite of its own that CI runs on the windows leg only
-  - The driver and its checker were left at `.tmp/ui-ux/` on the machine
-    that ran the verification, and the run is written up in the UI/UX
-    agent's log under 09.07.2026
+  - Reading the console back is only half of it, and the 2.3.0 verification
+    had to add the other half. A repaint that writes the same characters
+    over the same characters leaves a screen indistinguishable from one
+    nothing touched, so a screen readback cannot tell a loop that draws once
+    a second from one that draws four times a second - which is exactly what
+    the timed redraw has to be held to. What decides it is watching the
+    writes rather than the screen: run the game under a launcher that wraps
+    `sys.stdout` in a passthrough journalling every write with its time,
+    leaving `fileno` and `isatty` answering for the console handle so
+    `ansi_enabled` still sees a terminal and `sys.__stdout__` still measures
+    the real console. Then a write can be read as the rows it addressed, and
+    "an idle second wrote the status line and nothing else" becomes an
+    assertion. A pseudoconsole cannot stand in for this: ConPTY keeps its
+    own screen buffer and emits its own repaints, so it would report the
+    wasteful redraw as no output at all
+  - The driver, its tap and its checker were left at `.tmp/ui-ux/` on the
+    machine that ran the verification, and the runs are written up in the
+    UI/UX agent's log under 09.07.2026 and 09.08.2026
 
 ## Runtime and Portability Fixes
 
@@ -1005,4 +1004,40 @@ No items are currently queued in this section.
     Pin it first: the suite's `TerminalScreen` models a screen of unbounded
     height and so never scrolls, so it cannot catch this until it is given
     a height and the scroll behaviour
+  - From: UI/UX and Screen Drawing
+- [x] Add a timer and move counter displayed during play and summarized
+  on the win screen
+  - **Issue**: The timer only increments on arrow-key press
+  - **Goal**: Ensure the timer and move counter are independent of each other
+  - From: Gameplay Enhancements
+- [x] Resolve the flicker still visible in the play screen and its HUD.
+  2.0.1 stopped `render` wiping the terminal and moved to homing the cursor
+  and writing the frame in one call, and the flicker a player sees is
+  reported as noticeable all the same. Find what is still redrawing more
+  than it has to - the status line and the controls line are rewritten
+  every frame whether or not they changed, and the hint redraws the whole
+  screen twice - and draw only what moved
+  - **Issue**: 2.2.6 kept the row a line is written on true only against
+    the game's own writes. It stopped the game writing the newline that
+    scrolled the screen, but nothing re-establishes the origin when
+    something else scrolls it, and the picture never repairs because only
+    changed lines are ever written again. Two triggers are measured in
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-07-the-partial-redraw-drifts-once-anything-else-scrolls-the-screen).
+    The reachable one needs no resize and no unusual options:
+    `CONTROLS_LINE` is 66 characters and is the last line of the frame,
+    `fit_to_terminal` measures only the maze against the terminal's
+    columns, so any terminal under 66 columns wraps the controls line - and
+    on a screen the frame fills, that wrap is on the bottom row and scrolls
+    it before a key is pressed. A 60 by 24 terminal caps the maze to 9 by 9
+    for a 24 line frame and reaches it on the first frame; after four steps
+    21 of the 24 rows hold lines from frames that have gone
+  - **Goal**: keep the row a line is written on true for the whole game
+    against a scroll from any cause, not only the game's own. Three
+    candidates and their costs are in the same `KNOWN_BUGS.md` section, and
+    only the third covers a resize: measure the terminal each frame and
+    draw the frame whole whenever the size has changed, which is what 2.2.4
+    did every frame and why the same scroll was merely cosmetic then. Pin
+    it first: the suite's `TerminalScreen` models rows but not columns, so
+    it cannot catch the wrap until it is given a width and wraps a line
+    past the last column the way a terminal does
   - From: UI/UX and Screen Drawing
