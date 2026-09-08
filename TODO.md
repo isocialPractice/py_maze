@@ -65,6 +65,14 @@ into a `## Complete` section at the bottom of this file.
     of the two is written first decides that shape for the other
   - From: Gameplay Enhancements `->` New Game Modes
 
+### User Overrides
+
+- [ ] Add a timer and move counter displayed during play and summarized
+  on the win screen
+  - **Issue**: The timer only increments on arrow-key press
+  - **Goal**: Ensure the timer and move counter are independent of each other
+  - From: Gameplay Enhancements
+
 ### Code Review Override - The 2.2.6 Redraw Origin
 
 #### Resolve Issues
