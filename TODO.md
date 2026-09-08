@@ -93,6 +93,58 @@ into a `## Complete` section at the bottom of this file.
     redraw-time answer belongs
   - From: UI/UX Override - a console shorter than the frame drawn on it
 
+### Code Review Override - the POSIX timed key reader
+
+- [ ] A paragraph in `docs/library.md` was left with an orphaned line
+  - **Issue**: adding `read_key_timed` to the paragraph listing the public
+    terminal names pushed `` `build_parser`, `` onto a line of its own 15
+    characters wide, in the middle of a paragraph every other line of which
+    is wrapped to the margin
+  - **Goal**: reflow the paragraph
+  - From: Code Review Override - the POSIX timed key reader
+
+#### Resolve Issues
+
+- [ ] Timed Key Reader 1: the POSIX reader waits on one thing and reads from
+  another, so a key typed inside a tick is never looked at
+  - **Issue**: `key_waiting` calls `select.select([sys.stdin], [], [],
+    timeout)`, which polls the file descriptor behind standard input, while
+    `read_key_sequence` reads with `sys.stdin.read(1)`, which is a
+    `TextIOWrapper` reading a chunk at a time and keeping what it does not
+    hand back. A raw-mode terminal returns every queued byte in one read, so
+    two movement keys typed inside a quarter of a second on Linux or macOS -
+    or one key held down while the keyboard repeats - leave the second where
+    `select` will never mention it. The player takes one step and stops, and
+    the next press plays the stranded key rather than itself for the rest of
+    the run. Windows is unaffected, and the suite cannot see it:
+    `TestPosixTimedInput` mocks both `select` and `sys.stdin`. Measured in
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-08-the-timed-key-reader-strands-keys-typed-inside-one-tick)
+  - **Goal**: make the thing waited on and the thing read from the same
+    thing. Two candidates and what each costs are in that section; both
+    reach out of `read_key_timed_posix` into readers the untimed path shares,
+    which is why this was queued rather than fixed in review. Pin it first:
+    the POSIX tests hand `read_key_sequence` a fake standard input returning
+    one character per read, so nothing in the suite chunks the way a
+    terminal does and a fix cannot be told from no fix
+  - From: Gameplay Enhancements
+
+#### Found Issues
+
+- [ ] `read_key_timed(None)` means two different things by platform
+  - **Issue**: `MazeGame.get_key` routes `None` to `read_key` rather than to
+    `read_key_timed`, so the game never reaches it, but `read_key_timed` is
+    public, exported and named in `docs/library.md`. Given `None`,
+    `read_key_timed_windows` raises `TypeError` comparing it against 0 while
+    `read_key_timed_posix` passes it to `select.select` and waits forever
+  - **Goal**: decide what no deadline means for a reader whose whole point
+    is having one, and make both branches agree. Reading it as "wait however
+    long it takes" is what `MazeGame.get_key` already means by `None` and
+    what the POSIX branch already does, so Windows would follow; refusing it
+    instead wants one check ahead of the platform split rather than a check
+    in each branch. Either way it wants a test beside the ones that already
+    drive both branches directly
+  - From: Code Review Override - the POSIX timed key reader
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1005,8 +1057,8 @@ No items are currently queued in this section.
     height and so never scrolls, so it cannot catch this until it is given
     a height and the scroll behaviour
   - From: UI/UX and Screen Drawing
-- [x] Add a timer and move counter displayed during play and summarized
-  on the win screen
+- [x] **Timed Key Reader**: Add a timer and move counter displayed during
+  play and summarized on the win screen
   - **Issue**: The timer only increments on arrow-key press
   - **Goal**: Ensure the timer and move counter are independent of each other
   - From: Gameplay Enhancements

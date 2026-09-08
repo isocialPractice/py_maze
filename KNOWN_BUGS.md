@@ -3,85 +3,99 @@
 Defects that are understood but not yet fixed. Each section records how to
 reproduce the bug, what is known about it and what is not.
 
-## 2026-09-07: the partial redraw drifts once anything else scrolls the screen
+## 2026-09-08: the timed key reader strands keys typed inside one tick
 
-Found reviewing 2.2.6, which stopped the play screen scrolling itself. The
-scroll it removed was the game's own newline. Every other way the screen can
-scroll is still there, and the redraw has no way to notice one.
+Found reviewing 2.3.0, which gave the game loop a reader that waits a moment
+for a keypress rather than waiting for one however long it takes. The POSIX
+branch waits on one thing and reads from another.
 
 ### What happens
 
-`frame_diff` addresses every line it writes by an absolute screen row, on the
-understanding that line 1 of the frame is sitting on row 1 of the screen.
-2.2.6 stopped the game breaking that understanding: it writes no newline at
-all, so nothing it sends can scroll the screen. Nothing re-establishes the
-understanding when something else breaks it. A screen that scrolls once, for
-any reason, leaves frame line `k` on row `k - 1` while every later redraw
-goes on writing it to row `k`, and the picture never repairs because only
-changed lines are ever written again.
+`key_waiting` calls `select.select([sys.stdin], [], [], timeout)`, which asks
+the kernel whether the file descriptor behind standard input has anything on
+it. `read_key_sequence` then reads with `sys.stdin.read(1)`, and `sys.stdin`
+is a `TextIOWrapper` over a `BufferedReader`: it does not read one byte, it
+reads a chunk, decodes the whole of it and hands back the first character.
+Every character after the first stays in the wrapper, in userspace, where
+`select` cannot see it.
 
-### Reproducing it: a terminal narrower than the controls line
+A terminal in raw mode has `VMIN` 1 and `VTIME` 0, so one read returns every
+byte queued rather than one byte. Two keys typed inside the same quarter of a
+second are therefore delivered in a single read, and the second is stranded:
+`select` reports nothing waiting, `read_key_timed_posix` answers `None`, and
+the loop ticks on drawing a clock over a keypress it is holding but will not
+look at.
 
-`CONTROLS_LINE` is 66 characters and is the last line of the frame.
-`fit_to_terminal` caps the maze against the terminal's columns, but the
-controls line is not part of the maze and is never measured against them, so
-a terminal narrower than 66 columns wraps it. On a screen the frame fills,
-the controls line is on the bottom row, and wrapping there takes the screen
-up one exactly as a newline would.
+### Reproducing it
 
-Play in a terminal 60 columns wide and 24 rows tall:
+Play on Linux or macOS and type two movement keys quickly, or simply hold one
+down and let the keyboard repeat:
 
 ```console
 py_maze --play
 ```
 
-`fit_to_terminal` caps the maze to 9 by 9 for the 24 rows, which draws a 24
-line frame that fills the screen, and the 66 character controls line wraps on
-the bottom row of a 60 column screen. The screen has scrolled before a key is
-ever pressed.
-
-This is not a narrow edge. Any terminal under 66 columns reaches it, no
-option makes the controls line shorter, and the maze being capped to fit the
-rows is what puts the controls line on the bottom row in the first place.
-
-### Reproducing it: a terminal resized smaller mid-game
-
-Shrinking the window pushes the content up, and there is no `SIGWINCH`
-handling to notice it, so every redraw after the resize writes to rows that
-have moved.
+The player takes one step and stops. Nothing more happens until the next key
+is pressed, and that press plays the stranded key rather than itself, so from
+then on the game is a keypress behind for the rest of the run.
 
 ### What is known
 
-Measured with the suite's `TerminalScreen`, which 2.2.6 gave a height and the
-scroll that goes with it:
+The chunking is the wrapper's rather than the terminal's, so it can be
+measured without one. Three characters written to a pipe and read back
+through the same stack `sys.stdin` is built from:
 
-- Draw the first frame, scroll the screen once by any means, then walk a
-  route. 7 of the 10 rows of the suite's test frame end up holding lines from
-  frames that have gone - rows 1, 4 to 7, 9 and 10 - and no later step
-  repairs any of them.
-- Give the same model a width as well, so a line past the last column wraps
-  the way a terminal wraps, and the 60 by 24 terminal above scrolls on its
-  first frame. After four steps 21 of its 24 rows disagree with the frame.
+```python
+>>> first = f.read(1)      # what read_key_sequence is handed
+'d'
+>>> os.read(r, 10)         # what select() has to poll
+b''
+>>> f.read(1), f.read(1)   # where the other two went
+('d', 'a')
+```
 
-The wrap is older than 2.2.6 and older than 2.2.5. What changed in 2.2.5 is
-that a scroll is no longer corrected, and what 2.2.6 fixed is the one scroll
-the game caused itself.
+- The untimed reader never had this. `read_key_posix` blocks in
+  `sys.stdin.read(1)`, which answers out of the wrapper's own buffer, so a
+  character read ahead is returned on the next call rather than waited for at
+  a descriptor that will never mention it.
+- The Windows branch is not affected. `read_key_timed_windows` polls
+  `msvcrt.kbhit` and `msvcrt.getch` reads the same console buffer, so the
+  thing waited on and the thing read from are one thing.
+- The suite cannot see it. `TestPosixTimedInput` replaces `select` with a
+  mock and `sys.stdin` with a `FakeStdin` handing back one character per
+  read, so the wrapper that does the chunking is not in the picture at all,
+  and all 626 tests pass with the fault in place.
 
 ### What is not known
 
-- How much the resize case differs between terminals. That the content moves
-  is certain; which row the cursor is left on afterwards is not, and that
-  path has not been measured against a real console.
-- Which fix the project wants. None of these addresses a scroll the game did
-  not cause except the last:
-  1. Reserve a row below the frame, `RENDER_ROW_OVERHEAD` going from 5 to 6,
-     so one wrapped line has somewhere to go. It shrinks every maze that was
-     capped, it does nothing when `terminal_size()` is unavailable, and a
-     terminal under 33 columns wraps the controls line onto two rows anyway.
-  2. Measure the frame's widest line rather than the maze alone, so a run on
-     too narrow a screen says so. That reports the fault rather than fixing
-     it.
-  3. Give the assumption up instead of defending it: measure the terminal
-     each frame and draw the frame whole whenever the size has changed since
-     the last one. That is what 2.2.4 did every frame, and it is why the same
-     scroll was merely cosmetic then.
+- Which fix the project wants. Both candidates reach outside the timed
+  reader:
+  1. Read through the descriptor rather than through `sys.stdin`, so the
+     thing waited on and the thing read from agree. `read_key_sequence` is
+     shared with `read_key_posix`, so it would have to be told how to read
+     rather than assuming `sys.stdin`, and both readers would want
+     re-verifying against a real terminal.
+  2. Give the terminal the deadline instead of `select`, setting `VMIN` 0 and
+     `VTIME` through `termios` so the read itself times out. There is then
+     nothing left to be out of step with, but raw mode is entered in
+     `in_raw_mode` for every reader, and whatever it sets it sets for all of
+     them.
+- How it behaves on a real terminal rather than on a model of one.
+  Everything above is reasoned from the buffering and measured on a pipe; no
+  POSIX console has been driven, the machine reviewing it being Windows.
+
+## Resolved in 2.3.0: the partial redraw drifting on a scroll the game did not cause
+
+The partial redraw drifting once anything else scrolled the screen was
+recorded here against 2.2.6 and fixed in 2.3.0: the terminal is measured
+every frame, and the whole frame is drawn rather than the difference whenever
+its size has changed since the last one or a line of it runs past the last
+column. Both triggers this file recorded - a window resized mid-game, and a
+terminal narrower than the 66 character controls line - are covered by that,
+and the suite's `TerminalScreen` was given a width first so the wrap it could
+not model before is what the fix is measured against.
+
+What is still missing is a measurement against a real console rather than
+against the suite's model of one. That is queued in `TODO.md` under **UI/UX
+and Screen Drawing** rather than here, being a verification that has not been
+written rather than a defect that has been understood.

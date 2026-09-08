@@ -5,6 +5,118 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-09-08
+
+Two tallies that were one, and a redraw that now defends the thing it
+depends on. The clock under the maze counted only when a key was pressed,
+because the loop waited for a keypress however long it took and drew nothing
+until one came; it waits a moment instead and comes back to the screen when
+the moment passes empty. And the partial redraw addresses absolute rows on
+the understanding that frame line 1 is on screen row 1, which 2.2.6 stopped
+the game breaking itself without stopping anything else breaking it: the
+terminal is measured every frame now, and the whole frame is drawn whenever
+that understanding cannot be relied on. No option behaves differently and no
+frame reads differently; what changed is when a frame is drawn and how much
+of it goes out.
+
+### Added
+
+- `read_key_timed(timeout)`, and the `read_key_timed_windows` and
+  `read_key_timed_posix` behind it, waiting a given moment for a keypress
+  and answering `None` when the moment passes with nothing pressed. Windows
+  polls as its waiting reader already does, with the last poll cut short to
+  the time that is left rather than overrunning the deadline by most of an
+  interval; POSIX waits on standard input with `select`, inside raw mode
+  rather than before it, since a terminal in its usual mode holds the line
+  back until Enter and would report nothing waiting until Enter was pressed
+  as well. Standard input that cannot be waited on at all - a pipe, a file -
+  is read as it always was rather than being reported empty, which would
+  spin the loop. `select` is imported beside `tty` and `termios` in
+  `py_maze.keys`, so the modules that leave the terminal alone still do.
+- `TICK_SECONDS`, the moment the game loop is willing to wait, at a quarter
+  of a second. The status line counts whole seconds, so it is short enough
+  that a player never watches the clock stick and long enough that the loop
+  is idle between visits.
+- `frame_wraps(lines, size)`, reporting whether a frame runs past the
+  terminal's last column. A line exactly as wide as the screen fills its row
+  and stops there; one character more is carried onto the row below.
+  A frame with no terminal to measure against never wraps.
+- `frame_diff(previous, current, whole=True)`, writing every row of a frame
+  rather than the rows that changed. What is on screen is only known while
+  nothing has moved it, and a caller with reason to doubt that draws the
+  whole frame instead. It still wipes the rows a shorter frame gives up and
+  still parks the cursor below itself, so it is the same write a difference
+  is, with nothing left out of it.
+- `MazeGame.get_key(timeout)`, taking the moment the caller is willing to
+  wait. Given none it waits for a keypress however long it takes, which is
+  what it did before and what the win screen still wants: there is nothing
+  to draw while that one waits.
+
+### Fixed
+
+- The clock under the maze counts while the player stands still. `play`
+  waited on `get_key`, which returned only when a key was pressed, so the
+  status line was redrawn only then: the time and the moves were one tally
+  wearing two labels, and a player who stopped moving watched a clock that
+  had stopped with them. The loop waits `TICK_SECONDS` for a key and draws
+  again when nothing arrives, so a second that passes with nothing pressed
+  is a second and no move, exactly as a step into a wall was already a move
+  that never happened. It costs nothing on screen: the tally names whole
+  seconds, so three visits in four find the frame unchanged and write
+  nothing at all, which is what `render` has done since 2.2.5.
+- The play screen keeps the row a line was written on true against a scroll
+  the game did not cause. 2.2.6 stopped the game writing the newline that
+  scrolled a screen its frame filled, and that was the only scroll it could
+  stop by writing differently. Nothing re-established the origin when
+  anything else moved the screen, and because only changed lines are ever
+  written again, one scroll left the picture wrong for the rest of the game.
+  `render` measures the terminal every frame and draws the whole frame
+  rather than the difference when the measurement says the rows cannot be
+  trusted.
+- A terminal narrower than the controls line no longer drifts. `CONTROLS_LINE`
+  is 66 characters and is the last line of the frame, `fit_to_terminal`
+  measures only the maze against the terminal's columns, and a maze capped to
+  fit the rows puts that line on the bottom row - so any terminal under 66
+  columns carried it onto the row below and took the screen up before a key
+  was pressed. It needed no resize and no unusual options: 60 by 24 caps the
+  maze to 9 by 9, draws a 24 line frame and reaches it on the first frame.
+  The frame is drawn whole whenever a line of it runs past the last column,
+  so each frame puts the picture back before its own last line carries it up
+  again, which leaves the frame a row higher than a wide enough terminal
+  would - the best a screen with no room for the line can hold - rather than
+  a maze made of rows from frames that have gone.
+- A window resized mid-game no longer drifts either. There is no `SIGWINCH`
+  handling and nothing in the lines of a frame says the content moved, so
+  the size the last frame was drawn on is kept and compared: a frame that
+  measures differently is drawn whole, whether or not a single line of it
+  changed.
+- A frame that wraps and has nothing new to say still writes nothing. The
+  wrap does its damage as the frame is written, so redrawing a still screen
+  to repair a scroll it has not caused would be the flicker rather than the
+  fix. The whole frame goes out when the frame changed and the rows cannot
+  be trusted; a still screen on a narrow terminal stays still.
+
+### Changed
+
+- `py_maze.game` measures the terminal now, through `terminal_size`, which
+  `py_maze.cli` and `py_maze.rendering` already did. It is measured once a
+  frame, and output that is piped or redirected measures as `None` and is
+  drawn exactly as it was.
+- The suite's `TerminalScreen` models columns as well as rows. It was given
+  a height in 2.2.6, which is what let a newline on the bottom row be
+  measured; a width is what lets a line past the last column be measured,
+  and without one the reachable trigger above was invisible to the
+  instrument the redraw is checked with. Text that will not fit on a row is
+  carried onto the one below, a line that fills a row exactly wraps nothing,
+  and addressing a row takes the cursor off a filled row without wrapping,
+  as a terminal does.
+- `KNOWN_BUGS.md` drops the entry for the partial redraw drifting on a
+  scroll the game did not cause, which this release fixes, and records in
+  its place a keypress the POSIX timed reader strands: it waits on the file
+  descriptor behind standard input while it reads through `sys.stdin`, which
+  buffers above that descriptor, so a second key typed inside the same tick
+  is left where the wait can never mention it.
+
 ## [2.2.6] - 2026-09-07
 
 The picture 2.2.5 left on a screen its frame fills exactly. Drawing only the
