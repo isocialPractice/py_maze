@@ -119,8 +119,9 @@ solved maze is printed. See [Solving the maze](docs/solving.md).
 Arrow keys or **WASD** move your character (`o`) from the **start** at the
 top to the **end** at the bottom. **`h`** gives a hint, **`q`** quits, and a
 status line under the maze keeps the time, the moves and the collectibles.
-[How to play](docs/playing.md) has the rest, the end-of-game summary
-included.
+The clock counts whether or not a key is pressed, so standing still costs
+time and no moves. [How to play](docs/playing.md) has the rest, the
+end-of-game summary included.
 
 ## [Saving and Loading](docs/saving.md)
 

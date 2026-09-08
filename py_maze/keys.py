@@ -18,6 +18,7 @@ import time
 if sys.platform == 'win32':
     import msvcrt
 else:
+    import select
     import tty
     import termios
 
@@ -27,6 +28,9 @@ __all__ = [
     'WINDOWS_INTERRUPT_KEY',
     'read_key',
     'read_key_posix',
+    'read_key_timed',
+    'read_key_timed_posix',
+    'read_key_timed_windows',
     'read_key_windows',
     'read_response',
 ]
@@ -174,6 +178,111 @@ def read_key_posix():
     """
 
     return in_raw_mode(read_key_sequence)
+
+
+def read_key_timed(timeout):
+    """Wait a given moment for a keypress, whatever the platform.
+
+    A game loop that only ever waits for a key can only draw when one is
+    pressed, and a clock drawn that way stops between keypresses. Waiting
+    with a deadline is what lets the loop come back to a screen nobody
+    has touched.
+
+    Args:
+        timeout: Seconds to wait before giving up on a keypress
+
+    Returns:
+        str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
+        the lowercased character that was typed. None when the wait ran
+        out with nothing pressed
+
+    Raises:
+        KeyboardInterrupt: If Ctrl+C was pressed
+    """
+
+    if sys.platform == 'win32':
+        return read_key_timed_windows(timeout)
+    return read_key_timed_posix(timeout)
+
+
+def read_key_timed_windows(timeout):
+    """Wait a given moment for a keypress on Windows.
+
+    Args:
+        timeout: Seconds to wait before giving up on a keypress
+
+    Returns:
+        str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
+        the lowercased character that was typed. None when the wait ran
+        out with nothing pressed
+
+    Raises:
+        KeyboardInterrupt: If Ctrl+C was pressed
+    """
+
+    # the same idle poll the waiting reader makes, given an end to stop
+    # at. The last sleep is cut short to the time that is left, so a
+    # deadline is not overrun by most of a poll interval. The wait is
+    # counted down rather than measured against a clock: what is left is
+    # what was actually slept away, so the last poll lands on the
+    # deadline exactly rather than a rounding short of it
+    left = timeout
+    while not msvcrt.kbhit():
+        if left <= 0:
+            return None
+
+        nap = min(KEY_POLL_INTERVAL, left)
+        time.sleep(nap)
+        left -= nap
+
+    # a key is waiting, so the reader that would poll for one returns it
+    # without waiting and reads an arrow key as the two bytes it is
+    return read_key_windows()
+
+
+def key_waiting(timeout):
+    # Report whether a key can be read without waiting for one.
+    #
+    # Args:
+    #     timeout: Seconds to wait for one to arrive
+    #
+    # Returns:
+    #     True when standard input has something to read, False when the
+    #     wait ran out first. Standard input that cannot be waited on at
+    #     all reads as ready, so the read goes ahead and blocks the way
+    #     an untimed one does rather than reporting a keypress that
+    #     never came
+
+    try:
+        ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    except (AttributeError, ValueError, OSError):
+        return True
+
+    return bool(ready)
+
+
+def read_key_timed_posix(timeout):
+    """Wait a given moment for a keypress on unix/linux/mac.
+
+    Args:
+        timeout: Seconds to wait before giving up on a keypress
+
+    Returns:
+        str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
+        the lowercased character that was typed. None when the wait ran
+        out with nothing pressed
+
+    Raises:
+        KeyboardInterrupt: If Ctrl+C was pressed. The terminal is taken
+        out of raw mode before it propagates
+    """
+
+    # the wait happens inside raw mode rather than before it: a terminal
+    # in its usual cooked mode holds a line back until Enter is pressed,
+    # so waiting on standard input first would report nothing waiting
+    # until the player pressed Enter as well
+    return in_raw_mode(
+        lambda: read_key_sequence() if key_waiting(timeout) else None)
 
 
 def read_response():

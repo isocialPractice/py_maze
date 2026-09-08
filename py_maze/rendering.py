@@ -44,6 +44,7 @@ __all__ = [
     'format_duration',
     'frame_diff',
     'frame_text',
+    'frame_wraps',
     'maze_lines',
     'print_maze',
     'solution_overlay',
@@ -325,7 +326,7 @@ def frame_text(lines, home=None, stream=None):
     return ANSI_HOME + body + ANSI_ROW % (len(lines) + 1)
 
 
-def frame_diff(previous, current):
+def frame_diff(previous, current, whole=False):
     """Build the writes that turn the frame on screen into the next one.
 
     Only the lines that differ are written, each addressed by the row it
@@ -337,19 +338,25 @@ def frame_diff(previous, current):
     Args:
         previous: Lines of the frame already on screen
         current: Lines of the frame that should be on it
+        whole: True to write every line of the frame rather than the
+            ones that changed. What is on screen is only known while
+            nothing has moved it, and a caller that has reason to doubt
+            that draws the whole frame instead: every row is addressed
+            and written, so the picture is put back wherever it drifted
+            to rather than being repaired a changed line at a time
 
     Returns:
         str: The escapes and the text that turn the one frame into the
         other, leaving the cursor on the line below the frame where
         writing the whole of it would have left it. Empty when the two
-        frames are the same, since drawing nothing is what keeps a
-        still screen still
+        frames are the same and the whole of it was not asked for, since
+        drawing nothing is what keeps a still screen still
     """
 
     writes = []
 
     for row, line in enumerate(current, start=1):
-        if row <= len(previous) and previous[row - 1] == line:
+        if not whole and row <= len(previous) and previous[row - 1] == line:
             continue
 
         writes.append(ANSI_ROW % row + line + ANSI_CLEAR_LINE)
@@ -363,6 +370,33 @@ def frame_diff(previous, current):
         return ''
 
     return ''.join(writes) + ANSI_ROW % (len(current) + 1)
+
+
+def frame_wraps(lines, size):
+    """Report whether a frame runs past the terminal's last column.
+
+    A line longer than the screen is wide is carried onto the row below
+    it, and one carried over on the bottom row takes the whole screen up
+    with it exactly as a newline there would. That is a scroll no line
+    of the frame asked for, so a frame it happens to is one whose rows
+    can no longer be addressed on the understanding that its first line
+    sits on the first row of the screen.
+
+    Args:
+        lines: The lines of the frame
+        size: The terminal the frame is drawn on, or None when output is
+            piped or redirected and there is no terminal to measure
+
+    Returns:
+        True when a line is wider than the terminal, False when every
+        line fits on a row of its own or there is no terminal to measure
+        the frame against
+    """
+
+    if size is None:
+        return False
+
+    return any(len(line) > size.columns for line in lines)
 
 
 def solution_overlay(path):

@@ -44,14 +44,17 @@ from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
                   is_quiet, main, maze_char, maze_dimension,
                   resolve_dimensions)
 from .game import (CONTROLS_LINE, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
-                   PLAIN_WIN_BANNER, WIN_BANNER, MazeGame, win_banner)
+                   PLAIN_WIN_BANNER, TICK_SECONDS, WIN_BANNER, MazeGame,
+                   win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
                    find_exit, has_ends, open_cells, open_ends, open_neighbors,
                    walled_grid)
 from .keys import (INTERRUPT_KEY, KEY_POLL_INTERVAL, WINDOWS_INTERRUPT_KEY,
-                   read_key, read_key_posix, read_key_windows, read_response)
+                   read_key, read_key_posix, read_key_timed,
+                   read_key_timed_posix, read_key_timed_windows,
+                   read_key_windows, read_response)
 from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
                         COLLECTIBLE_MARKER, FRAME_DELAY, FRONTIER_MARKER,
                         HINT_MARKER, OPEN_MARKER, PLAYER_MARKER,
@@ -59,8 +62,9 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
                         WALL_MARKER, animate_search, ansi_enabled, can_encode,
                         clear_screen, collectible_overlay, fit_dimension,
                         fit_to_terminal, format_duration, frame_diff,
-                        frame_text, maze_lines, print_maze, solution_overlay,
-                        status_line, summary_lines, terminal_size)
+                        frame_text, frame_wraps, maze_lines, print_maze,
+                        solution_overlay, status_line, summary_lines,
+                        terminal_size)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
                     SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIN_NAME,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
@@ -124,6 +128,7 @@ __all__ = [
     'format_duration',
     'frame_diff',
     'frame_text',
+    'frame_wraps',
     'maze_lines',
     'print_maze',
     'solution_overlay',
@@ -155,6 +160,9 @@ __all__ = [
     'WINDOWS_INTERRUPT_KEY',
     'read_key',
     'read_key_posix',
+    'read_key_timed',
+    'read_key_timed_posix',
+    'read_key_timed_windows',
     'read_key_windows',
     'read_response',
     # game
@@ -163,6 +171,7 @@ __all__ = [
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_WIN_BANNER',
+    'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',
     'win_banner',

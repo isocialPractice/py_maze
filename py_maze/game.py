@@ -12,10 +12,12 @@ import sys
 import time
 
 from .grid import find_entrance, find_exit
-from .keys import read_key, read_key_posix, read_key_windows
+from .keys import (read_key, read_key_posix, read_key_timed,
+                   read_key_windows)
 from .rendering import (COLLECTIBLE_MARKER, HINT_MARKER, PLAYER_MARKER,
                         ansi_enabled, can_encode, clear_screen, frame_diff,
-                        frame_text, maze_lines, status_line, summary_lines)
+                        frame_text, frame_wraps, maze_lines, status_line,
+                        summary_lines, terminal_size)
 from .solving import solve_maze
 
 __all__ = [
@@ -24,6 +26,7 @@ __all__ = [
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_WIN_BANNER',
+    'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',
     'win_banner',
@@ -34,6 +37,12 @@ HINT_STEPS = 1
 
 # seconds a hint stays on screen before the maze is redrawn without it
 HINT_SECONDS = 0.6
+
+# seconds the game loop waits for a keypress before drawing again on its
+# own. The clock on the status line counts whole seconds, so a quarter of
+# one is close enough that a player never watches it stick, and a frame
+# that changed nothing is still written as nothing at all
+TICK_SECONDS = 0.25
 
 # parting message for a quit or an interrupted game
 GOODBYE_MESSAGE = "Goodbye!"
@@ -110,6 +119,12 @@ class MazeGame:
         # the lines of the frame that is on screen, which the next frame
         # is compared against so only the lines that changed are written
         self.drawn_lines = []
+
+        # the terminal the frame on screen was drawn on, which the next
+        # frame measures against: a terminal that has been resized since
+        # has moved every line of that frame off the row it was written
+        # to, and nothing in the lines themselves says so
+        self.drawn_size = None
 
         # the clock runs from the first render to the end of the game, so
         # the summary reports how long the maze took rather than how long
@@ -214,6 +229,17 @@ class MazeGame:
         then one below the line it meant to replace, which is a picture
         that never repairs because only changed lines are written again.
 
+        Addressing a row that way holds only while frame line 1 is on
+        screen row 1, and the game not scrolling the screen itself is
+        not the same as nothing scrolling it. The terminal is measured
+        every frame and the whole frame is drawn rather than the
+        difference whenever that understanding cannot be relied on: the
+        terminal has been resized since the last frame, or a line of the
+        frame runs past its last column and wraps onto the row below.
+        Neither is anything the lines of a frame can be compared against
+        to find, and a frame drawn whole puts the picture back wherever
+        it drifted to.
+
         Args:
             stream: Where the frame is written, defaulting to standard
                 output
@@ -243,7 +269,19 @@ class MazeGame:
             self.clear_screen(stream)
             self.drawn = True
 
+        size = terminal_size()
+        resized = size != self.drawn_size
+        self.drawn_size = size
+
         text = frame_diff(self.drawn_lines, lines)
+
+        # a frame that wraps takes the screen up a row every time it is
+        # written, so it is the writing rather than the wrapping that
+        # does the damage: a frame with nothing to say still says
+        # nothing, and a still screen on a narrow terminal stays still
+        if resized or (text and frame_wraps(lines, size)):
+            text = frame_diff(self.drawn_lines, lines, whole=True)
+
         self.drawn_lines = lines
 
         if not text:
@@ -339,18 +377,29 @@ class MazeGame:
 
         return self.player_x == self.end_x and self.player_y == self.end_y
 
-    def get_key(self):
+    def get_key(self, timeout=None):
         """Get a single keypress from the user (cross-platform).
+
+        Args:
+            timeout: Seconds to wait for a keypress before giving up on
+                one, or None to wait however long it takes. The game
+                loop gives a timeout so the clock on the status line
+                moves on its own; the win screen gives none, having
+                nothing to draw while it waits
 
         Returns:
             str: 'up', 'down', 'left' or 'right' for an arrow key,
-            otherwise the lowercased character that was typed
+            otherwise the lowercased character that was typed. None when
+            a timeout was given and it ran out with nothing pressed
 
         Raises:
             KeyboardInterrupt: If Ctrl+C was pressed
         """
 
-        return read_key()
+        if timeout is None:
+            return read_key()
+
+        return read_key_timed(timeout)
 
     def get_key_windows(self):
         """Wait for a keypress on Windows.
@@ -380,14 +429,31 @@ class MazeGame:
         return read_key_posix()
 
     def play(self):
-        """Run the main game loop until the maze is won, quit or interrupted."""
+        """Run the main game loop until the maze is won, quit or interrupted.
+
+        The loop waits a moment for a keypress rather than waiting for
+        one however long it takes, so a player who stands still still
+        watches the clock count. The time and the moves are two tallies
+        on one line and neither one moves the other: a step that goes
+        nowhere counts no move, and a second that passes with nothing
+        pressed counts no move either but is still a second.
+        """
 
         self.start_clock()
         self.render()
 
         try:
             while True:
-                key = self.get_key()
+                key = self.get_key(TICK_SECONDS)
+
+                if key is None:
+                    # nothing was pressed, so the maze is where it was
+                    # and the clock is the only thing that has moved.
+                    # Drawing is what puts the second it reached on the
+                    # status line, and a second that has not turned over
+                    # yet changes no line and writes nothing
+                    self.render()
+                    continue
 
                 if key == 'q':
                     self.stop_clock()

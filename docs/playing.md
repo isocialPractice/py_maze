@@ -56,6 +56,15 @@ Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
 Only steps that moved the player are counted, so walking into a wall costs
 nothing but the time it took. Asking for a hint is not a move either.
 
+The two tallies are independent of each other, both ways round. The game
+comes back to the screen four times a second whether or not a key was
+pressed, so the clock counts on while the player stands still: a second that
+passes with nothing pressed is a second and no move, exactly as a step into
+a wall is a move that never happened. A screen with nothing new on it is
+still written as nothing, so three of those four visits leave the terminal
+alone - the status line counts whole seconds, and only the one the second
+turns over on has anything to say.
+
 Reaching the exit prints the same tallies as an end-of-game summary:
 
 ```
@@ -129,6 +138,35 @@ for the cursor below it. Addressing the rows rather than ending the lines is
 what keeps the row a line was drawn on true for the rest of the game. A maze
 too big for the terminal to hold is drawn as far down the screen as there is
 room for, a row addressed below the last one landing on the last one.
+
+### When the Row a Line Sits on Cannot Be Trusted
+
+Addressing a row holds only while the first line of the frame is on the first
+row of the screen, and the game not scrolling the screen itself is not the
+same as nothing scrolling it. Two things still do, and neither of them shows
+up in the lines of a frame:
+
+- **The window is resized.** Shrinking a terminal pushes its content up, and
+  nothing tells the game it happened.
+- **A line is wider than the screen.** The controls line is 66 characters and
+  no option makes it shorter, while only the maze is measured against the
+  terminal's columns, so a terminal narrower than that carries the line onto
+  the row below it. On a screen the frame fills, that row is the bottom one,
+  and the carry takes the whole screen up exactly as a newline would.
+
+So the terminal is measured once a frame. When its size has changed since the
+last frame, or when a line of the frame runs past its last column, the whole
+frame is drawn rather than the difference: every row is written, so the
+picture is put back wherever it drifted to rather than being repaired one
+changed line at a time. A frame with nothing new to say is still written as
+nothing, so a still screen on a narrow terminal stays still.
+
+A frame too wide for the screen is redrawn whole every time it changes, which
+is the best a terminal with no room for the line can be given: the picture is
+the frame it ought to be, sitting one row higher than it would on a terminal
+wide enough to hold it. Output that is piped or redirected has no size to
+compare against and no last column to run past, so it is drawn exactly as it
+always was.
 
 Terminals that read escape sequences are drawn on this way, which is every
 terminal on Linux and macOS and every Windows console that takes virtual

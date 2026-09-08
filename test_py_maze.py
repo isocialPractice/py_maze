@@ -211,15 +211,18 @@ def measuring(size):
     # tell every module that measures the terminal what the screen looks like
     #
     # main() measures it to decide whether there is anything to animate
-    # over, and fit_to_terminal measures it again to cap the maze, so a
-    # run driven end to end has to answer both.
+    # over, fit_to_terminal measures it again to cap the maze, and the
+    # game measures it once a frame to find a resize, so a run driven
+    # end to end has to answer all three.
     #
     # Args:
-    #     size: The terminal size both should see, or None for output
-    #         that has been piped or redirected
+    #     size: The terminal size all of them should see, or None for
+    #         output that has been piped or redirected
 
     with mock.patch.object(py_maze.cli, 'terminal_size',
                            return_value=size), \
+            mock.patch.object(py_maze.game, 'terminal_size',
+                              return_value=size), \
             mock.patch.object(py_maze.rendering, 'terminal_size',
                               return_value=size):
         yield
@@ -357,6 +360,23 @@ class FakeMsvcrt:
 
     def getch(self):
         return self.keys.pop(0)
+
+
+# A stand-in for the time module the key readers poll against, so a
+# deadline is reached by the test moving the clock rather than by the
+# test waiting for it. Sleeping is what moves it, which is what a reader
+# waiting for a key does between polls.
+class FakeTime:
+    def __init__(self):
+        self.now = 0.0
+        self.slept = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds
 
 
 class TestMazeGenerator(unittest.TestCase):
@@ -609,6 +629,161 @@ class TestPosixInput(unittest.TestCase):
         self.assertEqual(
             self.termios.restored,
             [(0, FakeTermios.TCSADRAIN, FakeTermios.SETTINGS)])
+
+
+class TestTimedKeyReader(unittest.TestCase):
+    def test_the_platform_decides_which_reader_the_wait_goes_to(self):
+        for platform, name in (('win32', 'read_key_timed_windows'),
+                               ('linux', 'read_key_timed_posix'),
+                               ('darwin', 'read_key_timed_posix')):
+            with mock.patch.object(sys, 'platform', platform), \
+                    mock.patch.object(py_maze.keys, name,
+                                      return_value='w') as reader:
+                self.assertEqual(py_maze.read_key_timed(0.25), 'w')
+
+            reader.assert_called_once_with(0.25)
+
+
+class TestWindowsTimedInput(unittest.TestCase):
+    # the Windows branch is exercised directly so these tests run
+    # anywhere, and the clock is a fake so the deadline is reached by
+    # the test moving it rather than by the test waiting for it
+
+    def read_key(self, keys, idle_polls=0, timeout=0.05):
+        # Returns:
+        #     tuple: (key returned, the clock the wait was slept away on)
+
+        fake = FakeMsvcrt(keys, idle_polls)
+        clock = FakeTime()
+        with mock.patch.object(py_maze.keys, 'msvcrt', fake, create=True), \
+                mock.patch.object(py_maze.keys, 'time', clock):
+            return py_maze.read_key_timed_windows(timeout), clock
+
+    def test_a_key_already_waiting_is_read_without_a_wait(self):
+        key, clock = self.read_key([b'W'])
+
+        self.assertEqual(key, 'w')
+        self.assertEqual(clock.slept, [])
+
+    def test_a_key_that_arrives_during_the_wait_is_read(self):
+        key, clock = self.read_key([b'q'], idle_polls=2)
+
+        self.assertEqual(key, 'q')
+        self.assertEqual(clock.slept, [py_maze.KEY_POLL_INTERVAL] * 2)
+
+    def test_an_arrow_key_still_arrives_as_the_two_bytes_it_is(self):
+        key, _ = self.read_key([b'\xe0', b'H'], idle_polls=1)
+
+        self.assertEqual(key, 'up')
+
+    def test_a_wait_that_runs_out_reads_no_key_at_all(self):
+        # None is what tells the game loop nobody pressed anything, and
+        # it is not something the loop can mistake for a key
+        key, _ = self.read_key([b'q'], idle_polls=100)
+
+        self.assertIsNone(key)
+
+    def test_no_poll_of_the_wait_overruns_the_deadline(self):
+        # a whole poll interval past the deadline is an interval the
+        # clock on the status line is late by
+        for timeout in (0.05, 0.025, 0.003):
+            _, clock = self.read_key([b'q'], idle_polls=100, timeout=timeout)
+
+            self.assertAlmostEqual(sum(clock.slept), timeout)
+            self.assertLessEqual(max(clock.slept), py_maze.KEY_POLL_INTERVAL)
+
+    def test_a_deadline_shorter_than_a_poll_sleeps_only_that_long(self):
+        _, clock = self.read_key([b'q'], idle_polls=100, timeout=0.003)
+
+        self.assertEqual(clock.slept, [0.003])
+
+    def test_ctrl_c_pressed_during_the_wait_still_raises(self):
+        with self.assertRaises(KeyboardInterrupt):
+            self.read_key([py_maze.WINDOWS_INTERRUPT_KEY], idle_polls=1)
+
+
+class TestPosixTimedInput(unittest.TestCase):
+    # the POSIX branch is exercised directly so these tests run anywhere
+
+    def setUp(self):
+        self.termios = FakeTermios()
+
+    def read_key(self, keys, ready=True, timeout=0.05, failing=None):
+        # Args:
+        #     keys: The characters the fake terminal delivers
+        #     ready: Whether the wait reports something to read
+        #     timeout: What the caller is willing to wait
+        #     failing: An exception the wait raises rather than answering
+        #
+        # Returns:
+        #     tuple: (key returned, what the wait was asked for, the fake
+        #     tty module, whether raw mode was on while it waited)
+
+        waits = []
+        raw = []
+        tty = mock.Mock()
+
+        def wait(readers, writers, errors, seconds):
+            waits.append(seconds)
+            raw.append(bool(tty.setraw.called))
+            if failing is not None:
+                raise failing
+            return ([readers[0]] if ready else [], [], [])
+
+        select = mock.Mock()
+        select.select = wait
+        with mock.patch.object(py_maze.keys, 'termios', self.termios,
+                               create=True), \
+                mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
+                mock.patch.object(py_maze.keys, 'select', select,
+                                  create=True), \
+                mock.patch.object(sys, 'stdin', FakeStdin(keys)):
+            return py_maze.read_key_timed_posix(timeout), waits, tty, raw
+
+    def test_a_key_waiting_is_read_and_lowercased(self):
+        key, waits, _, _ = self.read_key('W')
+
+        self.assertEqual(key, 'w')
+        self.assertEqual(waits, [0.05])
+
+    def test_escape_sequences_still_map_arrow_keys(self):
+        for sequence, expected in (('\x1b[A', 'up'), ('\x1b[B', 'down'),
+                                   ('\x1b[D', 'left'), ('\x1b[C', 'right')):
+            key, _, _, _ = self.read_key(sequence)
+
+            self.assertEqual(key, expected)
+
+    def test_a_wait_that_runs_out_reads_no_key_at_all(self):
+        key, _, _, _ = self.read_key('W', ready=False)
+
+        self.assertIsNone(key)
+
+    def test_the_wait_happens_with_the_terminal_already_in_raw_mode(self):
+        # a terminal in its usual mode holds the line back until Enter is
+        # pressed, so waiting on standard input before raw mode was
+        # entered would report nothing waiting until Enter was pressed too
+        _, _, _, raw = self.read_key('W')
+
+        self.assertEqual(raw, [True])
+
+    def test_raw_mode_is_left_even_when_nothing_was_pressed(self):
+        # a terminal left raw is a terminal the shell inherits raw
+        self.read_key('W', ready=False)
+
+        self.assertEqual(
+            self.termios.restored,
+            [(0, FakeTermios.TCSADRAIN, FakeTermios.SETTINGS)])
+
+    def test_ctrl_c_pressed_during_the_wait_still_raises(self):
+        with self.assertRaises(KeyboardInterrupt):
+            self.read_key(py_maze.INTERRUPT_KEY)
+
+    def test_standard_input_that_cannot_be_waited_on_is_read_anyway(self):
+        # a pipe or a file behind standard input has nothing to wait on,
+        # and answering "nothing pressed" for one would spin the loop
+        key, _, _, _ = self.read_key('W', failing=OSError('not selectable'))
+
+        self.assertEqual(key, 'w')
 
 
 class TestPromptResponse(unittest.TestCase):
@@ -1097,6 +1272,82 @@ class TestFrameDiff(unittest.TestCase):
             self.assertIn(py_maze.ANSI_ROW % row + line, diff)
 
 
+class TestFrameDiffWhole(unittest.TestCase):
+    # what is on screen is only known while nothing has moved it, so a
+    # caller with reason to doubt that draws every row rather than the
+    # rows it can find a reason for
+
+    BEFORE = ['first', 'second', 'third']
+
+    def test_the_whole_frame_is_written_when_it_is_asked_for(self):
+        diff = py_maze.frame_diff(self.BEFORE, list(self.BEFORE), whole=True)
+
+        self.assertEqual(cursor_rows(diff), [1, 2, 3, 4])
+        for row, line in enumerate(self.BEFORE, start=1):
+            self.assertIn(py_maze.ANSI_ROW % row + line, diff)
+
+    def test_every_line_it_writes_still_wipes_what_it_lands_on(self):
+        diff = py_maze.frame_diff(self.BEFORE, list(self.BEFORE), whole=True)
+
+        for line in self.BEFORE:
+            self.assertIn(line + py_maze.ANSI_CLEAR_LINE, diff)
+
+    def test_the_whole_frame_still_wipes_the_rows_it_gave_up(self):
+        diff = py_maze.frame_diff(self.BEFORE, ['only'], whole=True)
+
+        self.assertEqual(cursor_rows(diff), [1, 2, 3, 2])
+        self.assertIn(py_maze.ANSI_ROW % 1 + 'only', diff)
+
+    def test_it_leaves_the_cursor_below_the_frame_as_a_difference_does(self):
+        diff = py_maze.frame_diff(self.BEFORE, list(self.BEFORE), whole=True)
+
+        self.assertTrue(diff.endswith(py_maze.ANSI_ROW % 4))
+
+    def test_drawing_what_changed_is_still_what_it_does_by_default(self):
+        self.assertEqual(py_maze.frame_diff(self.BEFORE, list(self.BEFORE)),
+                         '')
+
+
+class TestFrameWraps(unittest.TestCase):
+    # the play screen is addressed by absolute rows, which holds only
+    # while frame line 1 sits on screen row 1. A line wider than the
+    # terminal is carried onto the row below it, and on the bottom row
+    # that carry takes the screen up exactly as a newline would, so a
+    # frame that wraps is a frame whose rows can no longer be trusted
+
+    LINES = ['start', '*** *', 'end']
+
+    def test_a_frame_inside_the_last_column_does_not_wrap(self):
+        self.assertFalse(
+            py_maze.frame_wraps(self.LINES, terminal_size(80, 24)))
+
+    def test_a_line_as_wide_as_the_screen_exactly_does_not_wrap(self):
+        # it fills the row and stops there; the row below is reached by
+        # writing one character more, not by writing the last one
+        self.assertFalse(py_maze.frame_wraps(['abcde'], terminal_size(5, 24)))
+
+    def test_a_line_past_the_last_column_wraps(self):
+        self.assertTrue(py_maze.frame_wraps(['abcdef'], terminal_size(5, 24)))
+
+    def test_one_wrapped_line_is_enough_to_wrap_the_frame(self):
+        self.assertTrue(
+            py_maze.frame_wraps(['ab', 'abcdef', 'ab'], terminal_size(5, 24)))
+
+    def test_a_frame_with_no_terminal_to_measure_never_wraps(self):
+        # output that is piped or redirected has no last column to run
+        # past, and nothing addressing a row to put out of step either
+        self.assertFalse(py_maze.frame_wraps(['abcdef'], None))
+
+    def test_the_controls_line_wraps_on_any_terminal_narrower_than_it(self):
+        # the reachable trigger, and no option makes the line shorter
+        self.assertTrue(py_maze.frame_wraps(
+            [py_maze.CONTROLS_LINE],
+            terminal_size(len(py_maze.CONTROLS_LINE) - 1, 24)))
+        self.assertFalse(py_maze.frame_wraps(
+            [py_maze.CONTROLS_LINE],
+            terminal_size(len(py_maze.CONTROLS_LINE), 24)))
+
+
 class TestRenderFrame(unittest.TestCase):
     def setUp(self):
         self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
@@ -1224,15 +1475,26 @@ class TestRenderFrame(unittest.TestCase):
 # is a screen of unbounded depth that never scrolls, which is what it
 # was before and what the tests that are not about the bottom of the
 # screen still read it as.
+#
+# A width gives it a last column, which is the other way a screen is
+# taken up a row: text written past that column is carried onto the row
+# below, and on the bottom row that carry scrolls the screen exactly as
+# a newline there would. Nothing in the frame asks for it, so it is a
+# scroll no comparison of one frame against the next can find, and a
+# model without a width cannot catch one. Without a width it is a screen
+# of unbounded breadth that never wraps.
 class TerminalScreen:
     ESCAPE = re.compile(r'\x1b\[(?:(\d+)(?:;(\d+))?)?([A-Za-z])')
 
-    def __init__(self, height=None):
+    def __init__(self, height=None, width=None):
         # Args:
         #     height: Rows the screen holds, or None for a screen deep
         #         enough that nothing is ever scrolled off it
+        #     width: Columns each row holds, or None for a screen wide
+        #         enough that no line is carried onto the row below
 
         self.height = height
+        self.width = width
         self.rows = {}
         self.row = 1
         self.column = 1
@@ -1261,13 +1523,27 @@ class TerminalScreen:
         self.column = 1
 
     def put(self, text):
-        # write text where the cursor stands, padding the row out to it
-        line = self.rows.get(self.row, '')
-        if len(line) < self.column - 1:
-            line += ' ' * (self.column - 1 - len(line))
-        self.rows[self.row] = (line[:self.column - 1] + text +
-                               line[self.column - 1 + len(text):])
-        self.column += len(text)
+        # write text where the cursor stands, padding the row out to
+        # it. What will not fit on the row is carried onto the one
+        # below, and text that ends on the last column leaves the
+        # cursor past it rather than on the row below: a terminal
+        # wraps on the character after the one that filled the row, so
+        # a line filling it exactly wraps nothing, and addressing a row
+        # next takes the cursor off the edge without ever wrapping
+        while text:
+            if self.width is not None and self.column > self.width:
+                self.newline()
+
+            room = (len(text) if self.width is None
+                    else self.width - self.column + 1)
+            piece, text = text[:room], text[room:]
+
+            line = self.rows.get(self.row, '')
+            if len(line) < self.column - 1:
+                line += ' ' * (self.column - 1 - len(line))
+            self.rows[self.row] = (line[:self.column - 1] + piece +
+                                   line[self.column - 1 + len(piece):])
+            self.column += len(piece)
 
     def put_lines(self, text):
         # write text that holds no escapes, a newline returning the
@@ -1341,6 +1617,7 @@ class PlaySession:
 
         self.keys = list(keys)
         self.ticking = ticking
+        self.timeouts = []
         self.clock = FakeClock()
         self.boundaries = []
         self.writes = []
@@ -1361,9 +1638,16 @@ class PlaySession:
 
         return Tap()
 
-    def key(self):
+    def key(self, timeout=None):
         # the write count when a key was asked for marks the boundary
         # between what one keypress drew and what the next one drew
+        #
+        # Args:
+        #     timeout: What the loop is willing to wait, which a
+        #         scripted keyboard never needs: the next key is always
+        #         there. It is kept so what the loop asked for can be
+        #         read back, and a scripted None is a wait that ran out
+        self.timeouts.append(timeout)
         self.boundaries.append(len(self.writes))
         if self.ticking:
             self.clock.advance(1)
@@ -1371,7 +1655,7 @@ class PlaySession:
             raise AssertionError("the game asked for more keys than scripted")
         return self.keys.pop(0)
 
-    def play(self, homed=True, wipe=False):
+    def play(self, homed=True, wipe=False, sizes=None):
         # run the loop to its end
         #
         # Args:
@@ -1379,11 +1663,24 @@ class PlaySession:
         #     wipe: True to mock the wipe, for the path that shells out
         #         to cls or clear and would wipe the terminal running
         #         the suite
+        #     sizes: What the game measures the terminal as, frame by
+        #         frame, the last of them answering every frame after
+        #         it. None for a run whose output has been redirected
+        #         and has no terminal to measure at all
         #
         # Returns:
         #     PlaySession: The session itself, for chaining
 
         with contextlib.ExitStack() as stack:
+            if sizes is not None:
+                measured = list(sizes)
+
+                def measure():
+                    return (measured.pop(0) if len(measured) > 1
+                            else measured[0])
+
+                stack.enter_context(mock.patch.object(
+                    py_maze.game, 'terminal_size', side_effect=measure))
             for target, name in ((py_maze.game, 'ansi_enabled'),
                                  (py_maze.rendering, 'ansi_enabled')):
                 stack.enter_context(mock.patch.object(target, name,
@@ -1410,10 +1707,12 @@ class PlaySession:
                if index + 1 < len(self.boundaries) else len(self.writes))
         return self.writes[start:end]
 
-    def screen(self, height=None, text=None):
+    def screen(self, height=None, width=None, text=None):
         # Args:
         #     height: Rows the screen holds, for the faults that only
         #         show on a screen the frame fills
+        #     width: Columns each row holds, for the faults that only
+        #         show once a line runs past the last of them
         #     text: What to replay, defaulting to everything written
         #
         # Returns:
@@ -1421,7 +1720,7 @@ class PlaySession:
 
         if text is None:
             text = self.output.getvalue()
-        return TerminalScreen(height).feed(text)
+        return TerminalScreen(height, width).feed(text)
 
     def played(self):
         # Returns:
@@ -1479,6 +1778,52 @@ class TestTerminalScreenBottom(unittest.TestCase):
         screen = TerminalScreen(height=4).feed('only')
 
         self.assertEqual(screen.lines(), ['only', '', '', ''])
+
+
+class TestTerminalScreenWidth(unittest.TestCase):
+    # the model is the instrument the redraw is measured with, and it
+    # modelled rows without modelling columns, so the one scroll a
+    # player reaches without resizing anything was invisible to it
+
+    def test_a_screen_with_no_width_never_wraps(self):
+        screen = TerminalScreen().feed('a' * 40)
+
+        self.assertEqual(screen.lines(), ['a' * 40])
+        self.assertEqual(screen.scrolls, 0)
+
+    def test_a_line_that_fills_the_row_exactly_stays_on_it(self):
+        screen = TerminalScreen(height=2, width=5).feed('abcde')
+
+        self.assertEqual(screen.lines(), ['abcde', ''])
+        self.assertEqual(screen.scrolls, 0)
+
+    def test_a_line_past_the_last_column_is_carried_onto_the_row_below(self):
+        screen = TerminalScreen(height=2, width=5).feed('abcdefg')
+
+        self.assertEqual(screen.lines(), ['abcde', 'fg'])
+        self.assertEqual(screen.scrolls, 0)
+
+    def test_a_wrap_on_the_bottom_row_takes_the_screen_up_with_it(self):
+        # the top row falls off exactly as it does for a newline there
+        screen = TerminalScreen(height=2, width=5).feed('first\nabcdefg')
+
+        self.assertEqual(screen.scrolls, 1)
+        self.assertEqual(screen.lines(), ['abcde', 'fg'])
+
+    def test_addressing_a_row_takes_the_cursor_off_a_filled_row(self):
+        # a terminal wraps on the character after the one that filled the
+        # row, and a redraw that addresses a row next never writes it
+        screen = TerminalScreen(height=2, width=5).feed(
+            'abcde' + py_maze.ANSI_ROW % 2 + 'x')
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines(), ['abcde', 'x'])
+
+    def test_a_carried_line_is_written_over_what_the_row_below_held(self):
+        screen = TerminalScreen(height=2, width=5).feed(
+            py_maze.ANSI_ROW % 2 + 'zzzzz' + py_maze.ANSI_ROW % 1 + 'abcdefg')
+
+        self.assertEqual(screen.lines(), ['abcde', 'fgzzz'])
 
 
 class TestPlayScreenOnAScreenItFills(unittest.TestCase):
@@ -1565,6 +1910,178 @@ class TestPlayScreenOnAScreenItFills(unittest.TestCase):
         self.assertEqual(screen.scrolls, 0)
         self.assertEqual(screen.lines()[:-1], frame[:len(frame) - 2])
         self.assertEqual(screen.lines()[-1], frame[-1])
+
+
+class TestPlayScreenOnANarrowTerminal(unittest.TestCase):
+    # CONTROLS_LINE is 66 characters and is the last line of the frame,
+    # and fit_to_terminal measures only the maze against the terminal's
+    # columns, so any terminal narrower than that wraps it. On a screen
+    # the frame fills, the wrap lands on the bottom row and takes the
+    # screen up before a key has been pressed. Nothing in the lines of
+    # the frame says so, and 2.2.6 drew only the lines that changed, so
+    # the picture drifted a row further from the truth at every step and
+    # never repaired
+
+    COLUMNS = 60
+
+    def walk(self, keys):
+        # play a route on a terminal too narrow for the controls line
+        #
+        # Args:
+        #     keys: The route walked before the game is quit
+        #
+        # Returns:
+        #     tuple: (the session, the screen it was played on)
+
+        session = PlaySession(list(keys) + ['q'])
+        rows = session.rows()
+        session.play(sizes=[terminal_size(self.COLUMNS, rows)])
+
+        return session, session.screen(height=rows, width=self.COLUMNS,
+                                       text=session.played())
+
+    def carried(self, session):
+        # what a frame whose last line wraps leaves on a screen it fills:
+        # the frame less its first line, which the wrap took off the
+        # top, the controls line cut at the last column it had room for,
+        # and its tail on the row the wrap carried it onto.
+        # It is the frame a row out of place rather than a frame with
+        # rows of older ones in it, which is all the room a screen too
+        # narrow for the frame leaves
+        #
+        # Returns:
+        #     list: The rows the screen should be holding
+
+        frame = session.game.frame()
+        return frame[1:-1] + [py_maze.CONTROLS_LINE[:self.COLUMNS],
+                              py_maze.CONTROLS_LINE[self.COLUMNS:]]
+
+    def test_the_controls_line_is_wider_than_the_terminal(self):
+        # the premise of every test below it, so a change to either
+        # number is caught here rather than read as a passing redraw
+        self.assertGreater(len(py_maze.CONTROLS_LINE), self.COLUMNS)
+
+    def test_the_first_frame_is_taken_up_a_row_by_its_own_last_line(self):
+        session, screen = self.walk([])
+
+        self.assertEqual(screen.scrolls, 1)
+        self.assertEqual(screen.lines(), self.carried(session))
+
+    def test_the_screen_still_holds_the_frame_after_a_route(self):
+        # every frame is drawn whole here, so each one puts the picture
+        # back before its own last line takes it up a row again
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1])
+
+        self.assertEqual(screen.lines(), self.carried(session))
+
+    def test_no_row_of_an_older_frame_is_left_on_the_maze(self):
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1])
+        game = session.game
+        drawn = py_maze.maze_lines(
+            game.maze, [(py_maze.PLAYER_MARKER,
+                         {(game.player_x, game.player_y)})])
+
+        self.assertEqual(screen.lines()[:len(drawn)], drawn)
+
+    def test_a_hint_leaves_no_marker_behind(self):
+        session, screen = self.walk(['h'])
+
+        self.assertNotIn(py_maze.HINT_MARKER,
+                         ''.join(screen.lines()[:len(session.game.maze)]))
+
+
+class TestRenderAcrossAResize(unittest.TestCase):
+    # nothing tells the game its window was resized, and a resize moves
+    # every line of the frame off the row it was written to. Measuring
+    # the terminal once a frame is what notices; drawing the frame whole
+    # is what puts it back
+
+    SIZE = terminal_size(80, 40)
+
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def render(self, size):
+        # draw one frame on a terminal of a given size
+        #
+        # Args:
+        #     size: What the game measures the terminal as, or None for
+        #         output with no terminal behind it at all
+        #
+        # Returns:
+        #     str: Everything drawing that frame cost
+
+        stream = io.StringIO()
+        with mock.patch.object(py_maze.game, 'terminal_size',
+                               return_value=size), \
+                mock.patch.object(py_maze.game, 'ansi_enabled',
+                                  return_value=True), \
+                mock.patch.object(self.game, 'clear_screen'):
+            self.game.render(stream)
+
+        return stream.getvalue()
+
+    def whole(self):
+        # Returns:
+        #     list: The rows a frame drawn whole addresses, the row it
+        #     parks the cursor on included
+
+        return list(range(1, len(self.game.frame()) + 2))
+
+    def test_a_still_screen_on_a_still_terminal_is_left_alone(self):
+        self.render(self.SIZE)
+
+        self.assertEqual(self.render(self.SIZE), '')
+
+    def test_a_resize_redraws_every_row_though_no_line_of_it_changed(self):
+        self.render(self.SIZE)
+        drawn = self.render(terminal_size(80, 30))
+
+        self.assertEqual(cursor_rows(drawn), self.whole())
+        self.assertIn(py_maze.CONTROLS_LINE, drawn)
+
+    def test_a_terminal_that_only_lost_columns_is_a_resize_too(self):
+        self.render(self.SIZE)
+        drawn = self.render(terminal_size(70, 40))
+
+        self.assertEqual(cursor_rows(drawn), self.whole())
+
+    def test_the_frame_after_a_resize_is_back_to_drawing_what_changed(self):
+        self.render(self.SIZE)
+        self.render(terminal_size(80, 30))
+        self.game.move_player(0, 1)
+        drawn = self.render(terminal_size(80, 30))
+
+        self.assertTrue(drawn)
+        self.assertNotIn(py_maze.CONTROLS_LINE, drawn)
+
+    def test_a_frame_wider_than_the_terminal_is_drawn_whole_every_time(self):
+        narrow = terminal_size(len(py_maze.CONTROLS_LINE) - 1, 40)
+        self.render(narrow)
+        self.game.move_player(0, 1)
+        drawn = self.render(narrow)
+
+        self.assertEqual(cursor_rows(drawn), self.whole())
+        self.assertIn(py_maze.CONTROLS_LINE, drawn)
+
+    def test_a_frame_that_wraps_and_changed_nothing_writes_nothing(self):
+        # the wrap does its damage as the frame is written, so a frame
+        # with nothing to say leaves the screen where it is rather than
+        # scrolling it to repair a scroll it has not caused yet
+        narrow = terminal_size(len(py_maze.CONTROLS_LINE) - 1, 40)
+        self.render(narrow)
+
+        self.assertEqual(self.render(narrow), '')
+
+    def test_output_with_no_terminal_behind_it_draws_what_changed(self):
+        # piped output has no size to compare against and no last column
+        # to run past, so the redraw is the one it always was
+        self.render(None)
+        self.game.move_player(0, 1)
+        drawn = self.render(None)
+
+        self.assertTrue(drawn)
+        self.assertNotIn(py_maze.CONTROLS_LINE, drawn)
 
 
 class TestPlayScreenReplay(unittest.TestCase):
@@ -1680,6 +2197,78 @@ class TestPlayScreenReplay(unittest.TestCase):
         self.assertEqual(written.count(py_maze.CONTROLS_LINE), 4)
         self.assertEqual(session.game.moves, 3)
         self.assertIn('Thanks for playing!', written)
+
+
+class TestTheClockKeepsItsOwnTime(unittest.TestCase):
+    # the time and the moves are two tallies on one line, and the time
+    # only ever moved when the moves were asked to: the loop waited for
+    # a keypress however long it took, so a player standing still
+    # watched a clock that had stopped. The loop waits a moment instead,
+    # and draws again when the moment passes with nothing pressed
+
+    def test_the_loop_waits_only_a_moment_for_a_key(self):
+        session = PlaySession(['q']).play()
+
+        self.assertEqual(session.timeouts, [py_maze.TICK_SECONDS])
+
+    def test_the_win_screen_waits_for_a_key_however_long_it_takes(self):
+        # there is nothing left to draw while it waits, so a deadline
+        # there would be a loop spinning over a game that has finished
+        session = PlaySession(TestMazeGame.ROUTE + ['x']).play()
+
+        self.assertIsNone(session.timeouts[-1])
+        self.assertEqual(session.timeouts[:-1],
+                         [py_maze.TICK_SECONDS] * len(TestMazeGame.ROUTE))
+
+    def test_a_wait_that_ran_out_moves_the_clock_and_nothing_else(self):
+        # None is the reader saying nobody pressed anything, and only
+        # the status line has anything new on it
+        session = PlaySession([None, None, 'q'], ticking=True).play()
+        ticked = ''.join(session.after(0) + session.after(1))
+
+        self.assertEqual(cursor_rows(ticked),
+                         [8, session.park(), 8, session.park()])
+        self.assertNotIn(py_maze.CONTROLS_LINE, ticked)
+        self.assertEqual(session.game.moves, 0)
+
+    def test_the_tally_a_tick_redraws_is_the_time_it_reached(self):
+        session = PlaySession([None, 'q'], ticking=True).play()
+
+        self.assertIn(py_maze.status_line(1, 0), ''.join(session.after(0)))
+
+    def test_a_tick_the_clock_did_not_turn_over_on_draws_nothing(self):
+        # the status line counts whole seconds and the loop comes back
+        # four times a second, so three ticks in four have nothing to say
+        session = PlaySession([None, 'q']).play()
+
+        self.assertEqual(session.after(0), [])
+
+    def test_neither_tally_moves_the_other(self):
+        # a step into a wall counts no move and a second with nothing
+        # pressed counts no move either, and both are still seconds
+        session = PlaySession([None, 'a', None, 'q'], ticking=True).play()
+
+        self.assertEqual(session.game.moves, 0)
+        self.assertEqual(session.game.elapsed(), 4)
+
+
+class TestGameKeyReading(unittest.TestCase):
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def test_no_deadline_waits_for_a_key_however_long_it_takes(self):
+        with mock.patch.object(py_maze.game, 'read_key',
+                               return_value='w') as reader:
+            self.assertEqual(self.game.get_key(), 'w')
+
+        reader.assert_called_once_with()
+
+    def test_a_deadline_goes_to_the_reader_that_takes_one(self):
+        with mock.patch.object(py_maze.game, 'read_key_timed',
+                               return_value=None) as reader:
+            self.assertIsNone(self.game.get_key(py_maze.TICK_SECONDS))
+
+        reader.assert_called_once_with(py_maze.TICK_SECONDS)
 
 
 class TestPlayScreenReplayOnAGeneratedMaze(unittest.TestCase):
@@ -3217,7 +3806,7 @@ class TestEndOfGameSummary(unittest.TestCase):
         game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
                                 collectibles, clock=self.clock)
 
-        def key():
+        def key(timeout=None):
             self.clock.advance(1)
             return keys.pop(0)
 

@@ -234,7 +234,8 @@ carved grid with its entrance and exit already opened:
 | `terminal_size()` | The screen the maze will be drawn in |
 | `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |
 | `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
-| `frame_diff(previous, current)` | The same for the lines that changed, and nothing else |
+| `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
+| `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
 | `clear_screen`, `ansi_enabled`, `can_encode` | The rest of the escape sequence machinery behind a redraw |
 
 An overlay is a `(marker, cells)` pair, and `maze_lines` takes a sequence of
@@ -284,7 +285,9 @@ grid, _, _ = py_maze.parse_save("#.#\n#.#\n",
 ```
 
 The terminal half is public too: `MazeGame` plays a maze at the console,
-`read_key` and `read_response` take single keypresses, and `build_parser`,
+`read_key` and `read_response` take single keypresses, `read_key_timed` waits
+a given moment for one and answers `None` when the moment passes empty, and
+`build_parser`,
 `build_maze` and `main` are the command line itself, along with the
 `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `EXIT_NO_WAY_THROUGH` codes it exits with. Those are the names that want a
