@@ -1095,7 +1095,7 @@ No items are currently queued in this section.
     the next press plays the stranded key rather than itself for the rest of
     the run. Windows is unaffected, and the suite cannot see it:
     `TestPosixTimedInput` mocks both `select` and `sys.stdin`. Measured in
-    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-08-the-timed-key-reader-strands-keys-typed-inside-one-tick)
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#resolved-in-240-the-timed-key-reader-stranding-keys-typed-inside-one-tick)
   - **Goal**: make the thing waited on and the thing read from the same
     thing. Two candidates and what each costs are in that section; both
     reach out of `read_key_timed_posix` into readers the untimed path shares,
