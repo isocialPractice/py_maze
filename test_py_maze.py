@@ -268,22 +268,90 @@ def find_open_cells(grid, x, y):
     return seen
 
 
-# Fake stdin used to drive the POSIX keyboard branch on any platform.
-class FakeStdin:
-    def __init__(self, keys):
-        # Args:
-        #     keys: The characters read() hands back, in order
+# the escape sequence a terminal sends for the up arrow, and the byte a
+# Windows console sends ahead of an extended key, written once here
+# rather than as an escape in every test that needs one
+UP_ARROW = '\x1b[A'
+ARROW_PREFIX = b'\xe0'
 
-        self.keys = keys
+
+# Fake stdin used to drive the POSIX keyboard branch on any platform,
+# modelling the whole stack a read goes through rather than the top of
+# it. The real sys.stdin is a text wrapper over a buffered reader over a
+# file descriptor, and asked for one character it does not read one: it
+# reads a chunk, decodes the whole of it and keeps everything it was not
+# asked for in userspace, where select() - which polls the descriptor -
+# cannot see it. read() does that here and read_descriptor() is what
+# os.read makes of the same input, so a reader that goes through the
+# wrapper can be told from one that goes to the descriptor.
+class FakeStdin:
+    def __init__(self, keys, delivered=None):
+        # Args:
+        #     keys: The characters the terminal delivers, in order
+        #     delivered: Characters one read of the descriptor answers
+        #         with, defaulting to as many as were asked for. A
+        #         terminal in raw mode hands over everything queued
+
+        self.queued = keys
+        self.buffered = ''
+        self.delivered = delivered
         self.position = 0
 
     def fileno(self):
         return 0
 
-    def read(self, count):
-        chunk = self.keys[self.position:self.position + count]
-        self.position += count
+    def waiting(self):
+        # what select() is able to answer: the descriptor still holds
+        # something. Whatever the wrapper read ahead is invisible to it
+        return bool(self.queued)
+
+    def take(self, count):
+        chunk = self.queued[:count]
+        self.queued = self.queued[count:]
         return chunk
+
+    def read(self, count):
+        # the text wrapper: a read the buffer cannot answer takes a
+        # whole chunk off the descriptor and keeps the rest of it
+        if not self.buffered:
+            self.buffered = self.take(len(self.queued))
+
+        chunk, self.buffered = self.buffered[:count], self.buffered[count:]
+        self.position += len(chunk)
+        return chunk
+
+    def read_descriptor(self, count):
+        # one os.read of the descriptor behind it, which answers with
+        # what is there rather than with everything that was asked for
+        if self.delivered is not None:
+            count = min(count, self.delivered)
+
+        chunk = self.take(count)
+        self.position += len(chunk)
+        return chunk.encode('utf-8')
+
+
+# The os module py_maze.keys reads a descriptor through, answering out
+# of a fake standard input rather than out of the process's own. Only
+# the one call the key readers make is stood in for.
+class FakeOs:
+    def __init__(self, stdin):
+        self.stdin = stdin
+
+    def read(self, fd, count):
+        return self.stdin.read_descriptor(count)
+
+
+@contextlib.contextmanager
+def standard_input(stdin):
+    # put a fake standard input in place, descriptor and all
+    #
+    # Args:
+    #     stdin: The FakeStdin the readers should see
+
+    with mock.patch.object(sys, 'stdin', stdin), \
+            mock.patch.object(py_maze.keys, 'os', FakeOs(stdin)):
+        yield
 
 
 # Fake termios module recording every terminal setting written back.
@@ -592,7 +660,7 @@ class TestPosixInput(unittest.TestCase):
         tty = mock.Mock()
         with mock.patch.object(py_maze.keys, 'termios', self.termios, create=True), \
                 mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
-                mock.patch.object(sys, 'stdin', FakeStdin(keys)):
+                standard_input(FakeStdin(keys)):
             return self.game.get_key_posix(), tty
 
     def test_plain_key_is_lowercased(self):
@@ -642,6 +710,19 @@ class TestTimedKeyReader(unittest.TestCase):
                 self.assertEqual(py_maze.read_key_timed(0.25), 'w')
 
             reader.assert_called_once_with(0.25)
+
+    def test_no_deadline_reaches_the_same_two_readers(self):
+        # None is public: read_key_timed is exported and named on the
+        # library page, and the game passes None to mean "however long
+        # it takes" everywhere else
+        for platform, name in (('win32', 'read_key_timed_windows'),
+                               ('linux', 'read_key_timed_posix')):
+            with mock.patch.object(sys, 'platform', platform), \
+                    mock.patch.object(py_maze.keys, name,
+                                      return_value='w') as reader:
+                self.assertEqual(py_maze.read_key_timed(None), 'w')
+
+            reader.assert_called_once_with(None)
 
 
 class TestWindowsTimedInput(unittest.TestCase):
@@ -701,6 +782,21 @@ class TestWindowsTimedInput(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             self.read_key([py_maze.WINDOWS_INTERRUPT_KEY], idle_polls=1)
 
+    def test_no_deadline_waits_however_long_it_takes(self):
+        # counting down from None raised a TypeError comparing it
+        # against 0, so the one call the POSIX branch answered was the
+        # one this branch could not be given at all
+        key, clock = self.read_key([b'q'], idle_polls=3, timeout=None)
+
+        self.assertEqual(key, 'q')
+        self.assertEqual(clock.slept, [py_maze.KEY_POLL_INTERVAL] * 3)
+
+    def test_no_deadline_still_reads_an_arrow_key_whole(self):
+        key, _ = self.read_key([ARROW_PREFIX, b'H'], idle_polls=1,
+                               timeout=None)
+
+        self.assertEqual(key, 'up')
+
 
 class TestPosixTimedInput(unittest.TestCase):
     # the POSIX branch is exercised directly so these tests run anywhere
@@ -737,7 +833,7 @@ class TestPosixTimedInput(unittest.TestCase):
                 mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
                 mock.patch.object(py_maze.keys, 'select', select,
                                   create=True), \
-                mock.patch.object(sys, 'stdin', FakeStdin(keys)):
+                standard_input(FakeStdin(keys)):
             return py_maze.read_key_timed_posix(timeout), waits, tty, raw
 
     def test_a_key_waiting_is_read_and_lowercased(self):
@@ -785,6 +881,102 @@ class TestPosixTimedInput(unittest.TestCase):
 
         self.assertEqual(key, 'w')
 
+    def test_no_deadline_is_handed_on_as_no_deadline(self):
+        # select() given None waits however long it takes, which is what
+        # the Windows branch was taught to mean by it as well
+        key, waits, _, _ = self.read_key('W', timeout=None)
+
+        self.assertEqual(key, 'w')
+        self.assertEqual(waits, [None])
+
+
+class TestStdinReader(unittest.TestCase):
+    # what the POSIX readers take their characters off, which decides
+    # whether anything can be left where a wait would never find it
+
+    def test_standard_input_with_a_descriptor_is_read_through_it(self):
+        stdin = FakeStdin('ab')
+        with standard_input(stdin):
+            read = py_maze.keys.stdin_reader()
+
+            self.assertEqual(read(1), 'a')
+
+        # nothing was buffered anywhere, so the rest is still on the
+        # descriptor, which is the thing a timed read waits on
+        self.assertEqual(stdin.queued, 'b')
+
+    def test_standard_input_with_no_descriptor_is_read_as_it_was(self):
+        # a StringIO standing in for standard input buffers nothing of
+        # its own and has no descriptor to go to instead
+        with mock.patch.object(sys, 'stdin', io.StringIO('ab')):
+            read = py_maze.keys.stdin_reader()
+
+            self.assertEqual(read(1), 'a')
+
+    def test_a_read_is_filled_from_more_than_one_go_at_the_descriptor(self):
+        # os.read answers with what is there rather than with what was
+        # asked for, and an arrow key is three characters
+        stdin = FakeStdin(UP_ARROW[1:], delivered=1)
+        with standard_input(stdin):
+            self.assertEqual(py_maze.keys.stdin_reader()(2), UP_ARROW[1:])
+
+    def test_a_read_that_runs_out_of_input_answers_short(self):
+        # end of input rather than a read that never returns
+        stdin = FakeStdin('a')
+        with standard_input(stdin):
+            self.assertEqual(py_maze.keys.stdin_reader()(2), 'a')
+
+
+class TestPosixKeysTypedInsideOneTick(unittest.TestCase):
+    # a terminal in raw mode hands over every byte queued in a single
+    # read, so two keys typed inside a quarter of a second arrive
+    # together. The wait is select() on the descriptor and the read used
+    # to go through the text wrapper over it, which keeps what it was
+    # not asked for where select() cannot see it: the second key was
+    # held, the loop ticked on drawing a clock over it, and every press
+    # after it played the key before it for the rest of the run
+
+    def read_keys(self, typed, reads):
+        # Args:
+        #     typed: The characters the terminal delivers at once
+        #     reads: How many timed reads the loop makes
+        #
+        # Returns:
+        #     list: What each of those reads answered, in order
+
+        stdin = FakeStdin(typed)
+
+        def wait(readers, writers, errors, seconds):
+            # select() polls the descriptor, and knows nothing about
+            # anything a wrapper above it has already taken off
+            return ([readers[0]] if stdin.waiting() else [], [], [])
+
+        select = mock.Mock()
+        select.select = wait
+        with mock.patch.object(py_maze.keys, 'termios', FakeTermios(),
+                               create=True), \
+                mock.patch.object(py_maze.keys, 'tty', mock.Mock(),
+                                  create=True), \
+                mock.patch.object(py_maze.keys, 'select', select,
+                                  create=True), \
+                standard_input(stdin):
+            return [py_maze.read_key_timed_posix(0.25) for _ in range(reads)]
+
+    def test_two_keys_typed_inside_one_tick_are_both_read(self):
+        self.assertEqual(self.read_keys('ds', 2), ['d', 's'])
+
+    def test_a_held_key_repeating_is_read_press_by_press(self):
+        self.assertEqual(self.read_keys('ssss', 4), ['s', 's', 's', 's'])
+
+    def test_the_tick_after_the_last_key_reads_nothing_at_all(self):
+        self.assertEqual(self.read_keys('d', 2), ['d', None])
+
+    def test_an_arrow_key_arriving_beside_another_is_still_an_arrow(self):
+        self.assertEqual(self.read_keys(UP_ARROW + 'w', 2), ['up', 'w'])
+
+    def test_a_whole_route_typed_at_once_is_read_in_order(self):
+        self.assertEqual(self.read_keys('dsad', 4), ['d', 's', 'a', 'd'])
+
 
 class TestPromptResponse(unittest.TestCase):
     # the "would you like to play" prompt takes one keypress, and the
@@ -805,7 +997,7 @@ class TestPromptResponse(unittest.TestCase):
                 mock.patch.object(py_maze.keys, 'termios', termios,
                                   create=True), \
                 mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
-                mock.patch.object(sys, 'stdin', stdin):
+                standard_input(stdin):
             return py_maze.read_response(), tty, termios, stdin
 
     def respond_on_windows(self, keys):
@@ -851,8 +1043,7 @@ class TestPromptResponse(unittest.TestCase):
                 mock.patch.object(py_maze.keys, 'termios', termios,
                                   create=True), \
                 mock.patch.object(py_maze.keys, 'tty', tty, create=True), \
-                mock.patch.object(sys, 'stdin',
-                                  FakeStdin(py_maze.INTERRUPT_KEY)):
+                standard_input(FakeStdin(py_maze.INTERRUPT_KEY)):
             with self.assertRaises(KeyboardInterrupt):
                 py_maze.read_response()
 
@@ -1346,6 +1537,91 @@ class TestFrameWraps(unittest.TestCase):
         self.assertFalse(py_maze.frame_wraps(
             [py_maze.CONTROLS_LINE],
             terminal_size(len(py_maze.CONTROLS_LINE), 24)))
+
+
+class TestFitFrame(unittest.TestCase):
+    # a console shrunk under a running game is shorter than the frame
+    # the maze was generated for, and a terminal has no row below its
+    # last to carry the overflow onto: every address past the bottom of
+    # the screen lands on the bottom of the screen
+
+    FRAME = (['start'] + ['maze %d' % row for row in range(10)] +
+             ['end', 'time 0:03   moves 4', '', 'controls'])
+    FOOT = FRAME[-4:]
+
+    def fit(self, rows, focus=None):
+        # Returns:
+        #     list: The frame cut to a console that many rows deep
+
+        return py_maze.fit_frame(self.FRAME, terminal_size(80, rows),
+                                 focus=focus)
+
+    def test_a_frame_that_fits_is_left_alone(self):
+        self.assertEqual(self.fit(40), self.FRAME)
+
+    def test_a_frame_exactly_as_tall_as_the_console_is_left_alone(self):
+        self.assertEqual(self.fit(len(self.FRAME)), self.FRAME)
+
+    def test_output_with_no_terminal_behind_it_is_left_alone(self):
+        self.assertEqual(py_maze.fit_frame(self.FRAME, None), self.FRAME)
+
+    def test_no_console_is_ever_sent_more_lines_than_it_has_rows(self):
+        for rows in range(1, len(self.FRAME) + 1):
+            self.assertLessEqual(len(self.fit(rows)), rows,
+                                 'a console of %d rows' % rows)
+
+    def test_a_console_with_room_for_the_maze_is_filled_to_its_last_row(self):
+        # every row the console has is a row of the picture, since the
+        # maze is what gives way rather than the screen being left short
+        for rows in range(py_maze.RENDER_ROW_OVERHEAD + 1, len(self.FRAME)):
+            self.assertEqual(len(self.fit(rows)), rows,
+                             'a console of %d rows' % rows)
+
+    def test_the_foot_of_the_screen_is_what_is_kept(self):
+        fitted = self.fit(9)
+
+        self.assertEqual(fitted[0], 'start')
+        self.assertEqual(fitted[-4:], self.FOOT)
+
+    def test_the_maze_is_what_a_shrunken_console_costs(self):
+        shown = self.fit(9)[1:-4]
+
+        self.assertEqual(len(shown), 4)
+        for line in shown:
+            self.assertIn(line, self.FRAME)
+
+    def test_the_window_onto_the_maze_follows_the_row_it_is_given(self):
+        for focus in range(10):
+            self.assertIn('maze %d' % focus, self.fit(9, focus=focus),
+                          'the row being played on has to be drawn')
+
+    def test_the_window_never_hangs_off_either_end_of_the_maze(self):
+        for focus in range(10):
+            fitted = self.fit(9, focus=focus)
+
+            self.assertEqual(len(fitted), 9)
+            self.assertEqual(len(set(fitted[1:-4])), 4)
+
+    def test_a_console_with_no_room_for_the_maze_keeps_the_foot(self):
+        # the start marker names the top of a maze that is not there
+        self.assertEqual(self.fit(py_maze.RENDER_ROW_OVERHEAD), self.FOOT)
+
+    def test_a_console_too_short_for_the_foot_keeps_the_tally(self):
+        self.assertEqual(self.fit(3),
+                         ['end', 'time 0:03   moves 4', 'controls'])
+
+    def test_the_blank_spacer_goes_before_anything_worth_reading(self):
+        self.assertEqual(self.fit(2), ['time 0:03   moves 4', 'controls'])
+
+    def test_a_console_of_one_row_keeps_the_controls_line(self):
+        self.assertEqual(self.fit(1), ['controls'])
+
+    def test_the_overhead_is_the_head_and_the_foot_counted_together(self):
+        # fit_to_terminal reserves these rows when the maze is carved
+        # and fit_frame gives them up last when the console shrinks, so
+        # the two have to be counting the same lines
+        self.assertEqual(py_maze.FRAME_HEAD_ROWS + py_maze.FRAME_FOOT_ROWS,
+                         py_maze.RENDER_ROW_OVERHEAD)
 
 
 class TestRenderFrame(unittest.TestCase):
@@ -2082,6 +2358,97 @@ class TestRenderAcrossAResize(unittest.TestCase):
 
         self.assertTrue(drawn)
         self.assertNotIn(py_maze.CONTROLS_LINE, drawn)
+
+
+class TestRenderOnAShortenedConsole(unittest.TestCase):
+    # a console shortened below the height of the play screen clamps
+    # every row address past its last onto its last, so the foot of the
+    # frame - the end marker, the tally, the spacer and the controls
+    # line - was written over itself on the bottom row and the player
+    # read whichever of them went out last. The maze rows below the fold
+    # were not drawn at all, the player standing on one of them included
+
+    SIZE = terminal_size(80, 10)
+    SHORT = terminal_size(80, 7)
+    ROUTE = [(0, 1), (1, 0), (1, 0), (0, 1), (0, 1), (0, 1)]
+
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def render(self, size):
+        # draw one frame on a console of a given size
+        #
+        # Returns:
+        #     str: Everything drawing that frame cost
+
+        stream = io.StringIO()
+        with mock.patch.object(py_maze.game, 'terminal_size',
+                               return_value=size), \
+                mock.patch.object(py_maze.game, 'ansi_enabled',
+                                  return_value=True), \
+                mock.patch.object(self.game, 'clear_screen'):
+            self.game.render(stream)
+
+        return stream.getvalue()
+
+    def screen(self, size):
+        # Returns:
+        #     TerminalScreen: What one frame drawn on that console left
+
+        return TerminalScreen(size.lines, size.columns).feed(self.render(size))
+
+    def test_the_frame_the_console_holds_is_the_frame_it_is_sent(self):
+        # the premise: the play screen is taller than this console
+        self.assertGreater(len(self.game.frame()), self.SHORT.lines)
+
+    def test_no_row_past_the_last_one_is_ever_addressed(self):
+        drawn = cursor_rows(self.render(self.SHORT))[:-1]
+
+        self.assertEqual(drawn, list(range(1, self.SHORT.lines + 1)))
+
+    def test_the_foot_of_the_screen_is_still_on_the_screen(self):
+        lines = self.screen(self.SHORT).lines()
+
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(lines[-4], 'end')
+        self.assertIn('moves', lines[-3])
+        self.assertEqual(lines[-2], '')
+        self.assertEqual(lines[-1], py_maze.CONTROLS_LINE)
+
+    def test_the_screen_is_not_scrolled_by_the_frame_that_fills_it(self):
+        self.assertEqual(self.screen(self.SHORT).scrolls, 0)
+
+    def test_the_player_is_drawn_however_little_of_the_maze_is(self):
+        # the window follows the row being played on, so a player near
+        # the bottom of the maze is on screen rather than below the fold
+        for dx, dy in self.ROUTE:
+            self.game.move_player(dx, dy)
+        shown = self.screen(self.SHORT).lines()[1:self.SHORT.lines - 4]
+
+        self.assertEqual(len(shown), 2)
+        self.assertEqual(''.join(shown).count(py_maze.PLAYER_MARKER), 1)
+
+    def test_a_console_that_shrank_wipes_no_row_it_no_longer_has(self):
+        # the rows the shorter frame gives up went with the console, so
+        # wiping them would land on the bottom row and take the controls
+        # line off it
+        self.render(self.SIZE)
+        drawn = self.render(self.SHORT)
+
+        self.assertEqual(cursor_rows(drawn)[:-1],
+                         list(range(1, self.SHORT.lines + 1)))
+        self.assertIn(py_maze.CONTROLS_LINE, drawn)
+
+    def test_a_console_given_its_rows_back_draws_the_whole_frame(self):
+        self.render(self.SHORT)
+        drawn = self.render(self.SIZE)
+
+        self.assertEqual(cursor_rows(drawn)[:-1],
+                         list(range(1, len(self.game.frame()) + 1)))
+        self.assertIn(py_maze.CONTROLS_LINE, drawn)
+
+    def test_a_console_tall_enough_is_drawn_exactly_as_before(self):
+        self.assertEqual(self.screen(self.SIZE).lines(), self.game.frame())
 
 
 class TestPlayScreenReplay(unittest.TestCase):

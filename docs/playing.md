@@ -135,9 +135,29 @@ screen scrolls everything up one, and a frame as tall as the terminal ends on
 that row - which is what a maze capped to fit any terminal with an even
 number of rows draws, the lines the frame adds around the maze leaving no row
 for the cursor below it. Addressing the rows rather than ending the lines is
-what keeps the row a line was drawn on true for the rest of the game. A maze
-too big for the terminal to hold is drawn as far down the screen as there is
-room for, a row addressed below the last one landing on the last one.
+what keeps the row a line was drawn on true for the rest of the game.
+
+### When the Screen Is Shorter Than the Frame
+
+A terminal has no row below its last one to carry anything onto: an address
+past the bottom of the screen lands on the bottom of the screen. So a frame
+taller than the console is not simply cut off at the fold - its exit marker,
+its tally, its blank spacer and its controls line are each written onto the
+last row in turn, and the one that reads is whichever went out last.
+
+The maze is capped to the terminal when it is generated, so this is a
+console shortened afterwards: a window dragged smaller under a running game,
+or a maze read out of a save file that was drawn on a bigger screen than the
+one playing it now. The frame is therefore cut to the console it is being
+drawn on rather than to the one the maze was carved for, and what a short
+console costs is maze rather than the foot of the screen. The maze rows
+drawn are a window onto the maze, and the window follows the player, so the
+row being played on is on screen however little of the maze is. The `end`
+marker, the tally, the spacer and the controls line stay on the bottom four
+rows, where a player reads them.
+
+Give the console its rows back and the frame grows into them again, since
+the terminal is measured every frame rather than once at the start.
 
 ### When the Row a Line Sits on Cannot Be Trusted
 

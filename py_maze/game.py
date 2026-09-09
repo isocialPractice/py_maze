@@ -15,9 +15,9 @@ from .grid import find_entrance, find_exit
 from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
 from .rendering import (COLLECTIBLE_MARKER, HINT_MARKER, PLAYER_MARKER,
-                        ansi_enabled, can_encode, clear_screen, frame_diff,
-                        frame_text, frame_wraps, maze_lines, status_line,
-                        summary_lines, terminal_size)
+                        ansi_enabled, can_encode, clear_screen, fit_frame,
+                        frame_diff, frame_text, frame_wraps, maze_lines,
+                        status_line, summary_lines, terminal_size)
 from .solving import solve_maze
 
 __all__ = [
@@ -240,6 +240,14 @@ class MazeGame:
         to find, and a frame drawn whole puts the picture back wherever
         it drifted to.
 
+        The same measurement cuts the frame to the console it is being
+        drawn on, since a console shrunk under a running game is shorter
+        than the frame the maze was generated for and has no row below
+        its last to carry the overflow onto. What a shrunken console
+        costs is maze rather than the foot of the screen: the maze is
+        drawn as a window that follows the player, and the tally and the
+        controls line stay on the bottom of the rows there are.
+
         Args:
             stream: Where the frame is written, defaulting to standard
                 output
@@ -273,14 +281,26 @@ class MazeGame:
         resized = size != self.drawn_size
         self.drawn_size = size
 
-        text = frame_diff(self.drawn_lines, lines)
+        # the frame is cut to the console it is being drawn on rather
+        # than to the one the maze was generated for. A console shrunk
+        # under a running game has no row to carry the overflow onto,
+        # and what it costs is maze rather than the foot of the screen
+        lines = fit_frame(lines, size, focus=self.player_y)
+
+        # a frame is only ever shorter than the last one because the
+        # console lost the rows it gave up, and whatever was on them
+        # went with them: there is nothing left there to wipe, and a
+        # wipe addressed past the last row would land on the last row
+        # and take the controls line off it
+        text = frame_diff(self.drawn_lines[:len(lines)], lines)
 
         # a frame that wraps takes the screen up a row every time it is
         # written, so it is the writing rather than the wrapping that
         # does the damage: a frame with nothing to say still says
         # nothing, and a still screen on a narrow terminal stays still
         if resized or (text and frame_wraps(lines, size)):
-            text = frame_diff(self.drawn_lines, lines, whole=True)
+            text = frame_diff(self.drawn_lines[:len(lines)], lines,
+                              whole=True)
 
         self.drawn_lines = lines
 

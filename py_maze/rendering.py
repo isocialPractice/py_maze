@@ -26,6 +26,8 @@ __all__ = [
     'ANSI_ROW',
     'COLLECTIBLE_MARKER',
     'FRAME_DELAY',
+    'FRAME_FOOT_ROWS',
+    'FRAME_HEAD_ROWS',
     'FRONTIER_MARKER',
     'HINT_MARKER',
     'OPEN_MARKER',
@@ -40,6 +42,7 @@ __all__ = [
     'clear_screen',
     'collectible_overlay',
     'fit_dimension',
+    'fit_frame',
     'fit_to_terminal',
     'format_duration',
     'frame_diff',
@@ -68,10 +71,16 @@ COLLECTIBLE_MARKER = '$'
 # seconds each frame of the animated solver stays on screen
 FRAME_DELAY = 0.05
 
-# lines a play screen carries around the maze itself: the "start"
-# marker, the "end" marker, the status line, the blank spacer and the
-# controls line
-RENDER_ROW_OVERHEAD = 5
+# lines a play screen carries above the maze itself: the "start" marker
+FRAME_HEAD_ROWS = 1
+
+# lines it carries below the maze: the "end" marker, the status line,
+# the blank spacer and the controls line
+FRAME_FOOT_ROWS = 4
+
+# lines a play screen carries around the maze itself, which is what the
+# rows left for the maze are counted from
+RENDER_ROW_OVERHEAD = FRAME_HEAD_ROWS + FRAME_FOOT_ROWS
 
 # ANSI escape sequences: wipe the screen and put the cursor back at the
 # top left, put the cursor there without wiping anything, and wipe the
@@ -617,3 +626,66 @@ def fit_to_terminal(width, height, size=None, stream=None):
             print(warning, file=stream)
 
     return width, height
+
+
+def fit_frame(lines, size, focus=None):
+    """Cut a play screen down to the rows the terminal actually has.
+
+    :func:`fit_to_terminal` asks this question of the maze before it is
+    carved, and a console the player shrinks afterwards is a terminal
+    that never gets asked again. There is no row below the last one to
+    carry the overflow onto: every address past the bottom of the screen
+    lands on the bottom of the screen, so a frame taller than the
+    console writes its exit marker, its tally, its spacer and its
+    controls line over one another on the last row and the player reads
+    whichever of them went out last. The foot of the screen is gone, and
+    a player standing on one of the maze rows that went with it is not
+    drawn at all.
+
+    Cutting the maze is what a console can afford to lose. The maze rows
+    drawn are a window onto the maze rather than the whole of it, and
+    the window follows the row given as the focus, so the row being
+    played on is on screen however little of the maze is.
+
+    Args:
+        lines: The lines of the frame, as :meth:`MazeGame.frame` builds
+            them: the start marker, then the maze, then the foot
+        size: The terminal the frame is drawn on, or None when output is
+            piped or redirected and there is no terminal to fit it to
+        focus: Row of the maze the window is centred on, counted from
+            the first row of the maze itself. None to show the top of it
+
+    Returns:
+        list: The lines that fit, never more than the screen has rows.
+        The frame itself whenever it already fits; the foot alone on a
+        terminal with no room for even one row of maze, the tally and
+        the controls line being what is left worth reading there, and
+        the blank spacer between them the first thing given up when even
+        the foot does not fit
+    """
+
+    if size is None or len(lines) <= size.lines:
+        return lines
+
+    rows = max(size.lines, 0)
+    foot = lines[len(lines) - FRAME_FOOT_ROWS:]
+    room = rows - FRAME_HEAD_ROWS - FRAME_FOOT_ROWS
+
+    if room < 1:
+        # nothing of the maze can be drawn, and the start marker names
+        # the top of a maze that is not there, so the foot is the whole
+        # of it. The blank spacer is the first thing given up once even
+        # that does not fit, and what is left is taken from the bottom up
+        kept = foot if rows >= len(foot) else [line for line in foot if line]
+        return kept[max(len(kept) - rows, 0):]
+
+    head = lines[:FRAME_HEAD_ROWS]
+    maze = lines[FRAME_HEAD_ROWS:len(lines) - FRAME_FOOT_ROWS]
+
+    # the window is centred on the focus and then pushed back inside the
+    # maze, so a player near either end of it reads a full window rather
+    # than one hanging half off the maze
+    top = 0 if focus is None else focus - room // 2
+    top = max(0, min(top, len(maze) - room))
+
+    return head + maze[top:top + room] + foot

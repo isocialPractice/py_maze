@@ -11,6 +11,7 @@ arrow key and the lowercased character for anything else, so the game loop
 does not have to know which platform delivered it.
 """
 
+import os
 import sys
 import time
 
@@ -136,8 +137,69 @@ def in_raw_mode(read):
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def read_key_sequence():
+def descriptor_reader(fd):
+    # Build a reader taking characters straight off a file descriptor.
+    #
+    # sys.stdin is a text wrapper over a buffered reader: asked for one
+    # character it reads a chunk, decodes the whole of it and keeps
+    # everything it was not asked for. What it keeps is in userspace,
+    # where select() - which polls the descriptor - cannot see it, so a
+    # timed read that waits with select() and reads through the wrapper
+    # waits on one thing and reads from another. A terminal in raw mode
+    # hands over every byte queued in a single read, so two keys typed
+    # inside one tick arrive as one chunk and the second is stranded.
+    #
+    # Reading the descriptor leaves everything that was not asked for
+    # in the kernel queue, which is the queue select() polls.
+    #
+    # Args:
+    #     fd: The file descriptor to read from
+    #
+    # Returns:
+    #     Callable taking a count of characters and returning that many,
+    #     or fewer once there is no more input to be had
+
+    def read(count):
+        chunk = b''
+        while len(chunk) < count:
+            piece = os.read(fd, count - len(chunk))
+            if not piece:
+                # end of input: nothing more is coming, so hand back
+                # what there is rather than waiting for the rest
+                break
+            chunk += piece
+
+        return chunk.decode('utf-8', errors='ignore')
+
+    return read
+
+
+def stdin_reader():
+    # Build the reader that takes characters off standard input.
+    #
+    # Returns:
+    #     Callable taking a count of characters and returning that many.
+    #     Standard input backed by a descriptor is read through that
+    #     descriptor, so nothing a wait cannot see is held anywhere
+    #     between the two. Standard input with no descriptor at all - a
+    #     StringIO, an object standing in for one - buffers nothing of
+    #     its own and is read the way it always was
+
+    try:
+        fd = sys.stdin.fileno()
+    except (AttributeError, ValueError, OSError):
+        return sys.stdin.read
+
+    return descriptor_reader(fd)
+
+
+def read_key_sequence(read=None):
     # Read one keypress from a terminal that is already in raw mode.
+    #
+    # Args:
+    #     read: Callable taking a count of characters and returning that
+    #         many, defaulting to reading standard input through the
+    #         descriptor behind it
     #
     # Returns:
     #     str: 'up', 'down', 'left' or 'right' for an arrow key,
@@ -146,14 +208,17 @@ def read_key_sequence():
     # Raises:
     #     KeyboardInterrupt: If Ctrl+C was pressed
 
-    key = sys.stdin.read(1)
+    if read is None:
+        read = stdin_reader()
+
+    key = read(1)
     # raw mode disables the interrupt signal, so Ctrl+C shows up
     # here as a byte and has to be raised by hand
     if key == INTERRUPT_KEY:
         raise KeyboardInterrupt
     # handle arrow keys (they come as escape sequences)
     if key == '\x1b':
-        key += sys.stdin.read(2)
+        key += read(2)
         if key == '\x1b[A':
             return 'up'
         elif key == '\x1b[B':
@@ -189,12 +254,17 @@ def read_key_timed(timeout):
     has touched.
 
     Args:
-        timeout: Seconds to wait before giving up on a keypress
+        timeout: Seconds to wait before giving up on a keypress, or
+            None to wait however long it takes. No deadline is what
+            :meth:`MazeGame.get_key` already means by None and what a
+            caller with nothing to draw while it waits asks for, so
+            both platforms read it that way and neither refuses it
 
     Returns:
         str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
         the lowercased character that was typed. None when the wait ran
-        out with nothing pressed
+        out with nothing pressed, which a wait with no deadline never
+        does
 
     Raises:
         KeyboardInterrupt: If Ctrl+C was pressed
@@ -209,7 +279,8 @@ def read_key_timed_windows(timeout):
     """Wait a given moment for a keypress on Windows.
 
     Args:
-        timeout: Seconds to wait before giving up on a keypress
+        timeout: Seconds to wait before giving up on a keypress, or
+            None to wait however long it takes
 
     Returns:
         str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
@@ -219,6 +290,12 @@ def read_key_timed_windows(timeout):
     Raises:
         KeyboardInterrupt: If Ctrl+C was pressed
     """
+
+    if timeout is None:
+        # no deadline at all, which is the wait the untimed reader
+        # already makes: it polls the same console buffer and reads the
+        # same key, so there is nothing for this branch to add to it
+        return read_key_windows()
 
     # the same idle poll the waiting reader makes, given an end to stop
     # at. The last sleep is cut short to the time that is left, so a
@@ -265,7 +342,9 @@ def read_key_timed_posix(timeout):
     """Wait a given moment for a keypress on unix/linux/mac.
 
     Args:
-        timeout: Seconds to wait before giving up on a keypress
+        timeout: Seconds to wait before giving up on a keypress, or
+            None to wait however long it takes, which is what a
+            deadline of None already means to select()
 
     Returns:
         str: 'up', 'down', 'left' or 'right' for an arrow key, otherwise
@@ -281,8 +360,14 @@ def read_key_timed_posix(timeout):
     # in its usual cooked mode holds a line back until Enter is pressed,
     # so waiting on standard input first would report nothing waiting
     # until the player pressed Enter as well
-    return in_raw_mode(
-        lambda: read_key_sequence() if key_waiting(timeout) else None)
+    def read():
+        # the reader is resolved before the wait rather than after it,
+        # so the descriptor that is waited on is the descriptor the key
+        # is then taken off
+        reader = stdin_reader()
+        return read_key_sequence(reader) if key_waiting(timeout) else None
+
+    return in_raw_mode(read)
 
 
 def read_response():
@@ -302,8 +387,12 @@ def read_response():
         # the terminal goes into raw mode for the read, as it does for a
         # keypress in the game, so the answer arrives on its own rather
         # than the whole line being held back until Enter and the rest
-        # of it left in the buffer afterwards
-        key = in_raw_mode(lambda: sys.stdin.read(1))
+        # of it left in the buffer afterwards. It reads the descriptor
+        # for the same reason the game does: a read through the text
+        # wrapper takes a chunk and keeps what it was not asked for
+        # where nothing waiting on standard input afterwards would be
+        # told about it
+        key = in_raw_mode(lambda: stdin_reader()(1))
 
     # neither reader is handed Ctrl+C as the signal that would raise on
     # its own, so it arrives as a character and is raised here

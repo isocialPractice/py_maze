@@ -233,6 +233,7 @@ carved grid with its entrance and exit already opened:
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
 | `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |
+| `fit_frame(lines, size, focus)` | Cut a play screen to the rows the terminal has, around a row to keep |
 | `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
 | `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
 | `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
@@ -286,9 +287,9 @@ grid, _, _ = py_maze.parse_save("#.#\n#.#\n",
 
 The terminal half is public too: `MazeGame` plays a maze at the console,
 `read_key` and `read_response` take single keypresses, `read_key_timed` waits
-a given moment for one and answers `None` when the moment passes empty, and
-`build_parser`,
-`build_maze` and `main` are the command line itself, along with the
-`EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
+a given moment for one and answers `None` when the moment passes empty, or
+waits however long it takes when the moment it is given is `None` itself, and
+`build_parser`, `build_maze` and `main` are the command line itself, along
+with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `EXIT_NO_WAY_THROUGH` codes it exits with. Those are the names that want a
 terminal. Everything above runs without one.

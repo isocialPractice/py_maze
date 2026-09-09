@@ -5,6 +5,100 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-09-09
+
+Three faults found reviewing 2.3.0 and playing it, all of them in the two
+things a game loop is made of: what it draws and what it reads. A console
+shortened under a running game wrote the foot of the play screen onto its
+bottom row over and over, because a terminal has no row past its last to
+carry anything onto; the POSIX timed reader waited on a file descriptor and
+read through a buffer above it, so a key typed inside the same tick as
+another was held rather than played; and `read_key_timed(None)` raised on
+Windows while waiting forever on Linux and macOS, so the same call meant two
+different things by platform. No option behaves differently and a maze that
+fits its terminal is drawn exactly as it was.
+
+### Added
+
+- `fit_frame(lines, size, focus)`, cutting a play screen down to the rows the
+  terminal actually has. `fit_to_terminal` asks this of the maze before it is
+  carved and a console shrunk afterwards never gets asked again, so the
+  answer is wanted at redraw time as well. The maze is what gives way: the
+  rows drawn are a window onto it, and the window follows the row given as
+  the focus. A terminal with no room for even one row of maze keeps the foot
+  alone, and gives up the blank spacer before anything worth reading.
+- `FRAME_HEAD_ROWS` and `FRAME_FOOT_ROWS`, the lines a play screen carries
+  above and below the maze. `RENDER_ROW_OVERHEAD` is the two counted
+  together, so the rows `fit_to_terminal` reserves when the maze is carved
+  and the rows `fit_frame` gives up last are the same rows.
+
+### Fixed
+
+- A console shortened below the height of the play screen keeps its foot.
+  Every row address past the bottom of a screen lands on the bottom of that
+  screen, so a 28 line frame on a console shrunk to 22 rows wrote the last
+  maze rows, the `end` marker, the blank spacer and the controls line each
+  onto row 22 in turn, and what stayed there was the once-a-second tally.
+  The foot of the picture was simply not on screen, and a player standing on
+  one of the maze rows below the fold was not drawn at all. `render` fits the
+  frame to the console it is being drawn on with `fit_frame`, using the
+  measurement it already takes every frame, so what a short console costs is
+  maze rather than the whole foot of the screen.
+- A console that shrank is no longer wiped where it no longer is. A frame
+  shorter than the one before it wipes the rows it gives up, which is right
+  when a frame ends higher up the same screen and wrong when the screen
+  itself lost those rows: the wipes land on the bottom row and take the
+  controls line off it. The redraw compares against the rows the console
+  still has.
+- The POSIX timed reader reads what it waited on. `key_waiting` polls the
+  file descriptor behind standard input with `select`, while the read went
+  through `sys.stdin`, a text wrapper that reads a chunk, hands back the
+  first character and keeps the rest in userspace where `select` cannot see
+  it. A terminal in raw mode returns every queued byte in one read, so two
+  movement keys typed inside a quarter of a second - or one key held down
+  while the keyboard repeats - left the second where the wait would never
+  mention it: the player took one step and stopped, and every press after it
+  played the key before it for the rest of the run. The three POSIX readers
+  take their characters off the descriptor now, through `os.read`, so what
+  they are not asked for stays in the queue the wait polls. Standard input
+  with no descriptor to go to buffers nothing of its own and is read as it
+  always was, and Windows was never affected: `msvcrt.kbhit` and
+  `msvcrt.getch` are two windows onto one console buffer.
+- `read_key_timed(None)` means the same thing on every platform. It is
+  public, exported and named on the library page, and `MazeGame.get_key`
+  already reads `None` as "however long it takes" - but it routes `None` to
+  `read_key` rather than reaching this far, so nothing in the game found
+  that `read_key_timed_windows` raised a `TypeError` comparing `None`
+  against 0 while `read_key_timed_posix` handed it to `select` and waited
+  forever. Waiting is what `None` means, and the Windows branch follows the
+  POSIX one rather than the other way round.
+- A paragraph on the library page is wrapped to the margin again. Adding
+  `read_key_timed` to the list of public terminal names pushed
+  `` `build_parser`, `` onto a line of its own, 15 characters wide, in the
+  middle of a paragraph every other line of which reaches the margin.
+- The archived todo item that measured the stranded keypress points at the
+  section that measures it. Marking the section resolved renamed its heading,
+  and a heading is what a Markdown anchor is built from, so the link in
+  `TODO.md` was left addressing a slug no heading makes any more and landed
+  at the top of `KNOWN_BUGS.md` instead of at the fault it names.
+
+### Changed
+
+- `py_maze.keys` imports `os`, for the one call that reads a descriptor. It
+  is the module that already owns the terminal imports, so nothing else in
+  the package gained anything.
+- The suite's `FakeStdin` models the whole stack a POSIX read goes through
+  rather than the top of it. It chunks the way a text wrapper does, keeping
+  what it was not asked for, and answers a descriptor read separately, so a
+  reader that goes through the wrapper can be told from one that goes to the
+  descriptor. Without that the fault above was invisible to the instrument
+  it is measured with, and a fix could not be told from no fix.
+- `KNOWN_BUGS.md` marks the stranded keypress resolved, keeping the
+  measurement and the two candidate fixes, and records which was taken and
+  why. Nothing in the file is open now; what is still unverified is how both
+  readers behave on a real POSIX console rather than on a model of one,
+  which is queued in `TODO.md` under **UI/UX and Screen Drawing**.
+
 ## [2.3.0] - 2026-09-08
 
 Two tallies that were one, and a redraw that now defends the thing it
