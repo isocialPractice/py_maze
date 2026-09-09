@@ -65,86 +65,6 @@ into a `## Complete` section at the bottom of this file.
     of the two is written first decides that shape for the other
   - From: Gameplay Enhancements `->` New Game Modes
 
-### UI/UX Override - a console shorter than the frame drawn on it
-
-#### Found Issues
-
-- [ ] A console shortened below the height of the play screen stacks the
-  frame's last lines onto its bottom row, taking the controls line and the
-  foot of the maze off screen without saying so
-  - **Issue**: the 2.3.0 redraw was verified and passes; this is the case
-    next to it. On a 100x28 console the frame is 28 lines. Shrinking the
-    console to 22 rows under a running game makes `render` redraw the frame
-    whole, which is correct, but 28 lines cannot go on 22 rows: the console
-    clamps every row address past the screen onto the bottom row, so the
-    last maze rows, the `end` marker, the blank spacer and the controls line
-    are each written there in turn and the once-a-second tally write is what
-    stays. Read back off the console buffer after shrinking the window
-    mid-game. The visible part of the picture is right - one `o`, no rows
-    from a frame that has gone - but the foot of the maze and the controls
-    line are simply not on screen, and a player standing on one of those
-    rows would not be drawn at all
-  - **Goal**: fit the frame to the terminal it is being drawn on rather than
-    to the one the maze was generated for, drawing at most as many lines as
-    the screen has rows and keeping the tally and the controls line on the
-    bottom of them, so what a shrunken console costs is maze rather than the
-    whole foot of the screen. `fit_to_terminal` in `py_maze/rendering.py`
-    already answers this question at generation time and is where the
-    redraw-time answer belongs
-  - From: UI/UX Override - a console shorter than the frame drawn on it
-
-### Code Review Override - the POSIX timed key reader
-
-- [ ] A paragraph in `docs/library.md` was left with an orphaned line
-  - **Issue**: adding `read_key_timed` to the paragraph listing the public
-    terminal names pushed `` `build_parser`, `` onto a line of its own 15
-    characters wide, in the middle of a paragraph every other line of which
-    is wrapped to the margin
-  - **Goal**: reflow the paragraph
-  - From: Code Review Override - the POSIX timed key reader
-
-#### Resolve Issues
-
-- [ ] Timed Key Reader 1: the POSIX reader waits on one thing and reads from
-  another, so a key typed inside a tick is never looked at
-  - **Issue**: `key_waiting` calls `select.select([sys.stdin], [], [],
-    timeout)`, which polls the file descriptor behind standard input, while
-    `read_key_sequence` reads with `sys.stdin.read(1)`, which is a
-    `TextIOWrapper` reading a chunk at a time and keeping what it does not
-    hand back. A raw-mode terminal returns every queued byte in one read, so
-    two movement keys typed inside a quarter of a second on Linux or macOS -
-    or one key held down while the keyboard repeats - leave the second where
-    `select` will never mention it. The player takes one step and stops, and
-    the next press plays the stranded key rather than itself for the rest of
-    the run. Windows is unaffected, and the suite cannot see it:
-    `TestPosixTimedInput` mocks both `select` and `sys.stdin`. Measured in
-    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-08-the-timed-key-reader-strands-keys-typed-inside-one-tick)
-  - **Goal**: make the thing waited on and the thing read from the same
-    thing. Two candidates and what each costs are in that section; both
-    reach out of `read_key_timed_posix` into readers the untimed path shares,
-    which is why this was queued rather than fixed in review. Pin it first:
-    the POSIX tests hand `read_key_sequence` a fake standard input returning
-    one character per read, so nothing in the suite chunks the way a
-    terminal does and a fix cannot be told from no fix
-  - From: Gameplay Enhancements
-
-#### Found Issues
-
-- [ ] `read_key_timed(None)` means two different things by platform
-  - **Issue**: `MazeGame.get_key` routes `None` to `read_key` rather than to
-    `read_key_timed`, so the game never reaches it, but `read_key_timed` is
-    public, exported and named in `docs/library.md`. Given `None`,
-    `read_key_timed_windows` raises `TypeError` comparing it against 0 while
-    `read_key_timed_posix` passes it to `select.select` and waits forever
-  - **Goal**: decide what no deadline means for a reader whose whole point
-    is having one, and make both branches agree. Reading it as "wait however
-    long it takes" is what `MazeGame.get_key` already means by `None` and
-    what the POSIX branch already does, so Windows would follow; refusing it
-    instead wants one check ahead of the platform split rather than a check
-    in each branch. Either way it wants a test beside the ones that already
-    drive both branches directly
-  - From: Code Review Override - the POSIX timed key reader
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -380,9 +300,48 @@ update.
     assertion. A pseudoconsole cannot stand in for this: ConPTY keeps its
     own screen buffer and emits its own repaints, so it would report the
     wasteful redraw as no output at all
+  - The 2.4.0 verification added the event that separates this from anything
+    the suite can model: the console is resized while the game is running on
+    it. That is `SetConsoleWindowInfo` in, `SetConsoleScreenBufferSize`, then
+    `SetConsoleWindowInfo` back out, so a resize is three calls and the game
+    can measure the console part way through them; nothing may be asserted
+    until the resize has settled and a frame has been drawn on the size that
+    was asked for. What it would assert, at 22, 8 and 3 rows and back up to
+    28: the controls line whole and alone on the bottom row with the spacer,
+    the tally and `end` on the three above it, exactly one `o` on the maze
+    rows however few of them there are, no row holding two of the frame's
+    lines run together, and no row painted past the last one - the last of
+    which is a claim about writes rather than about the screen, since a row
+    addressed past the bottom is clamped onto the bottom
+  - A route pushed into the console on a timer loses keypresses, and loses
+    them silently: 59 keys sent at 0.16s intervals left the player on maze
+    row 11 of 23, and the screen afterwards is a perfectly good screen of
+    the wrong position. A walk has to wait for the move tally to count each
+    step before sending the next, which matters most for the scenario that
+    needs the player standing below the fold
   - The driver, its tap and its checker were left at `.tmp/ui-ux/` on the
     machine that ran the verification, and the runs are written up in the
-    UI/UX agent's log under 09.07.2026 and 09.08.2026
+    UI/UX agent's log under 09.07.2026, 09.08.2026 and 09.09.2026
+- [ ] Pin both POSIX key readers against a real terminal rather than against
+  the suite's `FakeStdin`, so the buffering the 2.4.0 fix reasons about is
+  measured on the thing it reasons about
+  - 2.4.0 moved `read_key_posix`, `read_key_timed_posix` and `read_response`
+    onto the descriptor `select` polls, because reading through `sys.stdin`
+    left a second key typed inside one tick in a wrapper the wait cannot
+    see. The fault was measured on a pipe and the fix is measured against a
+    `FakeStdin` that chunks the way a wrapper does; no POSIX console has
+    been driven, the machine that found it and fixed it being Windows
+  - What it would assert, on a pseudoterminal opened with `pty.openpty` and
+    the child running the game: two movement keys written to the master
+    inside one tick move the player twice; a key held down and repeated is
+    read press by press; an arrow key written as its three characters is one
+    move rather than three; and the terminal is left out of raw mode when
+    the run ends, however it ended
+  - It cannot go into `test_py_maze.py` as it stands, for the reason the
+    Windows item above gives: `pty` is POSIX-only and the suite runs on
+    ubuntu, windows and macos. It wants the same `skipUnless` guard and
+    opt-in variable, or the second suite that item proposes, with the
+    windows leg running one and the ubuntu and macos legs the other
 
 ## Runtime and Portability Fixes
 
@@ -1093,3 +1052,69 @@ No items are currently queued in this section.
     it cannot catch the wrap until it is given a width and wraps a line
     past the last column the way a terminal does
   - From: UI/UX and Screen Drawing
+- [x] A console shortened below the height of the play screen stacks the
+  frame's last lines onto its bottom row, taking the controls line and the
+  foot of the maze off screen without saying so
+  - **Issue**: the 2.3.0 redraw was verified and passes; this is the case
+    next to it. On a 100x28 console the frame is 28 lines. Shrinking the
+    console to 22 rows under a running game makes `render` redraw the frame
+    whole, which is correct, but 28 lines cannot go on 22 rows: the console
+    clamps every row address past the screen onto the bottom row, so the
+    last maze rows, the `end` marker, the blank spacer and the controls line
+    are each written there in turn and the once-a-second tally write is what
+    stays. Read back off the console buffer after shrinking the window
+    mid-game. The visible part of the picture is right - one `o`, no rows
+    from a frame that has gone - but the foot of the maze and the controls
+    line are simply not on screen, and a player standing on one of those
+    rows would not be drawn at all
+  - **Goal**: fit the frame to the terminal it is being drawn on rather than
+    to the one the maze was generated for, drawing at most as many lines as
+    the screen has rows and keeping the tally and the controls line on the
+    bottom of them, so what a shrunken console costs is maze rather than the
+    whole foot of the screen. `fit_to_terminal` in `py_maze/rendering.py`
+    already answers this question at generation time and is where the
+    redraw-time answer belongs
+  - From: UI/UX Override - a console shorter than the frame drawn on it
+- [x] A paragraph in `docs/library.md` was left with an orphaned line
+  - **Issue**: adding `read_key_timed` to the paragraph listing the public
+    terminal names pushed `` `build_parser`, `` onto a line of its own 15
+    characters wide, in the middle of a paragraph every other line of which
+    is wrapped to the margin
+  - **Goal**: reflow the paragraph
+  - From: Code Review Override - the POSIX timed key reader
+- [x] Timed Key Reader 1: the POSIX reader waits on one thing and reads from
+  another, so a key typed inside a tick is never looked at
+  - **Issue**: `key_waiting` calls `select.select([sys.stdin], [], [],
+    timeout)`, which polls the file descriptor behind standard input, while
+    `read_key_sequence` reads with `sys.stdin.read(1)`, which is a
+    `TextIOWrapper` reading a chunk at a time and keeping what it does not
+    hand back. A raw-mode terminal returns every queued byte in one read, so
+    two movement keys typed inside a quarter of a second on Linux or macOS -
+    or one key held down while the keyboard repeats - leave the second where
+    `select` will never mention it. The player takes one step and stops, and
+    the next press plays the stranded key rather than itself for the rest of
+    the run. Windows is unaffected, and the suite cannot see it:
+    `TestPosixTimedInput` mocks both `select` and `sys.stdin`. Measured in
+    [KNOWN_BUGS.md](KNOWN_BUGS.md#2026-09-08-the-timed-key-reader-strands-keys-typed-inside-one-tick)
+  - **Goal**: make the thing waited on and the thing read from the same
+    thing. Two candidates and what each costs are in that section; both
+    reach out of `read_key_timed_posix` into readers the untimed path shares,
+    which is why this was queued rather than fixed in review. Pin it first:
+    the POSIX tests hand `read_key_sequence` a fake standard input returning
+    one character per read, so nothing in the suite chunks the way a
+    terminal does and a fix cannot be told from no fix
+  - From: Gameplay Enhancements
+- [x] `read_key_timed(None)` means two different things by platform
+  - **Issue**: `MazeGame.get_key` routes `None` to `read_key` rather than to
+    `read_key_timed`, so the game never reaches it, but `read_key_timed` is
+    public, exported and named in `docs/library.md`. Given `None`,
+    `read_key_timed_windows` raises `TypeError` comparing it against 0 while
+    `read_key_timed_posix` passes it to `select.select` and waits forever
+  - **Goal**: decide what no deadline means for a reader whose whole point
+    is having one, and make both branches agree. Reading it as "wait however
+    long it takes" is what `MazeGame.get_key` already means by `None` and
+    what the POSIX branch already does, so Windows would follow; refusing it
+    instead wants one check ahead of the platform split rather than a check
+    in each branch. Either way it wants a test beside the ones that already
+    drive both branches directly
+  - From: Code Review Override - the POSIX timed key reader
