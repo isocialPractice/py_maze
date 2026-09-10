@@ -7,63 +7,79 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add a `maze_progress(grid, cell)` reporting how far along the solution
-  a cell is, as a share of the whole, which is what the chase point is read
-  off and what a later `--stats` can report as well
-  - Measure the solution as the straight runs it is made of rather than as
-    a count of cells: sum the length of each run, and a cell's progress is
-    the distance walked to it over that sum. A solution of four runs of 4,
-    2, 5 and 3 totals 14, so 55% of it is 7.7, which falls in the third run
-  - It reads a solved grid and returns a number, so it belongs beside the
-    solver rather than in the game and can be tested without a terminal
+- [ ] Add `dead_ends(grid)` yielding every cell with one open neighbour and
+  no way on, which `braid_maze` already finds for itself in
+  `py_maze/generation.py` and which nothing else can reach
+  - From: Maze Analysis and Statistics
+- [ ] Add `junctions(grid)` yielding every cell with three or more open
+  neighbours, so the branching of a maze can be counted rather than
+  eyeballed
+  - From: Maze Analysis and Statistics
+- [ ] Add a `maze_stats(grid)` to a new `py_maze/analysis.py` returning the
+  measurements the rest of this section reports: the cell count, the open
+  cell count, the dead end count, the junction count, the longest corridor
+  and the solution length. One call, one dictionary, no terminal
+  - From: Maze Analysis and Statistics
+- [ ] Add the analysis names to `py_maze/__init__.py`, the module to
+  `PACKAGE_MODULES` and `TERMINAL_FREE_MODULES` in the suite, and a table to
+  `docs/library.md`, since nothing here touches a terminal
+  - From: Maze Analysis and Statistics
+- [ ] Add a `--stats` flag printing those measurements under the maze, in
+  the style of the status line rather than as a table, and leaving the maze
+  itself unchanged
+  - From: Maze Analysis and Statistics
+
+### UI/UX Override - Chase Mode on a Real Console and a Real Clock
+
+Chase mode was driven in a real Windows console on 09.10.2026 - the marker
+walked onto the screen, the chaser watched with nothing pressed, the run
+played to a catch and to an exit - and judged by 107 checks, of which 101
+passed. The two that did not are below. Everything else the request asked
+to be watched holds: the plain game is unchanged from 2.4.0 frame for
+frame, the chaser appears at the entrance at the share of the maze it was
+told to, it never crosses a wall and leaves no trail, it moves at 1.00 and
+6.02 cells a second on the two extreme presets, and a bad option value is a
+notice on standard error that leaves standard output the maze alone.
+
+#### Resolve Issues
+
+- [ ] Chase Mode 1: the ending's extra `Outcome` line scrolls the frame's
+  `start` marker off the top of the screen
+  - **Issue**: a chased game's summary carries one tally the plain game's
+    does not, so its ending is a row taller. On a console where the plain
+    ending exactly fits, the chased one scrolls the screen by one row and
+    the frame's first line goes with it. Measured on a real console at 100
+    by 28 with a 9 by 7 maze, walked to the exit on the same seed twice:
+    played plain, `start` is on row 0, `end` on 16 and the controls line on
+    19 with nothing scrolled, and 2.4.0 is identical to 2.5.0 there; played
+    as a chase, `end` is on 15, the controls line on 18 and there is no
+    `start` anywhere. Being caught does the same. No row of the maze itself
+    is lost, so what it costs is the marker
+  - **Goal**: Resolve to [chase-ending-scrolls-the-start-marker-off.prompt.md](.claude/prompts/chase-ending-scrolls-the-start-marker-off.prompt.md)
   - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Add a chase mode: an antagonist that starts following the player once
-  a reasonable point in the maze has been reached, moving at a reasonable
-  speed, drawn with its own marker in `py_maze/rendering.py` and reported in
-  the end-of-game summary beside the timer, the moves and the pickups
-  - **Reasonable point**: far enough in that the chaser cannot reach the
-    player the moment it starts moving
-  - **Reasonable speed**: slow enough that a player who keeps moving cannot
-    be caught by the chaser alone
-  - The chaser walks the solution the breadth-first solver already computes,
-    so it never walks into a wall and never needs a second algorithm
-  - Being caught ends the run the way the exit does, with a summary saying
-    which of the two happened rather than a second screen
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Add a `--mode` option choosing between the plain game, chase mode and
-  quest mode, defaulting to the plain game, with the names listed in its
-  help text as `--algorithm` lists its own, and say plainly which options
-  belong to which mode
-  - Quest mode is not built yet, so the option lists the modes that exist:
-    build the names as a registry, the way `ALGORITHMS`, `DIFFICULTIES` and
-    `FORMATS` already are, so quest mode joins the list rather than editing
-    the option
-  - It is queued ahead of the two chase options because without it chase
-    mode has no entry point, a bare run naming no mode playing exactly as it
-    does today by design
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Add a `--chase-point` option overruling the reasonable point with a
-  share of the maze the player must have walked before the chase begins
-  - Takes a whole number from 20 to 90, read against `maze_progress`, and
-    defaults to 55
-  - A value under 20 resolves to 20 and one over 90 to 90, so the option
-    cannot be set to a value that makes the mode unplayable either way
-  - A decimal rounds to the nearest whole number
-  - A value that is not a number at all, as in `--chase-point a34`, prints
-    a notice of its own naming the option and the value, and the run
-    carries on as though the option had not been given
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Add a `--chase-speed` option overruling the reasonable speed with one
-  of six preset speeds, given as a whole number from 0 to 5
-  - The presets are the moves the chaser makes in a second: `0` is one,
-    rising by one to `5` at six, so the option names a speed rather than a
-    delay a player has to reason about
-  - A value under 0 resolves to 0 and one over 5 to 5, a decimal rounds to
-    the nearest whole number, and a value that is not a number prints the
-    same kind of notice `--chase-point` does and is otherwise ignored
-  - It shares its whole validation shape with `--chase-point`, so whichever
-    of the two is written first decides that shape for the other
-  - From: Gameplay Enhancements `->` New Game Modes
+
+#### Found Issues
+
+- [ ] The timed key reader counts its wait down by what it asked for, so
+  the loop never waits the chaser's step
+  - **Issue**: `read_key_timed_windows` does `left -= nap` with `nap` at
+    `KEY_POLL_INTERVAL`, while `time.sleep(0.01)` really costs about 0.0157
+    on Windows, so every timed wait overruns by around 57%. Read off the
+    game's own writes rather than off a screen poll, `--chase-speed 5`
+    redraws every 0.265 s where `MazeGame.tick` asks for 0.167 - 3.95
+    frames a second on a small maze and 4.21 on a large one, against the
+    six the preset names. The chaser still crosses six cells a second
+    because `Chaser.advance` hands back what the clock passed over, so what
+    a player sees is not a slow chaser but one covering two cells per
+    redraw for 25 of its 42 drawn moves, the catch-up cap paying for the
+    loop being late rather than for a stall. The reader predates chase
+    mode; shortening the loop's wait to a sixth of a second is what made it
+    matter. `TestWindowsTimedInput` cannot catch it, its `FakeTime` sleeping
+    by exactly what it was asked for and
+    `test_no_poll_of_the_wait_overruns_the_deadline` asserting the
+    requested total rather than the elapsed one
+  - **Goal**: Resolve to [timed-wait-counts-down-by-what-it-asked-for.prompt.md](.claude/prompts/timed-wait-counts-down-by-what-it-asked-for.prompt.md)
+  - From: UI/UX Override - Chase Mode on a Real Console and a Real Clock
 
 ## Fixes and Hardening
 
@@ -97,45 +113,6 @@ same grid, the same solver, the same renderer and the same key loop, with a
 bare run naming no mode playing exactly as it does today. Completing items
 in this section is a minor version update.
 
-- [ ] Add a chase mode: an antagonist that starts following the player once
-  a reasonable point in the maze has been reached, moving at a reasonable
-  speed, drawn with its own marker in `py_maze/rendering.py` and reported in
-  the end-of-game summary beside the timer, the moves and the pickups
-  - **Reasonable point**: far enough in that the chaser cannot reach the
-    player the moment it starts moving
-  - **Reasonable speed**: slow enough that a player who keeps moving cannot
-    be caught by the chaser alone
-  - The chaser walks the solution the breadth-first solver already computes,
-    so it never walks into a wall and never needs a second algorithm
-  - Being caught ends the run the way the exit does, with a summary saying
-    which of the two happened rather than a second screen
-- [ ] Add a `maze_progress(grid, cell)` reporting how far along the solution
-  a cell is, as a share of the whole, which is what the chase point is read
-  off and what a later `--stats` can report as well
-  - Measure the solution as the straight runs it is made of rather than as
-    a count of cells: sum the length of each run, and a cell's progress is
-    the distance walked to it over that sum. A solution of four runs of 4,
-    2, 5 and 3 totals 14, so 55% of it is 7.7, which falls in the third run
-  - It reads a solved grid and returns a number, so it belongs beside the
-    solver rather than in the game and can be tested without a terminal
-- [ ] Add a `--chase-point` option overruling the reasonable point with a
-  share of the maze the player must have walked before the chase begins
-  - Takes a whole number from 20 to 90, read against `maze_progress`, and
-    defaults to 55
-  - A value under 20 resolves to 20 and one over 90 to 90, so the option
-    cannot be set to a value that makes the mode unplayable either way
-  - A decimal rounds to the nearest whole number
-  - A value that is not a number at all, as in `--chase-point a34`, prints
-    a notice of its own naming the option and the value, and the run
-    carries on as though the option had not been given
-- [ ] Add a `--chase-speed` option overruling the reasonable speed with one
-  of six preset speeds, given as a whole number from 0 to 5
-  - The presets are the moves the chaser makes in a second: `0` is one,
-    rising by one to `5` at six, so the option names a speed rather than a
-    delay a player has to reason about
-  - A value under 0 resolves to 0 and one over 5 to 5, a decimal rounds to
-    the nearest whole number, and a value that is not a number prints the
-    same kind of notice `--chase-point` does and is otherwise ignored
 - [ ] Add a quest mode: an inventory the player fills from the maze, where
   what is carried is what opens the way on, so a maze is played for what is
   in it rather than only for the way out
@@ -151,10 +128,6 @@ in this section is a minor version update.
   - It says what the next step of the quest is rather than where the exit
     is, so it is a second kind of hint rather than a second way to ask for
     the first
-- [ ] Add a `--mode` option choosing between the plain game, chase mode and
-  quest mode, defaulting to the plain game, with the names listed in its
-  help text as `--algorithm` lists its own, and say plainly which options
-  belong to which mode
 - [ ] Write `docs/modes.md` covering each mode, its options and its markers,
   add it to `docs/_data/nav.yml` and the README's documentation table, and
   add the new names to `py_maze/__init__.py` and the tables in
@@ -1118,3 +1091,61 @@ No items are currently queued in this section.
     in each branch. Either way it wants a test beside the ones that already
     drive both branches directly
   - From: Code Review Override - the POSIX timed key reader
+- [x] Add a `maze_progress(grid, cell)` reporting how far along the solution
+  a cell is, as a share of the whole, which is what the chase point is read
+  off and what a later `--stats` can report as well
+  - Measure the solution as the straight runs it is made of rather than as
+    a count of cells: sum the length of each run, and a cell's progress is
+    the distance walked to it over that sum. A solution of four runs of 4,
+    2, 5 and 3 totals 14, so 55% of it is 7.7, which falls in the third run
+  - It reads a solved grid and returns a number, so it belongs beside the
+    solver rather than in the game and can be tested without a terminal
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] **Chase Mode**: Add a chase mode: an antagonist that starts following
+  the player once a reasonable point in the maze has been reached, moving at
+  a reasonable speed, drawn with its own marker in `py_maze/rendering.py` and
+  reported in the end-of-game summary beside the timer, the moves and the
+  pickups
+  - **Reasonable point**: far enough in that the chaser cannot reach the
+    player the moment it starts moving
+  - **Reasonable speed**: slow enough that a player who keeps moving cannot
+    be caught by the chaser alone
+  - The chaser walks the solution the breadth-first solver already computes,
+    so it never walks into a wall and never needs a second algorithm
+  - Being caught ends the run the way the exit does, with a summary saying
+    which of the two happened rather than a second screen
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Add a `--mode` option choosing between the plain game, chase mode and
+  quest mode, defaulting to the plain game, with the names listed in its
+  help text as `--algorithm` lists its own, and say plainly which options
+  belong to which mode
+  - Quest mode is not built yet, so the option lists the modes that exist:
+    build the names as a registry, the way `ALGORITHMS`, `DIFFICULTIES` and
+    `FORMATS` already are, so quest mode joins the list rather than editing
+    the option
+  - It is queued ahead of the two chase options because without it chase
+    mode has no entry point, a bare run naming no mode playing exactly as it
+    does today by design
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Add a `--chase-point` option overruling the reasonable point with a
+  share of the maze the player must have walked before the chase begins
+  - Takes a whole number from 20 to 90, read against `maze_progress`, and
+    defaults to 55
+  - A value under 20 resolves to 20 and one over 90 to 90, so the option
+    cannot be set to a value that makes the mode unplayable either way
+  - A decimal rounds to the nearest whole number
+  - A value that is not a number at all, as in `--chase-point a34`, prints
+    a notice of its own naming the option and the value, and the run
+    carries on as though the option had not been given
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Add a `--chase-speed` option overruling the reasonable speed with one
+  of six preset speeds, given as a whole number from 0 to 5
+  - The presets are the moves the chaser makes in a second: `0` is one,
+    rising by one to `5` at six, so the option names a speed rather than a
+    delay a player has to reason about
+  - A value under 0 resolves to 0 and one over 5 to 5, a decimal rounds to
+    the nearest whole number, and a value that is not a number prints the
+    same kind of notice `--chase-point` does and is otherwise ignored
+  - It shares its whole validation shape with `--chase-point`, so whichever
+    of the two is written first decides that shape for the other
+  - From: Gameplay Enhancements `->` New Game Modes
