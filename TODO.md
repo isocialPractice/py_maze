@@ -81,6 +81,66 @@ notice on standard error that leaves standard output the maze alone.
   - **Goal**: Resolve to [timed-wait-counts-down-by-what-it-asked-for.prompt.md](.claude/prompts/timed-wait-counts-down-by-what-it-asked-for.prompt.md)
   - From: UI/UX Override - Chase Mode on a Real Console and a Real Clock
 
+### Code Review Override - The Chase Settings Reached Off the Command Line
+
+Reviewing 2.5.0's edits found the mode itself sound: the chaser never
+crosses a wall over a full walk of a 9 by 11 maze, the registry adds a mode
+without touching the two already there, and a fully braided maze was checked
+for a route to the exit that never reaches the chase point, of which 39
+seeds gave none. One error was found and fixed in this turn - the play loop
+started its next turn on any key that was not a control, so a player leaning
+on an ignored key froze the chase for as long as they held it. The two below
+are what is left, both of them in the chase settings as a library caller
+reaches them rather than as `--chase-point` and `--chase-speed` hand them
+over.
+
+#### Found Issues
+
+- [ ] The chase settings trust a number the command line would have caught
+  - **Issue**: `chase_setting(number, low, high)` is the rule that holds a
+    chase option inside its range, and `py_maze.chase_setting(float('inf'),
+    20, 90)` raises `OverflowError` rather than answering `90`;
+    `float('nan')` raises `ValueError`. `Chaser.__init__` does the same, so
+    `py_maze.Chaser((1, 0), speed=float('nan'))` raises before a chase can
+    start. Nothing on the command line reaches either, because `chase_number`
+    in `py_maze/cli.py` checks `math.isfinite` first and turns those values
+    into the notice - which is the point: the guard sits in the caller, so
+    the public function `docs/library.md` tables as "round a chase option's
+    number and hold it inside its range" is the one that cannot. A front end
+    built on `chase_game(grid, chase_point=..., chase_speed=...)`, which
+    `docs/library.md` shows, and reading its numbers from a file gets a
+    traceback where the table promises an `int`
+  - **Goal**: settle what `chase_setting` answers for a number that names no
+    place on a range, and make it answer that rather than raise. Moving the
+    `math.isfinite` check down into `py_maze/chase.py` gives both callers one
+    rule, but it wants deciding first whether the answer is `low`, the
+    nearer end, or a raise the docstring names, since `chase_number` has to
+    keep returning its own default for the notice either way. Whatever is
+    chosen wants saying in the docstring and in the `docs/library.md` row,
+    and a test beside `TestChaseSetting`
+  - From: Code Review Override - The Chase Settings Reached Off the Command
+    Line
+- [ ] `Chaser.advance` reports steps the chaser did not take
+  - **Issue**: `advance` increments `taken` once per turn of its loop
+    whether or not `step` moved anything, and `step` answers `False` when
+    the chaser is already standing on the target or no way to it can be
+    found. A chaser that has just caught the player, advanced again with the
+    clock past due, answers `2` while standing still, against a docstring
+    reading "How many steps were taken" and a `docs/library.md` row reading
+    "take every step the clock says it is owed, and report how many".
+    `MazeGame.advance_chase` hands the count straight back, so a caller
+    counting how hard the chase was gets the frames rather than the moves;
+    `Chaser.moves`, which only rises on a real step, is the number they
+    wanted
+  - **Goal**: count only the steps `step` reports it took. The catch-up cap
+    is written against the same counter, so decide with it whether
+    `MAX_CHASE_CATCH_UP` bounds advances made or moves taken, and say which
+    in the constant's comment. A chaser with nowhere to go must still leave
+    the loop, so `next_move` keeps rising whichever is counted. Wants a test
+    beside `test_a_stalled_game_does_not_hand_it_the_whole_maze`
+  - From: Code Review Override - The Chase Settings Reached Off the Command
+    Line
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
