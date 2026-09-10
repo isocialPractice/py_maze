@@ -5,6 +5,118 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-09-10
+
+The first game mode, and the option that picks one. A maze has been played
+one way since the beginning: walk from the entrance to the exit. Chase mode
+is the same maze played with an antagonist behind it, and the way it is
+built is the point of it - the same grid, the same breadth-first solver, the
+same renderer and the same key loop, with a bare run naming no mode playing
+exactly as it always has. The chaser walks the route the solver finds from
+itself to wherever the player is standing, so it never crosses a wall and
+the mode needs no algorithm of its own. Where the chase begins is read off
+that route measured as the straight runs it is made of, which is a
+measurement worth having on its own.
+
+### Added
+
+- `--mode`, choosing how the maze is played: `plain`, which is the walk from
+  the entrance to the exit, or `chase`. The names are a registry - `MODES`,
+  `MODE_NOTES` and `MODE_OPTIONS`, read by `game_mode(name)` - the way
+  `ALGORITHMS` already is, so a mode is a function and an entry beside it
+  rather than a branch in `main()`. Every mode is handed every mode setting
+  and reads the ones that belong to it, which is what lets an option for a
+  mode you are not playing be ignored rather than refused, and what will let
+  the next mode join the list without touching the two that are there.
+- Chase mode: an antagonist that waits at the entrance until the player has
+  walked far enough in, then follows them at a preset speed, drawn with an
+  `X` as `CHASER_MARKER`. It solves from itself to the player on every step,
+  so it turns when they turn, and it moves on the clock rather than on the
+  keyboard - standing still is what a chase punishes. Being caught ends the
+  run the way the exit does, on the same screen with the same tallies and an
+  `Outcome` line naming which of the two happened. The line belongs to the
+  chase: a plain game has one way out, so a summary saying which was taken
+  would say nothing, and it is left off.
+- `maze_progress(grid, cell, path)`, reporting how far along the solution a
+  cell stands as a share of the whole, from `0` at the entrance to `1` at the
+  exit. This is what the chase point is read off, and what a report of how
+  far a maze has been played would quote. A cell that is not on the solution
+  has no share of it and answers `None`, which is also the answer for a maze
+  with no way through. The solution can be handed in rather than solved
+  again, so measuring cell after cell against one maze pays for one search.
+- `solution_runs(path)`, splitting a solution into the straight runs it is
+  made of and giving their lengths. A route is a handful of straight lines
+  meeting at corners rather than a scatter of cells, and measuring it that
+  way is what lets a share of it be pointed at: four runs of 4, 2, 5 and 3
+  total 14, so 55% of it is 7.7, which falls in the third run. Every step
+  belongs to exactly one run, so the lengths always sum to the steps the
+  whole route takes.
+- `--chase-point`, overruling the reasonable point with the share of the maze
+  the player must have walked before the chase begins. It takes a whole
+  number from 20 to 90 and defaults to 55, so the chase is the second half of
+  the maze rather than the whole of it, and the bottom of the range is far
+  enough in that the chaser cannot reach the player the moment it appears.
+- `--chase-speed`, overruling the reasonable speed with one of six presets
+  given as a whole number from 0 to 5. A preset is the moves the chaser makes
+  in a second - `0` is one, rising by one to `5` at six - so the option names
+  a speed rather than a delay a player would have to reason about. The
+  default is three a second, which a player who keeps moving matches without
+  hurrying, so the chaser alone never catches somebody still walking.
+- `Chaser`, the antagonist itself, and the constants describing it:
+  `CHASE_SPEEDS`, `MIN_CHASE_POINT`, `MAX_CHASE_POINT`, `DEFAULT_CHASE_POINT`,
+  `MIN_CHASE_SPEED`, `MAX_CHASE_SPEED`, `DEFAULT_CHASE_SPEED` and
+  `MAX_CHASE_CATCH_UP`. A chaser is a cell and a clock and nothing else: it
+  draws nothing and reads no key, so it can be played out in full without a
+  terminal anywhere in sight.
+- `chase_setting(number, low, high)`, the rule both chase options share: the
+  number rounded to the nearest whole one, then held inside the range. A
+  value under the range resolves to the bottom of it and one over it to the
+  top, so neither option can be set to a value that makes the mode unplayable
+  either way. Rounding is away from zero, `2.5` going to `3` rather than to
+  the `2` Python's own `round` would give.
+- `build_game(args, grid, collectibles)`, settling on the game a run plays
+  from the mode it named, and `notice(message)`, which reports something the
+  run carried on past. `fail` ends a run; a chase option given a value that
+  is not a number ends nothing.
+- `MazeGame.finish(banner, outcome)`, `MazeGame.tick()`,
+  `MazeGame.player_cell()`, `MazeGame.advance_chase()` and
+  `MazeGame.caught()`. The exit and the chaser are two ways out of one maze
+  and both leave by `finish`, which is what makes being caught an ending
+  rather than a second screen.
+- `caught_banner(stream)`, with `CAUGHT_BANNER` and `PLAIN_CAUGHT_BANNER`
+  behind it, so a console whose code page cannot draw the skulls reads the
+  message rather than being handed a `UnicodeEncodeError` instead of it -
+  exactly as the congratulations already falls back.
+- `py_maze.chase` and `py_maze.modes`, the two modules the above lives in.
+  `chase` imports nothing but the solver, so it is one of the modules that
+  leave the terminal alone.
+
+### Changed
+
+- A value that is not a number at all is not an option error for either chase
+  option. A notice on standard error names the option and the value, and the
+  run carries on as though the option had not been given. Being told the
+  chase point was nonsense is worth more than being refused a maze over it,
+  and standard error is where it goes, so a `--quiet` run's standard output
+  is still the maze and nothing else.
+- `summary_lines` takes an `outcome`, named on the summary under the tallies.
+  It is left out when there is none, exactly as the collectibles line is left
+  out of a maze that held none.
+- The game loop waits no longer than the chaser's own step, so the fastest
+  presets are drawn at the speed they are meant to move rather than at the
+  speed the loop happened to come round. A game with no chaser waits the
+  quarter second it always has.
+- A chaser owed more moves than it can have made in a frame takes at most
+  `MAX_CHASE_CATCH_UP` of them and the rest are forgiven. A game stalled by a
+  hint held on screen, or by the machine itself, would otherwise hand the
+  chaser every move the clock passed over and put it on top of a player who
+  never had a frame to react to.
+- A key the game has no use for is a turn of the game loop like any other
+  rather than one that never happened, so the clock that ran while it was
+  held down is a clock the chaser is advanced on. It still moves nobody and
+  still counts no move: leaning on a key the game ignores is not a way to
+  stand still.
+
 ## [2.4.0] - 2026-09-09
 
 Three faults found reviewing 2.3.0 and playing it, all of them in the two

@@ -14,21 +14,26 @@ import time
 from .grid import find_entrance, find_exit
 from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
-from .rendering import (COLLECTIBLE_MARKER, HINT_MARKER, PLAYER_MARKER,
-                        ansi_enabled, can_encode, clear_screen, fit_frame,
-                        frame_diff, frame_text, frame_wraps, maze_lines,
-                        status_line, summary_lines, terminal_size)
+from .rendering import (CHASER_MARKER, COLLECTIBLE_MARKER, HINT_MARKER,
+                        PLAYER_MARKER, ansi_enabled, can_encode, clear_screen,
+                        fit_frame, frame_diff, frame_text, frame_wraps,
+                        maze_lines, status_line, summary_lines, terminal_size)
 from .solving import solve_maze
 
 __all__ = [
+    'CAUGHT_BANNER',
+    'CAUGHT_OUTCOME',
     'CONTROLS_LINE',
+    'ESCAPED_OUTCOME',
     'GOODBYE_MESSAGE',
     'HINT_SECONDS',
     'HINT_STEPS',
+    'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
     'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',
+    'caught_banner',
     'win_banner',
 ]
 
@@ -57,6 +62,16 @@ WIN_BANNER = ("\N{PARTY POPPER} Congratulations! You solved the maze! "
               "\N{PARTY POPPER}")
 PLAIN_WIN_BANNER = "Congratulations! You solved the maze!"
 
+# the banner shown when the chaser catches the player, and the plain text
+# for a console that cannot carry the skulls
+CAUGHT_BANNER = "\N{SKULL} Caught! The chaser reached you. \N{SKULL}"
+PLAIN_CAUGHT_BANNER = "Caught! The chaser reached you."
+
+# how a chased game ended, named on the summary. A maze with a chaser in
+# it has two ways out, and the tallies alone do not say which was taken
+ESCAPED_OUTCOME = "reached the exit"
+CAUGHT_OUTCOME = "caught by the chaser"
+
 
 def win_banner(stream=None):
     """Build the banner shown when the maze is solved.
@@ -75,10 +90,28 @@ def win_banner(stream=None):
     return WIN_BANNER if can_encode(WIN_BANNER, stream) else PLAIN_WIN_BANNER
 
 
+def caught_banner(stream=None):
+    """Build the banner shown when the chaser catches the player.
+
+    Args:
+        stream: Where the banner will be printed, defaulting to
+            standard output
+
+    Returns:
+        str: The bad news, with the skulls when the output encoding can
+        carry them and without when it cannot, so a console on a legacy
+        code page reads the message rather than being handed a
+        UnicodeEncodeError instead of it
+    """
+
+    return (CAUGHT_BANNER if can_encode(CAUGHT_BANNER, stream)
+            else PLAIN_CAUGHT_BANNER)
+
+
 class MazeGame:
     """Interactive maze game with player movement."""
 
-    def __init__(self, maze_grid, collectibles=(), clock=None):
+    def __init__(self, maze_grid, collectibles=(), clock=None, chaser=None):
         """Initialize the game.
 
         Args:
@@ -88,6 +121,9 @@ class MazeGame:
                 seconds, used to time the game. Defaults to a monotonic
                 clock, which cannot run backwards when the system time
                 is adjusted mid-game
+            chaser: A :class:`py_maze.Chaser` to set on the player once
+                they are far enough in, or None for the plain game. A
+                game with no chaser plays exactly as it always has
         """
 
         self.maze = [row[:] for row in maze_grid]  # copy the grid
@@ -133,9 +169,74 @@ class MazeGame:
         self.started = None
         self.stopped = None
 
+        # the antagonist, and how a chased game ended. Both are None for
+        # the plain game, which has one way out and nothing following
+        self.chaser = chaser
+        self.outcome = None
+
+        # the route the chase point is measured against, solved once
+        # here rather than on every step: the maze does not change under
+        # a game, so neither does the way through it
+        self.solution = solve_maze(self.maze) if chaser is not None else None
+
         # a maze saved with a collectible on the entrance hands it over
         # before the first move
         self.collect()
+
+    def player_cell(self):
+        """Report where the player is standing.
+
+        Returns:
+            tuple: The player's (x, y) in the maze
+        """
+
+        return self.player_x, self.player_y
+
+    def tick(self):
+        """Report how long to wait for a keypress before drawing again.
+
+        Returns:
+            float: Seconds. A chased game waits no longer than the
+            chaser's own step, so the fastest presets are drawn at the
+            speed they are meant to move rather than at the speed the
+            loop happens to come round
+        """
+
+        if self.chaser is None:
+            return TICK_SECONDS
+
+        return min(TICK_SECONDS, self.chaser.interval)
+
+    def advance_chase(self):
+        """Start the chase when it is due, and move the chaser when it is.
+
+        Returns:
+            int: How many steps the chaser took, which is nought for a
+            game with no chaser, one whose chase has not begun and one
+            whose next move is not yet due
+        """
+
+        if self.chaser is None:
+            return 0
+
+        now = self.clock()
+        if not self.chaser.chasing(now, self.maze, self.player_cell(),
+                                   self.solution):
+            return 0
+
+        return self.chaser.advance(now, self.maze, self.player_cell())
+
+    def caught(self):
+        """Report whether the chaser has reached the player.
+
+        Returns:
+            bool: True when the two are standing on the same cell, which
+            ends the game the way the exit does. False for a game with
+            no chaser, which nothing is chasing
+        """
+
+        return self.chaser is not None and self.chaser.catches(
+            self.player_cell())
 
     def start_clock(self):
         """Start timing the game, if it is not already being timed."""
@@ -184,7 +285,8 @@ class MazeGame:
         """
 
         return summary_lines(self.elapsed(), self.moves,
-                             self.collected, self.total_collectibles)
+                             self.collected, self.total_collectibles,
+                             self.outcome)
 
     def print_summary(self):
         """Print the end-of-game summary under a blank line."""
@@ -203,7 +305,16 @@ class MazeGame:
             and the controls line
         """
 
-        overlays = [
+        overlays = []
+
+        # the chaser is drawn over the player, so the step that catches
+        # them is a picture of it rather than a frame that looks like
+        # any other. Before the chase begins there is nothing to draw,
+        # and the plain game never adds the pair at all
+        if self.chaser is not None and self.chaser.started:
+            overlays.append((CHASER_MARKER, {self.chaser.cell()}))
+
+        overlays += [
             (PLAYER_MARKER, {(self.player_x, self.player_y)}),
             (HINT_MARKER, self.hint_cells),
             (COLLECTIBLE_MARKER, self.collectibles),
@@ -448,6 +559,30 @@ class MazeGame:
 
         return read_key_posix()
 
+    def finish(self, banner, outcome=None):
+        """End the game: stop the clock, say how it went and wait for a key.
+
+        The exit and the chaser are two ways out of the same maze and
+        both leave by here, so being caught ends the run the way the
+        exit does rather than on a second screen of its own.
+
+        Args:
+            banner: The line printed above the summary
+            outcome: How the game ended, named on the summary. It is
+                kept only for a game with a chaser: the plain game has
+                one way out, so a line saying which was taken would say
+                nothing
+        """
+
+        if self.chaser is not None:
+            self.outcome = outcome
+
+        self.stop_clock()
+        print("\n" + banner)
+        self.print_summary()
+        print("\nPress any key to exit...")
+        self.get_key()
+
     def play(self):
         """Run the main game loop until the maze is won, quit or interrupted.
 
@@ -457,6 +592,10 @@ class MazeGame:
         on one line and neither one moves the other: a step that goes
         nowhere counts no move, and a second that passes with nothing
         pressed counts no move either but is still a second.
+
+        A chaser moves on the clock rather than on the keyboard, so it
+        is advanced on every turn of the loop, the turns nothing was
+        pressed on included. Standing still is what a chase punishes.
         """
 
         self.start_clock()
@@ -464,7 +603,7 @@ class MazeGame:
 
         try:
             while True:
-                key = self.get_key(TICK_SECONDS)
+                key = self.get_key(self.tick())
 
                 if key is None:
                     # nothing was pressed, so the maze is where it was
@@ -472,7 +611,12 @@ class MazeGame:
                     # Drawing is what puts the second it reached on the
                     # status line, and a second that has not turned over
                     # yet changes no line and writes nothing
+                    self.advance_chase()
                     self.render()
+
+                    if self.caught():
+                        self.finish(caught_banner(), CAUGHT_OUTCOME)
+                        break
                     continue
 
                 if key == 'q':
@@ -490,17 +634,26 @@ class MazeGame:
                     self.move_player(1, 0)
                 elif key == 'h':
                     self.show_hint()
-                else:
-                    continue
 
+                # a key the game has no use for moves nothing, but the
+                # clock ran while it was held down all the same, so it is
+                # a turn of the loop like any other rather than a turn
+                # that never happened. Falling out of the branch instead
+                # of starting the loop again is what keeps a key the game
+                # ignores from freezing the chase along with it
+
+                self.advance_chase()
                 self.render()
 
+                # the player moved before the chaser did, so a step onto
+                # the exit is an escape even when the chaser was one
+                # cell behind it
                 if self.check_win():
-                    self.stop_clock()
-                    print("\n" + win_banner())
-                    self.print_summary()
-                    print("\nPress any key to exit...")
-                    self.get_key()
+                    self.finish(win_banner(), ESCAPED_OUTCOME)
+                    break
+
+                if self.caught():
+                    self.finish(caught_banner(), CAUGHT_OUTCOME)
                     break
         except KeyboardInterrupt:
             # the key readers restore the terminal before letting the

@@ -29,11 +29,11 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # every module of the package, and the one that is allowed a terminal
 PACKAGE_MODULES = ('algorithms', 'algorithms.backtracker',
-                   'algorithms.division', 'algorithms.prim', 'cli', 'game',
-                   'generation', 'grid', 'keys', 'rendering', 'saves',
-                   'solving', 'version')
+                   'algorithms.division', 'algorithms.prim', 'chase', 'cli',
+                   'game', 'generation', 'grid', 'keys', 'modes', 'rendering',
+                   'saves', 'solving', 'version')
 TERMINAL_FREE_MODULES = ('algorithms', 'algorithms.backtracker',
-                         'algorithms.division', 'algorithms.prim',
+                         'algorithms.division', 'algorithms.prim', 'chase',
                          'generation', 'grid', 'rendering', 'saves', 'solving')
 
 # the platform machinery that used to sit at the top of the flat module
@@ -1881,7 +1881,7 @@ class PlaySession:
     MOVES = {'w': (0, -1), 's': (0, 1), 'a': (-1, 0), 'd': (1, 0)}
 
     def __init__(self, keys, maze=None, grid=None, collectibles=(),
-                 ticking=False):
+                 ticking=False, chaser=None):
         # Args:
         #     keys: The keypresses the game is fed, in order
         #     maze: Picture of the maze to play, defaulting to the
@@ -1890,6 +1890,9 @@ class PlaySession:
         #     collectibles: Cells holding something to pick up
         #     ticking: True for a clock that moves a second between one
         #         keypress and the next, so the tally changes
+        #     chaser: A chaser to set on the player, for chase mode. The
+        #         clock is the fake one, so a chaser only moves in a
+        #         session whose clock is ticking
 
         self.keys = list(keys)
         self.ticking = ticking
@@ -1901,7 +1904,7 @@ class PlaySession:
         if grid is None:
             grid = grid_from_strings(maze or TestMazeGame.MAZE)
         self.game = py_maze.MazeGame(grid, collectibles=collectibles,
-                                     clock=self.clock)
+                                     clock=self.clock, chaser=chaser)
 
     def tap(self):
         # a stream keeping each write on its own as well as the whole
@@ -2907,6 +2910,193 @@ class TestBraidOption(ParserRunner, unittest.TestCase):
         self.assertIn('share of the dead ends', message)
 
 
+class TestModeOption(ParserRunner, unittest.TestCase):
+    def test_a_bare_run_plays_the_game_it_always_has(self):
+        self.assertEqual(self.parse([]).mode, py_maze.DEFAULT_MODE)
+        self.assertEqual(py_maze.DEFAULT_MODE, py_maze.PLAIN_MODE)
+
+    def test_every_mode_there_is_can_be_named(self):
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                self.assertEqual(self.parse(['--mode', name]).mode, name)
+                self.assertEqual(self.parse(['-m', name]).mode, name)
+
+    def test_a_mode_nothing_answers_to_is_refused(self):
+        message = self.parse_error(['--mode', 'quest'])
+
+        self.assertIn('quest', message)
+
+    def test_the_help_text_lists_the_modes_that_exist(self):
+        help_text = ' '.join(py_maze.build_parser().format_help().split())
+
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                self.assertIn(name, help_text)
+                self.assertIn(py_maze.MODE_NOTES[name], help_text)
+
+    def test_the_help_text_says_which_options_belong_to_which_mode(self):
+        summary = py_maze.mode_summary()
+
+        for name, owned in py_maze.MODE_OPTIONS.items():
+            with self.subTest(mode=name):
+                for option in owned:
+                    self.assertIn(option, summary)
+
+    def test_the_registry_is_the_shape_the_others_are(self):
+        # a mode is an entry here rather than a branch in main(), which
+        # is what lets quest mode join the list without editing --mode
+        self.assertEqual(set(py_maze.MODES), set(py_maze.MODE_NOTES))
+        self.assertEqual(py_maze.game_mode(py_maze.CHASE_MODE),
+                         py_maze.chase_game)
+        self.assertEqual(py_maze.game_mode(py_maze.PLAIN_MODE),
+                         py_maze.plain_game)
+
+    def test_a_mode_no_game_answers_to_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            py_maze.game_mode('quest')
+
+        self.assertIn('quest', str(caught.exception))
+
+    def test_every_option_a_mode_owns_is_an_option_the_parser_takes(self):
+        help_text = py_maze.build_parser().format_help()
+
+        for owned in py_maze.MODE_OPTIONS.values():
+            for option in owned:
+                with self.subTest(option=option):
+                    self.assertIn(option, help_text)
+
+    def test_the_plain_mode_builds_the_game_with_nothing_chasing_it(self):
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        game = py_maze.build_game(self.parse([]), grid)
+
+        self.assertIsNone(game.chaser)
+
+    def test_the_chase_mode_sets_a_chaser_on_the_entrance(self):
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        game = py_maze.build_game(self.parse(['-m', 'chase']), grid)
+
+        self.assertEqual(game.chaser.cell(), py_maze.find_entrance(grid))
+        self.assertFalse(game.chaser.started)
+
+    def test_the_chase_options_reach_the_chaser(self):
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        game = py_maze.build_game(self.parse(
+            ['-m', 'chase', '--chase-point', '80', '--chase-speed', '4']),
+            grid)
+
+        self.assertEqual(game.chaser.point, 80)
+        self.assertEqual(game.chaser.speed, 4)
+
+    def test_a_chase_option_given_to_another_mode_is_ignored(self):
+        # every mode is handed every setting and reads the ones that are
+        # its own, so an option for a mode not being played does no harm
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        game = py_maze.build_game(
+            self.parse(['--chase-point', '80']), grid)
+
+        self.assertIsNone(game.chaser)
+
+    def test_the_game_is_handed_the_collectibles_whichever_mode(self):
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                game = py_maze.build_game(self.parse(['-m', name]), grid,
+                                          {(1, 1)})
+
+                self.assertEqual(game.collectibles, {(1, 1)})
+
+
+class TestChaseOptions(ParserRunner, unittest.TestCase):
+    # --chase-point and --chase-speed share their whole validation shape
+
+    RANGES = {
+        '--chase-point': ('chase_point', py_maze.MIN_CHASE_POINT,
+                          py_maze.MAX_CHASE_POINT,
+                          py_maze.DEFAULT_CHASE_POINT),
+        '--chase-speed': ('chase_speed', py_maze.MIN_CHASE_SPEED,
+                          py_maze.MAX_CHASE_SPEED,
+                          py_maze.DEFAULT_CHASE_SPEED),
+    }
+
+    def read(self, option, value):
+        # Returns:
+        #     tuple: (what the option settled on, what was left on
+        #     standard error while reading it)
+
+        # the value is joined to the option with an equals sign so a
+        # leading minus is read as part of it rather than as an option
+        # of its own, which is how argparse reads '-inf'
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            args = self.parse(['%s=%s' % (option, value)])
+
+        return getattr(args, self.RANGES[option][0]), stderr.getvalue()
+
+    def test_neither_is_given_a_value_until_it_is_asked_for(self):
+        args = self.parse([])
+
+        self.assertEqual(args.chase_point, py_maze.DEFAULT_CHASE_POINT)
+        self.assertEqual(args.chase_speed, py_maze.DEFAULT_CHASE_SPEED)
+
+    def test_a_whole_number_inside_the_range_is_taken_as_it_stands(self):
+        for option, (_, low, high, _default) in self.RANGES.items():
+            with self.subTest(option=option):
+                for value in (low, high):
+                    self.assertEqual(self.read(option, str(value))[0], value)
+
+    def test_a_value_under_the_range_resolves_to_the_bottom_of_it(self):
+        for option, (_, low, _high, _default) in self.RANGES.items():
+            with self.subTest(option=option):
+                self.assertEqual(self.read(option, str(low - 15))[0], low)
+
+    def test_a_value_over_the_range_resolves_to_the_top_of_it(self):
+        for option, (_, _low, high, _default) in self.RANGES.items():
+            with self.subTest(option=option):
+                self.assertEqual(self.read(option, str(high + 15))[0], high)
+
+    def test_a_decimal_rounds_to_the_nearest_whole_number(self):
+        self.assertEqual(self.read('--chase-point', '60.4')[0], 60)
+        self.assertEqual(self.read('--chase-point', '60.5')[0], 61)
+        self.assertEqual(self.read('--chase-speed', '2.4')[0], 2)
+        self.assertEqual(self.read('--chase-speed', '2.5')[0], 3)
+
+    def test_a_value_that_is_not_a_number_is_a_notice_not_a_refusal(self):
+        for option, (_, _low, _high, default) in self.RANGES.items():
+            with self.subTest(option=option):
+                settled, said = self.read(option, 'a34')
+
+                self.assertEqual(settled, default)
+                self.assertIn(option, said)
+                self.assertIn('a34', said)
+
+    def test_a_number_that_names_no_place_on_the_range_is_refused_too(self):
+        for value in ('nan', 'inf', '-inf', ''):
+            with self.subTest(value=value):
+                settled, said = self.read('--chase-point', value)
+
+                self.assertEqual(settled, py_maze.DEFAULT_CHASE_POINT)
+                self.assertIn('--chase-point', said)
+
+    def test_the_notice_leaves_standard_output_to_the_maze(self):
+        # a quiet run's output is read by another program, and a notice
+        # about an option it was given is not part of the maze
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), \
+                contextlib.redirect_stderr(stderr):
+            self.parse(['--chase-speed', 'fast'])
+
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertIn('fast', stderr.getvalue())
+
+    def test_the_run_carries_on_as_though_the_option_were_not_given(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            args = self.parse(['--mode', 'chase', '--chase-point', 'a34'])
+
+        self.assertEqual(args.mode, 'chase')
+        self.assertEqual(args.chase_point, py_maze.DEFAULT_CHASE_POINT)
+
+
 class TestSeed(unittest.TestCase):
     def generate(self, seed):
         return py_maze.MazeGenerator(5, 6, seed=seed).generate()
@@ -3629,6 +3819,110 @@ class TestSearchFrames(unittest.TestCase):
         self.assertEqual(frames, [(set(), set(), None)])
 
 
+class TestSolutionRuns(unittest.TestCase):
+    # a solution is measured as the straight runs it is made of rather
+    # than as a count of cells, which is what lets a share of it be
+    # pointed at: a run holds the point, and a list of cells does not
+
+    def runs(self, maze):
+        return py_maze.solution_runs(
+            py_maze.solve_maze(grid_from_strings(maze)))
+
+    def test_a_winding_solution_is_split_at_its_corners(self):
+        # the hand-built maze turns twice: down one, across two, down three
+        self.assertEqual(self.runs(TestMazeGame.MAZE), [1, 2, 3])
+
+    def test_a_straight_solution_is_the_one_run(self):
+        self.assertEqual(self.runs(["* *", "* *", "* *"]), [2])
+
+    def test_the_runs_sum_to_the_steps_the_solution_takes(self):
+        # every step belongs to exactly one run, so nothing is counted
+        # twice at a corner and nothing is dropped there either
+        path = py_maze.solve_maze(
+            py_maze.MazeGenerator(7, 9, seed=2024).generate())
+
+        self.assertEqual(sum(py_maze.solution_runs(path)), len(path) - 1)
+
+    def test_a_solution_that_goes_nowhere_is_made_of_no_runs(self):
+        for path in (None, [], [(1, 0)]):
+            with self.subTest(path=path):
+                self.assertEqual(py_maze.solution_runs(path), [])
+
+
+class TestMazeProgress(unittest.TestCase):
+    # how far along the solution a cell stands, which is what the chase
+    # point is read off
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+        self.path = py_maze.solve_maze(self.grid)
+
+    def test_the_entrance_is_none_of_the_solution_walked(self):
+        self.assertEqual(py_maze.maze_progress(self.grid, self.path[0]), 0.0)
+
+    def test_the_exit_is_the_whole_of_it(self):
+        self.assertEqual(py_maze.maze_progress(self.grid, self.path[-1]), 1.0)
+
+    def test_a_cell_is_the_distance_walked_to_it_over_the_whole(self):
+        # three of the six steps the solution takes, so half the maze
+        self.assertEqual(py_maze.maze_progress(self.grid, self.path[3]), 0.5)
+
+    def test_progress_rises_the_whole_way_along_the_solution(self):
+        grid = py_maze.MazeGenerator(7, 9, seed=2024).generate()
+        path = py_maze.solve_maze(grid)
+        shares = [py_maze.maze_progress(grid, cell, path) for cell in path]
+
+        self.assertEqual(shares, sorted(shares))
+        self.assertEqual((shares[0], shares[-1]), (0.0, 1.0))
+
+    def test_the_share_falls_in_the_run_the_worked_example_names(self):
+        # a solution of four runs of 4, 2, 5 and 3 totals 14, so 55% of
+        # it is 7.7, which falls in the third run rather than the second
+        runs = [4, 2, 5, 3]
+        walked = 0.55 * sum(runs)
+
+        self.assertAlmostEqual(walked, 7.7)
+        self.assertGreater(walked, sum(runs[:2]))
+        self.assertLess(walked, sum(runs[:3]))
+
+    def test_a_cell_off_the_solution_has_no_share_of_it(self):
+        # a player standing in a dead end has walked none of the route,
+        # and saying so is more use than a number invented for it
+        off = [cell for cell in py_maze.open_cells(self.grid)
+               if cell not in self.path]
+        self.assertTrue(off, 'the maze has no cell off its solution')
+
+        for cell in off:
+            with self.subTest(cell=cell):
+                self.assertIsNone(py_maze.maze_progress(self.grid, cell))
+
+    def test_a_maze_with_no_way_through_reports_no_progress(self):
+        blocked = grid_from_strings([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+
+        self.assertIsNone(py_maze.maze_progress(blocked, (1, 1)))
+
+    def test_a_maze_entered_where_it_is_left_is_already_finished(self):
+        # nothing to walk, so the one cell the solution has is the whole
+        # of it and standing on it is standing at the end
+        self.assertEqual(
+            py_maze.maze_progress(self.grid, (1, 0), [(1, 0)]), 1.0)
+
+    def test_the_solution_can_be_handed_in_rather_than_solved_again(self):
+        # a caller measuring cell after cell against the one maze pays
+        # for one search rather than one a cell
+        with mock.patch.object(py_maze.solving, 'solve_maze') as solve:
+            share = py_maze.maze_progress(self.grid, self.path[3], self.path)
+
+        self.assertEqual(share, 0.5)
+        self.assertEqual(solve.call_count, 0)
+
+
 class TestMazeLines(unittest.TestCase):
     PICTURE = [
         "* ***",
@@ -4317,6 +4611,381 @@ class TestCanEncode(unittest.TestCase):
             self.assertTrue(py_maze.can_encode('\N{PARTY POPPER}'))
 
 
+class TestChaser(unittest.TestCase):
+    # the antagonist is a cell and a clock: where it steps comes from
+    # the solver the game already runs, when it steps from a preset
+    # number of moves a second
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+        self.path = py_maze.solve_maze(self.grid)
+        self.chaser = py_maze.Chaser(py_maze.find_entrance(self.grid))
+
+    def run_for(self, steps, target):
+        # let the clock pass one interval at a time, so the chaser takes
+        # a step at a time rather than a stall's worth at once
+        now = 0.0
+        for _ in range(steps):
+            now += self.chaser.interval
+            self.chaser.advance(now, self.grid, target)
+
+    def test_it_waits_on_the_cell_it_was_placed_on(self):
+        self.assertEqual(self.chaser.cell(), (1, 0))
+        self.assertFalse(self.chaser.started)
+        self.assertEqual(self.chaser.moves, 0)
+
+    def test_the_reasonable_point_is_past_halfway_and_inside_the_range(self):
+        self.assertEqual(self.chaser.point, py_maze.DEFAULT_CHASE_POINT)
+        self.assertGreater(py_maze.DEFAULT_CHASE_POINT, 50)
+        self.assertGreaterEqual(py_maze.DEFAULT_CHASE_POINT,
+                                py_maze.MIN_CHASE_POINT)
+        self.assertLessEqual(py_maze.DEFAULT_CHASE_POINT,
+                             py_maze.MAX_CHASE_POINT)
+
+    def test_the_presets_run_from_the_slowest_to_the_fastest(self):
+        self.assertEqual(py_maze.CHASE_SPEEDS, (1, 2, 3, 4, 5, 6))
+        self.assertEqual(py_maze.MIN_CHASE_SPEED, 0)
+        self.assertEqual(py_maze.MAX_CHASE_SPEED,
+                         len(py_maze.CHASE_SPEEDS) - 1)
+
+    def test_a_preset_is_the_moves_it_makes_in_a_second(self):
+        for preset, a_second in enumerate(py_maze.CHASE_SPEEDS):
+            with self.subTest(preset=preset):
+                chaser = py_maze.Chaser((1, 0), speed=preset)
+
+                self.assertAlmostEqual(chaser.interval, 1.0 / a_second)
+
+    def test_the_reasonable_speed_is_one_a_moving_player_matches(self):
+        # slow enough that a player who keeps moving cannot be caught by
+        # the chaser alone, which is what the default is for
+        self.assertEqual(self.chaser.speed, py_maze.DEFAULT_CHASE_SPEED)
+        self.assertLess(py_maze.CHASE_SPEEDS[py_maze.DEFAULT_CHASE_SPEED],
+                        py_maze.CHASE_SPEEDS[py_maze.MAX_CHASE_SPEED])
+
+    def test_a_speed_outside_the_presets_is_held_inside_them(self):
+        self.assertEqual(py_maze.Chaser((1, 0), speed=-4).speed,
+                         py_maze.MIN_CHASE_SPEED)
+        self.assertEqual(py_maze.Chaser((1, 0), speed=99).speed,
+                         py_maze.MAX_CHASE_SPEED)
+
+    def test_nothing_starts_it_short_of_the_chase_point(self):
+        for progress in (None, 0.0, 0.54):
+            with self.subTest(progress=progress):
+                self.assertFalse(self.chaser.begins(progress))
+
+    def test_reaching_the_chase_point_starts_it(self):
+        self.assertTrue(self.chaser.begins(0.55))
+        self.assertTrue(self.chaser.begins(1.0))
+
+    def test_a_waiting_chaser_takes_no_step_however_long_it_waits(self):
+        self.assertEqual(self.chaser.advance(99, self.grid, (3, 4)), 0)
+        self.assertEqual(self.chaser.cell(), (1, 0))
+
+    def test_a_waiting_chaser_catches_nobody_it_is_standing_on(self):
+        # it waits on the entrance, which is where the player starts
+        self.assertEqual(self.chaser.cell(), (1, 0))
+        self.assertFalse(self.chaser.catches((1, 0)))
+
+    def test_the_first_move_falls_a_whole_interval_after_it_starts(self):
+        # the player has the frame it appeared on to react to it
+        self.chaser.start(10.0)
+
+        self.assertTrue(self.chaser.started)
+        self.assertEqual(self.chaser.advance(10.0, self.grid, (3, 4)), 0)
+        self.assertEqual(
+            self.chaser.advance(10.0 + self.chaser.interval,
+                                self.grid, (3, 4)), 1)
+
+    def test_starting_a_chase_twice_does_not_move_its_first_step(self):
+        self.chaser.start(10.0)
+        due = self.chaser.next_move
+        self.chaser.start(90.0)
+
+        self.assertEqual(self.chaser.next_move, due)
+
+    def test_it_steps_along_the_way_to_the_player(self):
+        self.chaser.start(0.0)
+        self.run_for(1, (3, 4))
+
+        self.assertEqual(self.chaser.cell(), self.path[1])
+        self.assertEqual(self.chaser.moves, 1)
+
+    def test_it_never_steps_into_a_wall(self):
+        self.chaser.start(0.0)
+        now = 0.0
+        for _ in range(20):
+            now += self.chaser.interval
+            self.chaser.advance(now, self.grid, (3, 4))
+            x, y = self.chaser.cell()
+
+            self.assertFalse(self.grid[y][x], 'the chaser walked into a wall')
+
+    def test_it_reaches_the_player_and_stays_there(self):
+        self.chaser.start(0.0)
+        self.run_for(20, (3, 4))
+
+        self.assertEqual(self.chaser.cell(), (3, 4))
+        self.assertTrue(self.chaser.catches((3, 4)))
+
+    def test_it_heads_wherever_the_player_went_since_its_last_step(self):
+        # the way to the player is solved every step, so nothing has to
+        # be recomputed when they turn round
+        self.chaser.start(0.0)
+        self.run_for(1, (1, 1))
+
+        self.assertEqual(self.chaser.cell(), (1, 1))
+
+    def test_a_stalled_game_does_not_hand_it_the_whole_maze(self):
+        self.chaser.start(0.0)
+
+        self.assertEqual(self.chaser.advance(1000.0, self.grid, (3, 4)),
+                         py_maze.MAX_CHASE_CATCH_UP)
+
+    def test_the_debt_a_stall_left_is_written_off_rather_than_owed(self):
+        # the moves the stall passed over are forgiven, so the chaser
+        # does not then run flat out until it has worked through them
+        self.chaser.start(0.0)
+        self.chaser.advance(1000.0, self.grid, (3, 4))
+
+        self.assertEqual(self.chaser.advance(1000.0, self.grid, (3, 4)), 0)
+
+    def test_the_chase_begins_the_first_time_the_point_is_reached(self):
+        # halfway is three of the six steps, which is short of 55%
+        self.assertFalse(self.chaser.chasing(0.0, self.grid, self.path[3],
+                                             self.path))
+        self.assertTrue(self.chaser.chasing(0.0, self.grid, self.path[4],
+                                            self.path))
+
+    def test_a_chase_once_begun_never_stops(self):
+        self.chaser.chasing(0.0, self.grid, self.path[-1], self.path)
+
+        # back at the entrance, with none of the maze walked
+        self.assertTrue(self.chaser.chasing(0.0, self.grid, self.path[0],
+                                            self.path))
+
+
+class TestChaseSetting(unittest.TestCase):
+    # the rule --chase-point and --chase-speed share
+
+    def test_a_whole_number_inside_the_range_is_left_alone(self):
+        self.assertEqual(py_maze.chase_setting(55, 20, 90), 55)
+
+    def test_a_number_under_the_range_resolves_to_the_bottom_of_it(self):
+        self.assertEqual(py_maze.chase_setting(5, 20, 90), 20)
+
+    def test_a_number_over_the_range_resolves_to_the_top_of_it(self):
+        self.assertEqual(py_maze.chase_setting(200, 20, 90), 90)
+
+    def test_a_decimal_rounds_to_the_nearest_whole_number(self):
+        self.assertEqual(py_maze.chase_setting(60.4, 20, 90), 60)
+        self.assertEqual(py_maze.chase_setting(60.5, 20, 90), 61)
+        self.assertEqual(py_maze.chase_setting(60.6, 20, 90), 61)
+
+    def test_a_half_rounds_away_from_zero_rather_than_to_the_even(self):
+        # round() would send 2.5 to 2, which is not the nearest whole
+        # number a player means
+        self.assertEqual(py_maze.chase_setting(2.5, 0, 5), 3)
+
+    def test_a_negative_decimal_rounds_before_it_is_held(self):
+        self.assertEqual(py_maze.chase_setting(-2.5, 0, 5), 0)
+
+
+class TestChaseMode(unittest.TestCase):
+    # the game with a chaser in it: the same grid, the same solver, the
+    # same renderer and the same key loop, played with something behind
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+        self.path = py_maze.solve_maze(self.grid)
+        self.clock = FakeClock()
+        self.chaser = py_maze.Chaser(py_maze.find_entrance(self.grid))
+        self.game = py_maze.MazeGame(self.grid, chaser=self.chaser,
+                                     clock=self.clock)
+        self.game.start_clock()
+
+    def walk_to(self, index):
+        # move the player along the solution as far as the given cell
+        for x, y in self.path[1:index + 1]:
+            self.game.move_player(x - self.game.player_x,
+                                  y - self.game.player_y)
+            self.game.advance_chase()
+
+    def test_the_plain_game_has_nothing_chasing_it(self):
+        plain = py_maze.MazeGame(self.grid)
+
+        self.assertIsNone(plain.chaser)
+        self.assertIsNone(plain.outcome)
+        self.assertIsNone(plain.solution)
+        self.assertEqual(plain.advance_chase(), 0)
+        self.assertFalse(plain.caught())
+
+    def test_the_plain_game_waits_the_moment_it_always_has(self):
+        self.assertEqual(py_maze.MazeGame(self.grid).tick(),
+                         py_maze.TICK_SECONDS)
+
+    def test_the_solution_is_solved_once_rather_than_a_step_at_a_time(self):
+        self.assertEqual(self.game.solution, self.path)
+
+    def test_the_chaser_is_not_drawn_before_the_chase_begins(self):
+        self.assertNotIn(py_maze.CHASER_MARKER, ''.join(self.game.frame()))
+
+    def test_walking_far_enough_in_sets_the_chase_going(self):
+        self.walk_to(3)
+        self.assertFalse(self.chaser.started)
+
+        self.walk_to(4)
+        self.assertTrue(self.chaser.started)
+
+    def test_the_chaser_is_drawn_once_the_chase_has_begun(self):
+        self.walk_to(4)
+
+        self.assertIn(py_maze.CHASER_MARKER, ''.join(self.game.frame()))
+
+    def test_the_chaser_is_drawn_over_the_player(self):
+        # the step that catches them is a picture of it rather than a
+        # frame that looks like every other
+        self.walk_to(4)
+        self.chaser.x, self.chaser.y = self.game.player_cell()
+        drawn = self.game.frame()[1 + self.game.player_y]
+
+        self.assertEqual(drawn[self.game.player_x], py_maze.CHASER_MARKER)
+
+    def test_the_chaser_moves_on_the_clock_rather_than_the_keyboard(self):
+        self.walk_to(4)
+        where = self.chaser.cell()
+
+        self.clock.advance(self.chaser.interval)
+        self.game.advance_chase()
+
+        self.assertNotEqual(self.chaser.cell(), where)
+
+    def test_standing_still_is_what_a_chase_punishes(self):
+        self.walk_to(4)
+        for _ in range(40):
+            self.clock.advance(self.chaser.interval)
+            self.game.advance_chase()
+            if self.game.caught():
+                break
+
+        self.assertTrue(self.game.caught())
+
+    def test_the_tick_is_never_longer_than_the_chaser_step(self):
+        for preset in range(py_maze.MIN_CHASE_SPEED,
+                            py_maze.MAX_CHASE_SPEED + 1):
+            with self.subTest(preset=preset):
+                game = py_maze.MazeGame(
+                    self.grid, chaser=py_maze.Chaser((1, 0), speed=preset))
+
+                self.assertLessEqual(game.tick(), py_maze.TICK_SECONDS)
+                self.assertLessEqual(game.tick(), game.chaser.interval)
+
+
+class TestCaughtBanner(unittest.TestCase):
+    def banner(self, encoding):
+        # Returns:
+        #     str: The banner a console with that encoding is given
+
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return py_maze.caught_banner(stream)
+
+    def test_a_console_that_can_carry_the_emoji_gets_it(self):
+        self.assertEqual(self.banner('utf-8'), py_maze.CAUGHT_BANNER)
+
+    def test_a_legacy_code_page_gets_the_plain_banner(self):
+        for encoding in ('cp437', 'cp1252', 'ascii', 'latin-1'):
+            with self.subTest(encoding=encoding):
+                self.assertEqual(self.banner(encoding),
+                                 py_maze.PLAIN_CAUGHT_BANNER)
+
+    def test_a_stream_that_names_no_encoding_takes_anything(self):
+        self.assertEqual(py_maze.caught_banner(io.StringIO()),
+                         py_maze.CAUGHT_BANNER)
+
+    def test_both_banners_say_the_same_thing(self):
+        self.assertIn('Caught', py_maze.CAUGHT_BANNER)
+        self.assertIn('Caught', py_maze.PLAIN_CAUGHT_BANNER)
+
+    def test_the_plain_banner_is_plain_ascii(self):
+        # the point of it: every code page can carry every character
+        self.assertEqual(
+            py_maze.PLAIN_CAUGHT_BANNER.encode('ascii').decode('ascii'),
+            py_maze.PLAIN_CAUGHT_BANNER)
+
+
+class TestChasedGameEnds(unittest.TestCase):
+    # being caught ends the run the way the exit does, with a summary
+    # saying which of the two happened rather than a second screen
+
+    def chaser(self, **settings):
+        return py_maze.Chaser((1, 0), **settings)
+
+    def test_reaching_the_exit_ends_it_as_it_always_did(self):
+        # the clock never moves, so the chaser never does either: the
+        # player walks out the way they walk out of the plain game
+        session = PlaySession(TestMazeGame.ROUTE + ['x'],
+                              chaser=self.chaser()).play()
+        printed = session.output.getvalue()
+
+        self.assertIn(py_maze.WIN_BANNER, printed)
+        self.assertIn(py_maze.ESCAPED_OUTCOME, printed)
+        self.assertNotIn(py_maze.CAUGHT_OUTCOME, printed)
+
+    def test_being_caught_ends_it_the_same_way(self):
+        session = PlaySession(['s', 'd', 'd', 's'] + [None] * 20,
+                              chaser=self.chaser(), ticking=True).play()
+        printed = session.output.getvalue()
+
+        self.assertTrue(session.game.caught())
+        self.assertIn(py_maze.CAUGHT_BANNER, printed)
+        self.assertIn(py_maze.CAUGHT_OUTCOME, printed)
+        self.assertNotIn(py_maze.WIN_BANNER, printed)
+
+    def test_a_key_the_game_ignores_does_not_freeze_the_chase(self):
+        # the clock ran while the key was held down, so the turn it took
+        # is a turn of the loop like the turns nothing was pressed on:
+        # a key the game has no use for is not a way to stand still
+        session = PlaySession(['s', 'd', 'd', 's'] + ['z'] * 20,
+                              chaser=self.chaser(), ticking=True).play()
+
+        self.assertTrue(session.game.caught())
+        self.assertIn(py_maze.CAUGHT_OUTCOME, session.output.getvalue())
+
+    def test_a_key_the_game_ignores_still_moves_nobody(self):
+        # the chaser advancing on it does not make it a step: the maze
+        # is where it was and the move tally with it
+        session = PlaySession(['s'] + ['z'] * 5 + ['q'],
+                              chaser=self.chaser(), ticking=True).play()
+
+        self.assertEqual(session.game.moves, 1)
+
+    def test_the_caught_screen_lands_under_the_maze(self):
+        session = PlaySession(['s', 'd', 'd', 's'] + [None] * 20,
+                              chaser=self.chaser(), ticking=True).play()
+        lines = session.screen().lines()
+
+        self.assertEqual(lines[:session.rows()], session.game.frame())
+        self.assertIn('Time', '\n'.join(lines[session.rows():]))
+        self.assertIn('Outcome', '\n'.join(lines[session.rows():]))
+
+    def test_the_summary_names_which_of_the_two_happened(self):
+        self.assertEqual(
+            py_maze.summary_lines(75, 12, outcome=py_maze.CAUGHT_OUTCOME),
+            ["Time:  1:15", "Moves: 12", "Outcome: caught by the chaser"])
+
+    def test_the_plain_game_has_one_way_out_and_names_none(self):
+        session = PlaySession(TestMazeGame.ROUTE + ['x']).play()
+
+        self.assertIsNone(session.game.outcome)
+        self.assertNotIn('Outcome', session.output.getvalue())
+
+    def test_quitting_a_chase_is_neither_of_them(self):
+        session = PlaySession(['s', 'q'], chaser=self.chaser()).play()
+
+        self.assertIsNone(session.game.outcome)
+        self.assertNotIn('Outcome', session.output.getvalue())
+
+
 class TestCollectibleCount(unittest.TestCase):
     def test_accepts_nought_and_above(self):
         self.assertEqual(py_maze.collectible_count('0'), 0)
@@ -4584,7 +5253,7 @@ class TestMain(MainRunner, unittest.TestCase):
         self.assertLess(int(reported.group(1)), py_maze.MAX_SEED)
 
     def test_answering_yes_starts_the_game(self):
-        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+        with mock.patch.object(py_maze.modes, 'MazeGame') as game:
             self.run_main(response='y')
 
         game.return_value.play.assert_called_once_with()
@@ -4619,7 +5288,7 @@ class TestMain(MainRunner, unittest.TestCase):
         self.assertIn(py_maze.SOLUTION_MARKER, maze)
 
     def test_the_game_is_handed_the_collectibles(self):
-        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+        with mock.patch.object(py_maze.modes, 'MazeGame') as game:
             self.run_main(['-c', '3', '--seed', '2024'], response='y')
 
         _, collectibles = game.call_args[0]
@@ -4686,7 +5355,7 @@ class TestMainSaveAndLoad(MainRunner, unittest.TestCase):
 
     def test_a_loaded_maze_keeps_its_collectibles(self):
         self.run_main(['--save', self.path, '-c', '4', '--seed', '2024'])
-        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+        with mock.patch.object(py_maze.modes, 'MazeGame') as game:
             self.run_main(['--load', self.path], response='y')
 
         _, collectibles = game.call_args[0]
@@ -4854,7 +5523,7 @@ class TestQuietOption(MainRunner, unittest.TestCase):
         self.assertTrue(os.path.exists(self.path))
 
     def test_a_quiet_run_does_not_ask_whether_to_play(self):
-        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+        with mock.patch.object(py_maze.modes, 'MazeGame') as game:
             output, _ = self.run_main(['-q'], response='y')
 
         self.assertNotIn('Would you like to play', output)
@@ -5172,7 +5841,7 @@ class TestStandardInputAndOutput(MainRunner, unittest.TestCase):
         grid = py_maze.MazeGenerator(3, 3, seed=1).generate()
         saved = '\n'.join(py_maze.save_lines(grid)) + '\n'
 
-        with mock.patch.object(py_maze.cli, 'MazeGame') as game:
+        with mock.patch.object(py_maze.modes, 'MazeGame') as game:
             output, _ = self.run_main(['--load', py_maze.STDIO_PATH],
                                       response='y', stdin=saved)
 
@@ -5675,7 +6344,7 @@ class TestTerminalImports(unittest.TestCase):
     def test_no_other_module_imports_the_terminal_itself(self):
         # game and cli reach the keyboard through py_maze.keys, so the
         # imports stay in one file however the package grows
-        for name in TERMINAL_FREE_MODULES + ('game', 'cli'):
+        for name in TERMINAL_FREE_MODULES + ('game', 'modes', 'cli'):
             module = importlib.import_module('py_maze.%s' % name)
             source = inspect.getsource(module)
 
