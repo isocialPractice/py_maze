@@ -63,6 +63,8 @@ py_maze
   you finish
 - **Collectibles**: Scatter pickups through the maze and see the tally at the
   end
+- **Chase Mode**: Walk far enough in and something starts following you, at a
+  speed and from a point you can set
 - **Save and Load**: Keep a maze in a file and play it again later
 - **Scriptable**: A quiet mode, JSON output, standard input and output, and a
   status code for each thing that can go wrong

@@ -15,6 +15,8 @@ summary: >-
    - Walk over any collectibles (`$`) to pick them up
    - Press **'h'** for a hint when you are stuck
    - Press **'q'** to quit at any time, or **Ctrl+C** to interrupt
+5. `--mode chase` plays the same maze with something following you. See
+   [game modes](options.md#game-modes) for the options that go with it
 
 ## Controls
 
@@ -89,6 +91,63 @@ encode:
 ```
 Congratulations! You solved the maze!
 ```
+
+## Chase Mode
+
+`--mode chase` is the same maze, the same keys and the same summary, played
+with an antagonist behind the player. Nothing follows them at first: the
+chaser waits at the entrance until they have walked far enough in, then
+appears as an `X` and starts after them.
+
+```
+start
+* ***
+*o  *
+*** *
+*X  *
+*** *
+end
+time 0:09   moves 6
+
+Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
+```
+
+It walks the route the solver finds from itself to wherever the player is
+standing, worked out again on every step, so it never crosses a wall and it
+turns when they turn. It moves on the clock rather than on the keyboard, at
+a preset number of moves a second, which means standing still is what a
+chase punishes: the maze is where it was, and the chaser is not.
+
+Being caught ends the run the way the exit does, on the same screen with the
+same tallies. What tells them apart is a line naming which of the two
+happened:
+
+```
+💀 Caught! The chaser reached you. 💀
+
+Time:  0:48
+Moves: 61
+Outcome: caught by the chaser
+
+Press any key to exit...
+```
+
+Walking out instead reads `Outcome: reached the exit` under the same
+congratulations the plain game prints. The line belongs to the chase: a
+plain game has one way out, so a summary saying which was taken would say
+nothing, and it is left off. Quitting is neither of the two, so it is left
+off there as well.
+
+A console whose code page cannot draw the skulls gets `Caught! The chaser
+reached you.` on its own, exactly as the congratulations falls back.
+
+How far in the chase begins and how fast the chaser moves are both settings:
+`--chase-point` takes a share of the maze from 20 to 90, and `--chase-speed`
+one of six presets from 0 for one move a second to 5 for six. Left alone
+they are a point past halfway and a speed a player who keeps moving matches
+without hurrying, so the chaser alone never catches somebody still walking.
+The two are covered in full under
+[game modes](options.md#game-modes).
 
 ## Hints
 

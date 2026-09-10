@@ -59,3 +59,17 @@ A carved maze has only one route through, so the shortest route is the only
 route, and the same solver still finds the way out from anywhere a player has
 wandered to. On a maze braided with `--braid` there is more than one route,
 and the one that comes back is the shortest of them.
+
+That the search runs between any two cells rather than only between the two
+ends is what chase mode is built out of. The chaser solves from itself to
+wherever the player is standing and takes the first step of what comes back,
+so it never crosses a wall, it turns when the player turns, and the mode
+needs no second algorithm of its own.
+
+Where the chase begins is read off the same route, measured as the straight
+runs it is made of rather than as a count of cells. Summing the length of
+each run gives the length of the whole, and a cell's progress is the distance
+walked to it over that sum: a route of four runs of 4, 2, 5 and 3 totals 14,
+so the default `--chase-point` of 55 begins the chase 7.7 steps along it,
+which falls in the third run. Every step belongs to exactly one run, so
+nothing is counted twice at a corner and nothing is dropped there either.

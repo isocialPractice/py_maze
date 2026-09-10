@@ -219,6 +219,28 @@ carved grid with its entrance and exit already opened:
 | --- | --- |
 | `solve_maze(grid, start, end)` | The shortest route as a list of cells, or `None` |
 | `search_frames(grid, start, end)` | Yield `(visited, frontier, path)`, one wave at a time |
+| `solution_runs(path)` | The straight runs a solution is made of, as their lengths |
+| `maze_progress(grid, cell, path)` | How far along the solution a cell stands, from `0` to `1`, or `None` |
+
+A solution is measured as the straight runs it is made of rather than as a
+count of cells, which is what lets a share of it be pointed at. A route of
+four runs of 4, 2, 5 and 3 totals 14 steps, so 55% of it is 7.7, which falls
+in the third run:
+
+```python
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> path = py_maze.solve_maze(grid)
+>>> sum(py_maze.solution_runs(path)) == len(path) - 1
+True
+>>> py_maze.maze_progress(grid, path[0]), py_maze.maze_progress(grid, path[-1])
+(0.0, 1.0)
+```
+
+Every step belongs to exactly one run, so the lengths always sum to the steps
+the whole route takes. A cell that is not on the solution has no share of it
+and `maze_progress` answers `None`, which is also what it answers for a maze
+with no way through. Pass `path` when measuring cell after cell against the
+one maze and it is not solved again for each.
 
 **Drawing** (`py_maze.rendering`)
 
@@ -244,7 +266,7 @@ them running from the most important marker to the least: the first pair
 holding a cell decides what is drawn there. The markers themselves are named
 constants, so a caller need not repeat the characters: `WALL_MARKER`,
 `OPEN_MARKER`, `PLAYER_MARKER`, `SOLUTION_MARKER`, `VISITED_MARKER`,
-`FRONTIER_MARKER`, `HINT_MARKER` and `COLLECTIBLE_MARKER`.
+`FRONTIER_MARKER`, `HINT_MARKER`, `COLLECTIBLE_MARKER` and `CHASER_MARKER`.
 
 **Save files** (`py_maze.saves`)
 
@@ -285,11 +307,58 @@ grid, _, _ = py_maze.parse_save("#.#\n#.#\n",
                                 chars=py_maze.picture_chars('#', '.'))
 ```
 
+## Playing, and the Modes
+
+A mode is the game that is already there played differently: the same grid,
+the same solver, the same renderer and the same key loop. `MODES` maps the
+name `--mode` takes to the function that builds the game, exactly as
+`ALGORITHMS` maps a carving name to its carver, so calling one is the whole
+of setting a mode up:
+
+| Name | What it does |
+| --- | --- |
+| `MODES` | The name `--mode` takes, mapped to the function that builds that game |
+| `MODE_NOTES` | What each one plays like, in the words the help text uses |
+| `MODE_OPTIONS` | The options belonging to each mode, for a mode that has any |
+| `DEFAULT_MODE`, `PLAIN_MODE`, `CHASE_MODE` | The mode a bare run plays, and the names of the two there are |
+| `game_mode(name)` | The building function a name stands for, or `ValueError` |
+| `plain_game(grid, collectibles, ...)` | The walk from the entrance to the exit |
+| `chase_game(grid, collectibles, chase_point, chase_speed)` | The same walk, with a chaser behind it |
+
+Every mode is handed every mode setting and reads the ones that belong to
+it, which is why a setting for a mode you are not playing is ignored rather
+than refused.
+
+The chaser itself is a cell and a clock. Where it steps comes from the same
+breadth-first search everything else uses, solved from the chaser to the
+player, so it never walks into a wall and needs no second algorithm:
+
+| Name | What it does |
+| --- | --- |
+| `Chaser(cell, point, speed)` | An antagonist waiting on a cell until the chase begins |
+| `Chaser.chasing(now, grid, cell, path)` | Start it if the player has walked far enough in, and say whether it is running |
+| `Chaser.advance(now, grid, target)` | Take every step the clock says it is owed, and report how many |
+| `Chaser.catches(cell)` | Whether it is standing where the player is |
+| `CHASE_SPEEDS` | Each preset speed, as the moves it makes in a second |
+| `MIN_CHASE_POINT`, `MAX_CHASE_POINT`, `DEFAULT_CHASE_POINT` | The range `--chase-point` takes, and the reasonable point |
+| `MIN_CHASE_SPEED`, `MAX_CHASE_SPEED`, `DEFAULT_CHASE_SPEED` | The presets `--chase-speed` takes, and the reasonable speed |
+| `MAX_CHASE_CATCH_UP` | The most moves one advance makes up after a stall |
+| `chase_setting(number, low, high)` | Round a chase option's number and hold it inside its range |
+
+```python
+import py_maze
+
+grid = py_maze.MazeGenerator(width=9, height=11, seed=2024).generate()
+game = py_maze.chase_game(grid, chase_point=70, chase_speed=4)
+game.play()
+```
+
 The terminal half is public too: `MazeGame` plays a maze at the console,
 `read_key` and `read_response` take single keypresses, `read_key_timed` waits
 a given moment for one and answers `None` when the moment passes empty, or
 waits however long it takes when the moment it is given is `None` itself, and
-`build_parser`, `build_maze` and `main` are the command line itself, along
+`build_parser`, `build_maze`, `build_game` and `main` are the command line
+itself, along
 with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `EXIT_NO_WAY_THROUGH` codes it exits with. Those are the names that want a
 terminal. Everything above runs without one.

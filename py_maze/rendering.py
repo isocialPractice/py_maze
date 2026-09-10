@@ -24,6 +24,7 @@ __all__ = [
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
     'ANSI_ROW',
+    'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
@@ -67,6 +68,7 @@ VISITED_MARKER = '~'
 FRONTIER_MARKER = '?'
 HINT_MARKER = '?'
 COLLECTIBLE_MARKER = '$'
+CHASER_MARKER = 'X'
 
 # seconds each frame of the animated solver stays on screen
 FRAME_DELAY = 0.05
@@ -472,7 +474,7 @@ def status_line(elapsed, moves, collected=0, total=0):
     return line
 
 
-def summary_lines(elapsed, moves, collected=0, total=0):
+def summary_lines(elapsed, moves, collected=0, total=0, outcome=None):
     """Build the end-of-game summary, one line per tally.
 
     Args:
@@ -480,16 +482,23 @@ def summary_lines(elapsed, moves, collected=0, total=0):
         moves: Steps the player took
         collected: Collectibles picked up
         total: Collectibles the maze started with
+        outcome: How the game ended, for a mode that can end more than
+            one way. Chase mode gives it, the exit and the chaser being
+            two ways out of the same maze; the plain game leaves it out,
+            having only the one
 
     Returns:
         list: One string per line, naming collectibles only when the
-        maze held any
+        maze held any and the outcome only when there was a choice of
+        them
     """
 
     lines = ["Time:  %s" % format_duration(elapsed),
              "Moves: %d" % moves]
     if total:
         lines.append("Collected: %d of %d" % (collected, total))
+    if outcome:
+        lines.append("Outcome: %s" % outcome)
 
     return lines
 

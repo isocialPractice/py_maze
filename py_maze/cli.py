@@ -8,15 +8,20 @@ imported and used without a command line anywhere in sight.
 """
 
 import argparse
+import math
 import random
 import sys
 
 from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
-from .game import GOODBYE_MESSAGE, MazeGame
+from .chase import (DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, MAX_CHASE_POINT,
+                    MAX_CHASE_SPEED, MIN_CHASE_POINT, MIN_CHASE_SPEED,
+                    chase_setting)
+from .game import GOODBYE_MESSAGE
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
+from .modes import DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS, MODES, game_mode
 from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
                         animate_search, collectible_overlay, fit_to_terminal,
                         print_maze, solution_overlay, terminal_size)
@@ -37,14 +42,20 @@ __all__ = [
     'algorithm_summary',
     'asks_to_play',
     'braid_share',
+    'build_game',
     'build_maze',
     'build_parser',
+    'chase_number',
+    'chase_point',
+    'chase_speed',
     'collectible_count',
     'difficulty_summary',
     'is_quiet',
     'main',
     'maze_char',
     'maze_dimension',
+    'mode_summary',
+    'notice',
     'resolve_dimensions',
 ]
 
@@ -150,6 +161,76 @@ def braid_share(value):
     return share
 
 
+def chase_number(value, option, low, high, default):
+    """Read a chase option's whole number, as both of them are read.
+
+    ``--chase-point`` and ``--chase-speed`` take a number over a range
+    and treat everything outside it the same way, so they are read by
+    one function rather than by two that have to be kept agreeing.
+
+    A value that is not a number at all is not an error: a notice names
+    the option and the value, and the run carries on as though the
+    option had not been given. Being told the chase point was nonsense
+    is worth more than being refused a maze over it.
+
+    Args:
+        value: Raw command-line string for the option
+        option: The option being read, for the notice
+        low: Smallest value it takes
+        high: Largest value it takes
+        default: What it falls back to when the value is not a number
+
+    Returns:
+        int: The number rounded to the nearest whole one and held inside
+        the range, or the default when there was no number to read
+    """
+
+    try:
+        number = float(value)
+    except ValueError:
+        number = None
+
+    # a value that parses but names no place on the range - nan, inf -
+    # is no more a number here than 'a34' is
+    if number is None or not math.isfinite(number):
+        notice("%s: '%s' is not a number, carrying on without it"
+               % (option, value))
+        return default
+
+    return chase_setting(number, low, high)
+
+
+def chase_point(value):
+    """Read how far in the chase begins, as --chase-point does.
+
+    Args:
+        value: Raw command-line string for the option
+
+    Returns:
+        int: The share of the maze, as a whole number of percent from
+        MIN_CHASE_POINT to MAX_CHASE_POINT, that the player must have
+        walked before the chaser starts moving
+    """
+
+    return chase_number(value, '--chase-point', MIN_CHASE_POINT,
+                        MAX_CHASE_POINT, DEFAULT_CHASE_POINT)
+
+
+def chase_speed(value):
+    """Read how fast the chaser moves, as --chase-speed does.
+
+    Args:
+        value: Raw command-line string for the option
+
+    Returns:
+        int: The preset, a whole number from MIN_CHASE_SPEED for the
+        slowest to MAX_CHASE_SPEED for the fastest
+    """
+
+    return chase_number(value, '--chase-speed', MIN_CHASE_SPEED,
+                        MAX_CHASE_SPEED, DEFAULT_CHASE_SPEED)
+
+
 def maze_char(value):
     """Read a picture character, as --wall-char and --open-char do.
 
@@ -190,6 +271,26 @@ def algorithm_summary():
 
     return ", ".join("%s (%s)" % (name, ALGORITHM_NOTES[name])
                      for name in ALGORITHMS)
+
+
+def mode_summary():
+    """Describe the ways a maze can be played for the --mode help text.
+
+    Returns:
+        str: Each mode and what playing it is like, with the options
+        belonging to a mode named beside it so the help says plainly
+        which of them go with which
+    """
+
+    described = []
+    for name in MODES:
+        note = MODE_NOTES[name]
+        owned = MODE_OPTIONS.get(name)
+        if owned:
+            note += "; %s apply to it alone" % " and ".join(owned)
+        described.append("%s (%s)" % (name, note))
+
+    return ", ".join(described)
 
 
 def resolve_dimensions(args):
@@ -256,6 +357,32 @@ def build_parser():
                              "maze for the player to pick up, tallied in the "
                              "end-of-game summary (default: 0)"
                              % COLLECTIBLE_MARKER)
+    parser.add_argument("--mode", "-m", choices=list(MODES),
+                        default=DEFAULT_MODE,
+                        help="How the maze is played: %s (default: %s). An "
+                             "option belonging to a mode is ignored by every "
+                             "other one, so passing it does no harm"
+                             % (mode_summary(), DEFAULT_MODE))
+    parser.add_argument("--chase-point", type=chase_point,
+                        default=DEFAULT_CHASE_POINT, metavar="PERCENT",
+                        help="Share of the maze the player must have walked "
+                             "before the chase begins, from %d to %d "
+                             "(default: %d). A share outside that resolves "
+                             "to the nearer end of it and a decimal rounds "
+                             "to the nearest whole number. Chase mode only"
+                             % (MIN_CHASE_POINT, MAX_CHASE_POINT,
+                                DEFAULT_CHASE_POINT))
+    parser.add_argument("--chase-speed", type=chase_speed,
+                        default=DEFAULT_CHASE_SPEED, metavar="PRESET",
+                        help="How fast the chaser moves, from %d for the "
+                             "slowest preset to %d for the fastest "
+                             "(default: %d), the presets being the moves it "
+                             "makes in a second. A preset outside that "
+                             "resolves to the nearer end of it and a decimal "
+                             "rounds to the nearest whole number. Chase mode "
+                             "only"
+                             % (MIN_CHASE_SPEED, MAX_CHASE_SPEED,
+                                DEFAULT_CHASE_SPEED))
     parser.add_argument("--save", "-o", default=None, metavar="FILE",
                         help="Write the maze, and any collectibles, to FILE "
                              "so it can be played again with --load. '%s' "
@@ -341,6 +468,22 @@ def asks_to_play(args):
     return not is_quiet(args) and args.load != STDIO_PATH
 
 
+def notice(message):
+    """Report something the run carried on past, on standard error.
+
+    :func:`fail` is for what ends a run. A chase option given a value
+    that is not a number ends nothing: the option is dropped and the
+    maze is played without it, and this is what says so. Standard error
+    is where it goes, so a quiet run's standard output is still the maze
+    and nothing else.
+
+    Args:
+        message: What happened, printed under the program name
+    """
+
+    print("py_maze: %s" % message, file=sys.stderr)
+
+
 def fail(message, code):
     # report a failure on standard error and exit with its status code
     #
@@ -355,7 +498,7 @@ def fail(message, code):
     # Raises:
     #     SystemExit: Always, carrying the code
 
-    print("py_maze: %s" % message, file=sys.stderr)
+    notice(message)
     sys.exit(code)
 
 
@@ -454,6 +597,29 @@ def build_maze(args):
     return maze_grid, collectibles, seed
 
 
+def build_game(args, grid, collectibles=()):
+    """Build the game this run plays, in the mode it was asked for.
+
+    The mode is looked up rather than branched on, so a mode added to
+    :data:`py_maze.MODES` is playable here without a line to change.
+    Every mode is handed every mode setting and reads the ones that
+    belong to it, which is why an option for a mode that is not being
+    played is ignored rather than refused.
+
+    Args:
+        args: Parsed command-line arguments
+        grid: 2D list of booleans (True = wall, False = path)
+        collectibles: Cells holding a collectible to pick up
+
+    Returns:
+        MazeGame: The game, set up for the mode --mode named
+    """
+
+    return game_mode(args.mode)(grid, collectibles,
+                                chase_point=args.chase_point,
+                                chase_speed=args.chase_speed)
+
+
 def main():
     """Run py_maze from the command line: the console script entry point.
 
@@ -536,7 +702,7 @@ def main():
         print(response)
 
         if response == 'y':
-            game = MazeGame(maze_grid, collectibles)
+            game = build_game(args, maze_grid, collectibles)
             game.play()
         else:
             print(GOODBYE_MESSAGE)

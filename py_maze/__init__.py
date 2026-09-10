@@ -19,12 +19,15 @@ The modules, and what each one owns:
 - :mod:`py_maze.grid` - the grid, and the helpers that build and read it
 - :mod:`py_maze.algorithms` - the ways a maze can be carved, one to a module
 - :mod:`py_maze.generation` - carving a maze and scattering its pickups
-- :mod:`py_maze.solving` - breadth-first search over a grid
+- :mod:`py_maze.solving` - breadth-first search over a grid, and how far
+  along one a cell is
 - :mod:`py_maze.rendering` - drawing a maze, and measuring the terminal it
   is drawn on
 - :mod:`py_maze.saves` - reading and writing save files
 - :mod:`py_maze.keys` - single keypresses, and the only terminal imports
 - :mod:`py_maze.game` - playing a maze at the terminal
+- :mod:`py_maze.chase` - the antagonist chase mode sets on the player
+- :mod:`py_maze.modes` - the ways a maze can be played, one to a name
 - :mod:`py_maze.cli` - the options, the parser and :func:`main`
 
 Importing the generator or the solver never pulls in terminal machinery:
@@ -37,15 +40,20 @@ script with ``py_maze``.
 
 from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
                          carve_backtracker, carve_division, carve_prim, carver)
+from .chase import (CHASE_SPEEDS, DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED,
+                    MAX_CHASE_CATCH_UP, MAX_CHASE_POINT, MAX_CHASE_SPEED,
+                    MIN_CHASE_POINT, MIN_CHASE_SPEED, Chaser, chase_setting)
 from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
                   EXIT_NO_WAY_THROUGH, EXIT_OK, EXIT_SAVE_FILE, EXIT_USAGE,
-                  algorithm_summary, asks_to_play, braid_share, build_maze,
-                  build_parser, collectible_count, difficulty_summary,
-                  is_quiet, main, maze_char, maze_dimension,
-                  resolve_dimensions)
-from .game import (CONTROLS_LINE, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
-                   PLAIN_WIN_BANNER, TICK_SECONDS, WIN_BANNER, MazeGame,
-                   win_banner)
+                  algorithm_summary, asks_to_play, braid_share, build_game,
+                  build_maze, build_parser, chase_number, chase_point,
+                  chase_speed, collectible_count, difficulty_summary,
+                  is_quiet, main, maze_char, maze_dimension, mode_summary,
+                  notice, resolve_dimensions)
+from .game import (CAUGHT_BANNER, CAUGHT_OUTCOME, CONTROLS_LINE,
+                   ESCAPED_OUTCOME, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
+                   PLAIN_CAUGHT_BANNER, PLAIN_WIN_BANNER, TICK_SECONDS,
+                   WIN_BANNER, MazeGame, caught_banner, win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
@@ -55,8 +63,11 @@ from .keys import (INTERRUPT_KEY, KEY_POLL_INTERVAL, WINDOWS_INTERRUPT_KEY,
                    read_key, read_key_posix, read_key_timed,
                    read_key_timed_posix, read_key_timed_windows,
                    read_key_windows, read_response)
+from .modes import (CHASE_MODE, DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS,
+                    MODES, PLAIN_MODE, chase_game, game_mode, plain_game)
 from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
-                        COLLECTIBLE_MARKER, FRAME_DELAY, FRAME_FOOT_ROWS,
+                        CHASER_MARKER, COLLECTIBLE_MARKER, FRAME_DELAY,
+                        FRAME_FOOT_ROWS,
                         FRAME_HEAD_ROWS, FRONTIER_MARKER, HINT_MARKER,
                         OPEN_MARKER, PLAYER_MARKER, RENDER_ROW_OVERHEAD,
                         SOLUTION_MARKER, VISITED_MARKER, WALL_MARKER,
@@ -71,7 +82,7 @@ from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
                     parse_save, picture_chars, read_save, save_json,
                     save_lines, write_save)
-from .solving import search_frames, solve_maze
+from .solving import maze_progress, search_frames, solution_runs, solve_maze
 from .version import __version__
 
 __all__ = [
@@ -102,13 +113,16 @@ __all__ = [
     'maze_seed',
     'place_collectibles',
     # solving
+    'maze_progress',
     'search_frames',
+    'solution_runs',
     'solve_maze',
     # rendering
     'ANSI_CLEAR',
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
     'ANSI_ROW',
+    'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
@@ -170,15 +184,41 @@ __all__ = [
     'read_key_windows',
     'read_response',
     # game
+    'CAUGHT_BANNER',
+    'CAUGHT_OUTCOME',
     'CONTROLS_LINE',
+    'ESCAPED_OUTCOME',
     'GOODBYE_MESSAGE',
     'HINT_SECONDS',
     'HINT_STEPS',
+    'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
     'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',
+    'caught_banner',
     'win_banner',
+    # chase
+    'CHASE_SPEEDS',
+    'DEFAULT_CHASE_POINT',
+    'DEFAULT_CHASE_SPEED',
+    'MAX_CHASE_CATCH_UP',
+    'MAX_CHASE_POINT',
+    'MAX_CHASE_SPEED',
+    'MIN_CHASE_POINT',
+    'MIN_CHASE_SPEED',
+    'Chaser',
+    'chase_setting',
+    # modes
+    'CHASE_MODE',
+    'DEFAULT_MODE',
+    'MODES',
+    'MODE_NOTES',
+    'MODE_OPTIONS',
+    'PLAIN_MODE',
+    'chase_game',
+    'game_mode',
+    'plain_game',
     # cli
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
@@ -190,13 +230,19 @@ __all__ = [
     'algorithm_summary',
     'asks_to_play',
     'braid_share',
+    'build_game',
     'build_maze',
     'build_parser',
+    'chase_number',
+    'chase_point',
+    'chase_speed',
     'collectible_count',
     'difficulty_summary',
     'is_quiet',
     'main',
     'maze_char',
     'maze_dimension',
+    'mode_summary',
+    'notice',
     'resolve_dimensions',
 ]

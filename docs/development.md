@@ -54,6 +54,8 @@ py_maze/
 ├── saves.py            # Reading and writing save files
 ├── keys.py             # Single keypresses, and the terminal imports
 ├── game.py             # Playing a maze at the terminal
+├── chase.py            # The antagonist chase mode sets on the player
+├── modes.py            # The registry --mode reads its names from
 ├── cli.py              # The options, the parser and main()
 └── version.py          # The version number, on its own
 ```
@@ -68,6 +70,12 @@ so `help(py_maze)` and `help(py_maze.solve_maze)` describe the surface.
 `keys.py` is the only module that imports terminal machinery, so `msvcrt`,
 `tty` and `termios` stay out of the way of anything that only wants to
 generate or solve a maze.
+
+`modes.py` is the same idea as `algorithms/` a level up: it maps the name
+`--mode` takes to the function that builds that game, so a mode is an entry
+there and a function beside it rather than a branch in `cli.py`. Every mode
+is handed every mode setting and reads the ones that belong to it, which is
+what lets a mode be added without touching the modes already listed.
 
 `algorithms/` is the one subpackage, and every module in it is the same
 shape: one carving function taking a width, a height and a random number

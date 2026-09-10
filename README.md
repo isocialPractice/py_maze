@@ -25,6 +25,8 @@ solvable mazes and navigate through them using your keyboard!
 - 💡 **Hints**: Stuck mid-game? One key lights up the next step
 - ⏱️ **Timer and Move Counter**: Both run while you play and are summarized when you finish
 - 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
+- 👣 **Chase Mode**: Walk far enough in and something starts following you,
+  at a speed and from a point you can set
 - 💾 **Save and Load**: Keep a maze in a file and play it again later
 - 🔧 **Scriptable**: A quiet mode, JSON output, standard input and output,
   and a status code for each thing that can go wrong
@@ -62,6 +64,7 @@ The options a run reaches for most:
 | `--algorithm` | `-A` | `backtracker` | How the maze is carved: `backtracker`, `prim` or `division` |
 | `--seed` | `-s` | chosen at random | Seed for the maze generator |
 | `--collectibles` | `-c` | `0` | Scatter this many pickups through the maze |
+| `--mode` | `-m` | `plain` | How the maze is played: `plain` or `chase` |
 | `--save` | `-o` | | Write the maze to a file, or to standard output as `-` |
 | `--load` | `-l` | | Play a saved maze instead of generating one, or read `-` |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
@@ -71,9 +74,9 @@ Note that the short flag for height is a capital `-H`. Lowercase `-h` is
 reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
 `-S` solves the maze, lowercase `-s` seeds it.
 
-`--braid`, `--animate`, `--quiet`, `--format`, `--wall-char`, `--open-char`
-and `--version` are the rest, and all seventeen are tabled in full under
-[Command-line options](docs/options.md).
+`--braid`, `--animate`, `--quiet`, `--format`, `--wall-char`, `--open-char`,
+`--chase-point`, `--chase-speed` and `--version` are the rest, and all twenty
+are tabled in full under [Command-line options](docs/options.md).
 
 ## [Generating a Maze](docs/generating.md)
 
@@ -122,6 +125,18 @@ status line under the maze keeps the time, the moves and the collectibles.
 The clock counts whether or not a key is pressed, so standing still costs
 time and no moves. [How to play](docs/playing.md) has the rest, the
 end-of-game summary included.
+
+```bash
+python -m py_maze --mode chase
+```
+
+`--mode` picks how the maze is played. `chase` is the same maze with an
+antagonist behind it: nothing follows you at first, and once you have walked
+far enough in a chaser appears at the entrance and comes after you, drawn
+with an `X` and turning when you turn. Being caught ends the run the way the
+exit does, with a line on the summary naming which of the two happened.
+`--chase-point` sets how far in it begins and `--chase-speed` how fast it
+moves, both covered under [game modes](docs/options.md#game-modes).
 
 ## [Saving and Loading](docs/saving.md)
 

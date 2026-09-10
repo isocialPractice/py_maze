@@ -16,6 +16,9 @@ summary: >-
 | `--braid` | `-b` | `0` | `0` to `1`, bare flag means `1` |
 | `--seed` | `-s` | random | a number or a word |
 | `--collectibles` | `-c` | `0` | a count |
+| `--mode` | `-m` | `plain` | `plain`, `chase` |
+| `--chase-point` | | `55` | `20` to `90`, chase mode only |
+| `--chase-speed` | | `2` | `0` to `5`, chase mode only |
 | `--save` | `-o` | | a file, or `-` for standard output |
 | `--load` | `-l` | | a file, or `-` for standard input |
 | `--wall-char` | | `*` | one character, headerless files only |
@@ -27,8 +30,13 @@ summary: >-
 | `--version` | `-V` | | flag |
 | `--help` | `-h` | | flag |
 
-Capital `-H` is height, `-S` solves, `-A` is the algorithm, `-o` saves.
-Lowercase `-h` is the help and `-s` is the seed.
+Capital `-H` is height, `-S` solves, `-A` is the algorithm, `-o` saves,
+`-m` is the mode. Lowercase `-h` is the help and `-s` is the seed.
+
+Both chase options round a decimal to the nearest whole number, resolve a
+number outside their range to the nearer end of it, and answer anything that
+is not a number at all with a notice on standard error before carrying on
+without it.
 
 ## Sizes
 
@@ -52,7 +60,22 @@ py_maze --load maze.txt --animate        # watch the search instead
 py_maze -q -f json                       # a document, nothing else
 py_maze --seed 2024 --save - | py_maze --load - --solve
 py_maze --load drawn.txt --wall-char '#' --open-char '.' --quiet
+py_maze --mode chase                     # something follows you halfway in
+py_maze -m chase --chase-point 20 --chase-speed 5
 ```
+
+## Modes
+
+| Mode | Is | Options of its own |
+| --- | --- | --- |
+| `plain` | The walk from the entrance to the exit | |
+| `chase` | The same walk, with something following you | `--chase-point`, `--chase-speed` |
+
+`--chase-point` is a share of the maze, read off the solution measured as
+the straight runs it is made of. `--chase-speed` is a preset: the moves the
+chaser makes in a second, `0` for one a second rising to `5` for six. Being
+caught ends the run the way the exit does, with an `Outcome` line on the
+summary naming which of the two happened.
 
 ## Keys, in play
 
@@ -75,6 +98,7 @@ py_maze --load drawn.txt --wall-char '#' --open-char '.' --quiet
 | `~` | Explored, under `--animate` | `VISITED_MARKER` |
 | `?` | Frontier, and a hint | `FRONTIER_MARKER`, `HINT_MARKER` |
 | `$` | Collectible | `COLLECTIBLE_MARKER` |
+| `X` | The chaser, in chase mode | `CHASER_MARKER` |
 
 ## Status codes
 
@@ -135,6 +159,8 @@ A maze is a **grid**: rows of booleans, `True` for a wall, addressed
 | Scatter pickups | `place_collectibles(grid, count, rng)` |
 | Solve | `solve_maze(grid, start, end)` |
 | Watch it solve | `search_frames(grid, start, end)` |
+| Measure a route | `solution_runs(path)`, `maze_progress(grid, cell, path)` |
+| Play a mode | `game_mode(name)`, `plain_game(...)`, `chase_game(...)` |
 | Draw | `maze_lines(grid, overlays)`, `print_maze(...)` |
 | Write, read | `write_save(...)`, `read_save(...)`, `save_json(...)` |
 | Parse text in hand | `parse_save(text, source, chars)` |
