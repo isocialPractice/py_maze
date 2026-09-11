@@ -29,118 +29,6 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
-### UI/UX Override - Chase Mode on a Real Console and a Real Clock
-
-Chase mode was driven in a real Windows console on 09.10.2026 - the marker
-walked onto the screen, the chaser watched with nothing pressed, the run
-played to a catch and to an exit - and judged by 107 checks, of which 101
-passed. The two that did not are below. Everything else the request asked
-to be watched holds: the plain game is unchanged from 2.4.0 frame for
-frame, the chaser appears at the entrance at the share of the maze it was
-told to, it never crosses a wall and leaves no trail, it moves at 1.00 and
-6.02 cells a second on the two extreme presets, and a bad option value is a
-notice on standard error that leaves standard output the maze alone.
-
-#### Resolve Issues
-
-- [ ] Chase Mode 1: the ending's extra `Outcome` line scrolls the frame's
-  `start` marker off the top of the screen
-  - **Issue**: a chased game's summary carries one tally the plain game's
-    does not, so its ending is a row taller. On a console where the plain
-    ending exactly fits, the chased one scrolls the screen by one row and
-    the frame's first line goes with it. Measured on a real console at 100
-    by 28 with a 9 by 7 maze, walked to the exit on the same seed twice:
-    played plain, `start` is on row 0, `end` on 16 and the controls line on
-    19 with nothing scrolled, and 2.4.0 is identical to 2.5.0 there; played
-    as a chase, `end` is on 15, the controls line on 18 and there is no
-    `start` anywhere. Being caught does the same. No row of the maze itself
-    is lost, so what it costs is the marker
-  - **Goal**: Resolve to [chase-ending-scrolls-the-start-marker-off.prompt.md](.claude/prompts/chase-ending-scrolls-the-start-marker-off.prompt.md)
-  - From: Gameplay Enhancements `->` New Game Modes
-
-#### Found Issues
-
-- [ ] The timed key reader counts its wait down by what it asked for, so
-  the loop never waits the chaser's step
-  - **Issue**: `read_key_timed_windows` does `left -= nap` with `nap` at
-    `KEY_POLL_INTERVAL`, while `time.sleep(0.01)` really costs about 0.0157
-    on Windows, so every timed wait overruns by around 57%. Read off the
-    game's own writes rather than off a screen poll, `--chase-speed 5`
-    redraws every 0.265 s where `MazeGame.tick` asks for 0.167 - 3.95
-    frames a second on a small maze and 4.21 on a large one, against the
-    six the preset names. The chaser still crosses six cells a second
-    because `Chaser.advance` hands back what the clock passed over, so what
-    a player sees is not a slow chaser but one covering two cells per
-    redraw for 25 of its 42 drawn moves, the catch-up cap paying for the
-    loop being late rather than for a stall. The reader predates chase
-    mode; shortening the loop's wait to a sixth of a second is what made it
-    matter. `TestWindowsTimedInput` cannot catch it, its `FakeTime` sleeping
-    by exactly what it was asked for and
-    `test_no_poll_of_the_wait_overruns_the_deadline` asserting the
-    requested total rather than the elapsed one
-  - **Goal**: Resolve to [timed-wait-counts-down-by-what-it-asked-for.prompt.md](.claude/prompts/timed-wait-counts-down-by-what-it-asked-for.prompt.md)
-  - From: UI/UX Override - Chase Mode on a Real Console and a Real Clock
-
-### Code Review Override - The Chase Settings Reached Off the Command Line
-
-Reviewing 2.5.0's edits found the mode itself sound: the chaser never
-crosses a wall over a full walk of a 9 by 11 maze, the registry adds a mode
-without touching the two already there, and a fully braided maze was checked
-for a route to the exit that never reaches the chase point, of which 39
-seeds gave none. One error was found and fixed in this turn - the play loop
-started its next turn on any key that was not a control, so a player leaning
-on an ignored key froze the chase for as long as they held it. The two below
-are what is left, both of them in the chase settings as a library caller
-reaches them rather than as `--chase-point` and `--chase-speed` hand them
-over.
-
-#### Found Issues
-
-- [ ] The chase settings trust a number the command line would have caught
-  - **Issue**: `chase_setting(number, low, high)` is the rule that holds a
-    chase option inside its range, and `py_maze.chase_setting(float('inf'),
-    20, 90)` raises `OverflowError` rather than answering `90`;
-    `float('nan')` raises `ValueError`. `Chaser.__init__` does the same, so
-    `py_maze.Chaser((1, 0), speed=float('nan'))` raises before a chase can
-    start. Nothing on the command line reaches either, because `chase_number`
-    in `py_maze/cli.py` checks `math.isfinite` first and turns those values
-    into the notice - which is the point: the guard sits in the caller, so
-    the public function `docs/library.md` tables as "round a chase option's
-    number and hold it inside its range" is the one that cannot. A front end
-    built on `chase_game(grid, chase_point=..., chase_speed=...)`, which
-    `docs/library.md` shows, and reading its numbers from a file gets a
-    traceback where the table promises an `int`
-  - **Goal**: settle what `chase_setting` answers for a number that names no
-    place on a range, and make it answer that rather than raise. Moving the
-    `math.isfinite` check down into `py_maze/chase.py` gives both callers one
-    rule, but it wants deciding first whether the answer is `low`, the
-    nearer end, or a raise the docstring names, since `chase_number` has to
-    keep returning its own default for the notice either way. Whatever is
-    chosen wants saying in the docstring and in the `docs/library.md` row,
-    and a test beside `TestChaseSetting`
-  - From: Code Review Override - The Chase Settings Reached Off the Command
-    Line
-- [ ] `Chaser.advance` reports steps the chaser did not take
-  - **Issue**: `advance` increments `taken` once per turn of its loop
-    whether or not `step` moved anything, and `step` answers `False` when
-    the chaser is already standing on the target or no way to it can be
-    found. A chaser that has just caught the player, advanced again with the
-    clock past due, answers `2` while standing still, against a docstring
-    reading "How many steps were taken" and a `docs/library.md` row reading
-    "take every step the clock says it is owed, and report how many".
-    `MazeGame.advance_chase` hands the count straight back, so a caller
-    counting how hard the chase was gets the frames rather than the moves;
-    `Chaser.moves`, which only rises on a real step, is the number they
-    wanted
-  - **Goal**: count only the steps `step` reports it took. The catch-up cap
-    is written against the same counter, so decide with it whether
-    `MAX_CHASE_CATCH_UP` bounds advances made or moves taken, and say which
-    in the constant's comment. A chaser with nowhere to go must still leave
-    the loop, so `next_move` keeps rising whichever is counted. Wants a test
-    beside `test_a_stalled_game_does_not_hand_it_the_whole_maze`
-  - From: Code Review Override - The Chase Settings Reached Off the Command
-    Line
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1209,3 +1097,81 @@ No items are currently queued in this section.
   - It shares its whole validation shape with `--chase-point`, so whichever
     of the two is written first decides that shape for the other
   - From: Gameplay Enhancements `->` New Game Modes
+- [x] Chase Mode 1: the ending's extra `Outcome` line scrolls the frame's
+  `start` marker off the top of the screen
+  - **Issue**: a chased game's summary carries one tally the plain game's
+    does not, so its ending is a row taller. On a console where the plain
+    ending exactly fits, the chased one scrolls the screen by one row and
+    the frame's first line goes with it. Measured on a real console at 100
+    by 28 with a 9 by 7 maze, walked to the exit on the same seed twice:
+    played plain, `start` is on row 0, `end` on 16 and the controls line on
+    19 with nothing scrolled, and 2.4.0 is identical to 2.5.0 there; played
+    as a chase, `end` is on 15, the controls line on 18 and there is no
+    `start` anywhere. Being caught does the same. No row of the maze itself
+    is lost, so what it costs is the marker
+  - **Goal**: Resolve to [chase-ending-scrolls-the-start-marker-off.prompt.md](.claude/prompts/chase-ending-scrolls-the-start-marker-off.prompt.md)
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] The timed key reader counts its wait down by what it asked for, so
+  the loop never waits the chaser's step
+  - **Issue**: `read_key_timed_windows` does `left -= nap` with `nap` at
+    `KEY_POLL_INTERVAL`, while `time.sleep(0.01)` really costs about 0.0157
+    on Windows, so every timed wait overruns by around 57%. Read off the
+    game's own writes rather than off a screen poll, `--chase-speed 5`
+    redraws every 0.265 s where `MazeGame.tick` asks for 0.167 - 3.95
+    frames a second on a small maze and 4.21 on a large one, against the
+    six the preset names. The chaser still crosses six cells a second
+    because `Chaser.advance` hands back what the clock passed over, so what
+    a player sees is not a slow chaser but one covering two cells per
+    redraw for 25 of its 42 drawn moves, the catch-up cap paying for the
+    loop being late rather than for a stall. The reader predates chase
+    mode; shortening the loop's wait to a sixth of a second is what made it
+    matter. `TestWindowsTimedInput` cannot catch it, its `FakeTime` sleeping
+    by exactly what it was asked for and
+    `test_no_poll_of_the_wait_overruns_the_deadline` asserting the
+    requested total rather than the elapsed one
+  - **Goal**: Resolve to [timed-wait-counts-down-by-what-it-asked-for.prompt.md](.claude/prompts/timed-wait-counts-down-by-what-it-asked-for.prompt.md)
+  - From: UI/UX Override - Chase Mode on a Real Console and a Real Clock
+- [x] The chase settings trust a number the command line would have caught
+  - **Issue**: `chase_setting(number, low, high)` is the rule that holds a
+    chase option inside its range, and `py_maze.chase_setting(float('inf'),
+    20, 90)` raises `OverflowError` rather than answering `90`;
+    `float('nan')` raises `ValueError`. `Chaser.__init__` does the same, so
+    `py_maze.Chaser((1, 0), speed=float('nan'))` raises before a chase can
+    start. Nothing on the command line reaches either, because `chase_number`
+    in `py_maze/cli.py` checks `math.isfinite` first and turns those values
+    into the notice - which is the point: the guard sits in the caller, so
+    the public function `docs/library.md` tables as "round a chase option's
+    number and hold it inside its range" is the one that cannot. A front end
+    built on `chase_game(grid, chase_point=..., chase_speed=...)`, which
+    `docs/library.md` shows, and reading its numbers from a file gets a
+    traceback where the table promises an `int`
+  - **Goal**: settle what `chase_setting` answers for a number that names no
+    place on a range, and make it answer that rather than raise. Moving the
+    `math.isfinite` check down into `py_maze/chase.py` gives both callers one
+    rule, but it wants deciding first whether the answer is `low`, the
+    nearer end, or a raise the docstring names, since `chase_number` has to
+    keep returning its own default for the notice either way. Whatever is
+    chosen wants saying in the docstring and in the `docs/library.md` row,
+    and a test beside `TestChaseSetting`
+  - From: Code Review Override - The Chase Settings Reached Off the Command
+    Line
+- [x] `Chaser.advance` reports steps the chaser did not take
+  - **Issue**: `advance` increments `taken` once per turn of its loop
+    whether or not `step` moved anything, and `step` answers `False` when
+    the chaser is already standing on the target or no way to it can be
+    found. A chaser that has just caught the player, advanced again with the
+    clock past due, answers `2` while standing still, against a docstring
+    reading "How many steps were taken" and a `docs/library.md` row reading
+    "take every step the clock says it is owed, and report how many".
+    `MazeGame.advance_chase` hands the count straight back, so a caller
+    counting how hard the chase was gets the frames rather than the moves;
+    `Chaser.moves`, which only rises on a real step, is the number they
+    wanted
+  - **Goal**: count only the steps `step` reports it took. The catch-up cap
+    is written against the same counter, so decide with it whether
+    `MAX_CHASE_CATCH_UP` bounds advances made or moves taken, and say which
+    in the constant's comment. A chaser with nowhere to go must still leave
+    the loop, so `next_move` keeps rising whichever is counted. Wants a test
+    beside `test_a_stalled_game_does_not_hand_it_the_whole_maze`
+  - From: Code Review Override - The Chase Settings Reached Off the Command
+    Line

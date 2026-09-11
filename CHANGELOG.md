@@ -5,6 +5,113 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-09-11
+
+Four faults in 2.5.0, all of them in the two things chase mode leans on that
+the plain game barely used: the clock the loop waits on, and the rows the
+screen has left. A chased summary carries one tally more than a plain one, so
+on a console the plain ending exactly fits the chased one took the screen up a
+row and the frame's `start` marker went off the top with it; the Windows timed
+reader counted its deadline down by what each nap asked for rather than by
+what the nap cost, so the sixth of a second the fastest preset asks to be
+drawn at ran to a quarter and the chaser covered two cells a redraw; and the
+chase settings a library caller reaches raised where the command line catches,
+while `Chaser.advance` counted moves the chaser never made. No option behaves
+differently, and a plain game on a console with a row to spare is drawn and
+ended exactly as it was.
+
+### Added
+
+- `wipe_rows(first, last, size)`, clearing a run of rows a shorter frame gave
+  up. A line printed over a row writes across it rather than clearing it, so
+  rows kept back for an ending have to be wiped before anything lands on
+  them. It stops at the bottom of the screen, since rows a shrunken console
+  took went with the console and an address past the last row lands on the
+  last row.
+- `fit_frame(lines, size, focus, reserve)` takes the rows to keep clear below
+  the frame. The maze window gives them up exactly as it gives up rows to a
+  console that shrank, so what an ending costs is maze rather than the foot
+  of the screen.
+- `MazeGame.ending(banner, prompt)` and `MazeGame.print_ending(lines)`, the
+  end of a game built as lines and printed into rows kept for it. The rows an
+  ending needs are the lines it has, which is what lets the frame be cut by
+  the right number of them, and the row the cursor is left on by the last
+  line's newline is counted with them: a newline written on the bottom row
+  scrolls the screen exactly as a line would.
+- `QUIT_MESSAGE` and `EXIT_PROMPT`, the parting line above a quit game's
+  tallies and the line asking for a key under a finished one's. Both were
+  written into the calls that printed them and neither could be read back.
+
+### Fixed
+
+- A chased game's ending keeps the frame on the screen. The summary carries
+  the `Outcome` line, which a plain summary has not got, so a chased ending
+  is a row taller - and on a console the plain ending exactly fills, that row
+  is one the screen has not got. Measured on a real console at 100 by 28 with
+  a 9 by 7 maze, walked to the exit on one seed twice: played plain, `start`
+  is on row 0 and the controls line on row 19 with nothing scrolled, and
+  2.4.0 draws it identically; played as a chase, the screen scrolled by a row
+  and there was no `start` anywhere. Being caught did the same. The frame and
+  the ending are now sized against the console together rather than the frame
+  alone being sized and the ending taking whatever was left over.
+- The Windows timed reader measures its deadline rather than counting it
+  down. `time.sleep(0.01)` costs about 0.0157 on Windows before Python 3.11
+  gave it a high-resolution timer, and a wait that subtracts what it asked
+  for rather than what it spent runs over by that difference on every nap of
+  it - half as long again over the whole wait. The quarter second the loop
+  waited before 2.5.0 could carry that; the sixth of one `MazeGame.tick` asks
+  for at `--chase-speed 5` cannot. Read off the game's own writes on a real
+  console, that wait took 0.265 s and the maze was redrawn four times a
+  second where the preset names six, so the chaser covered two cells per
+  redraw for 25 of its 42 drawn moves - the catch-up cap, which is there for
+  a game stalled by a hint or by the machine, paying for the loop being late
+  instead. The POSIX branch hands its whole timeout to `select` and was
+  right already.
+- `chase_setting` answers for a number that names no place on its range
+  rather than raising. `py_maze.chase_setting(float('inf'), 20, 90)` raised
+  `OverflowError` and `float('nan')` raised `ValueError`, both out of the
+  rounding, and `Chaser(cell, speed=float('nan'))` raised before a chase
+  could start. Nothing on the command line reached either - `chase_number`
+  checks `math.isfinite` and turns those values into a notice - which was
+  the fault rather than the defence: the guard sat in the caller, so the
+  public function the library page tables as the rule for holding a chase
+  option inside its range was the one that could not. An infinity now
+  resolves to the end it runs past and a `nan`, which names no place in
+  either direction, to the bottom of the range.
+- `Chaser.advance` reports the steps that moved the chaser. It counted a
+  step per turn of its catch-up loop whether or not the chaser went
+  anywhere, and `step` answers `False` when there is nowhere to go - the
+  chaser already standing on the player, or no way to them found - so a
+  chaser that had just caught somebody, advanced again with the clock past
+  due, answered `2` while standing still. `MazeGame.advance_chase` hands the
+  count straight back, so a caller counting how hard the chase was got the
+  frames rather than the moves.
+
+### Changed
+
+- `Chaser` reads its `speed` with `chase_setting` rather than with a rule of
+  its own. The two now round the same way, where `int()` truncated: a chaser
+  built with `speed=2.6` moves at preset 3, as `--chase-speed 2.6` already
+  gave it, rather than at the preset below.
+- `MAX_CHASE_CATCH_UP` bounds the moves a catch-up reaches for rather than
+  the steps that came of them. A chaser with nowhere to go must still leave
+  the loop, and a cap counted in steps would walk it through every move a
+  long stall passed over looking for one.
+- `MazeGame.print_summary()` is gone, and `ending()` with `print_ending()`
+  replace it. The ending is one description printed once now, because its
+  rows have to be counted before any of them goes out, and printing the
+  banner, the tallies and the prompt from three places left nothing that
+  knew how tall the whole was.
+- The suite's `FakeTime` sleeps for longer than it was asked to, by a
+  granularity it is given. A fake whose sleep is exact cannot tell the time a
+  wait requested from the time it spent, which are the two numbers the fault
+  above sits between: `test_no_poll_of_the_wait_overruns_the_deadline`
+  asserted the requested total, the one number that stays right while the
+  elapsed one goes wrong, so it passed before the fix and after it alike.
+- The play screen's model of a console is driven through the end of a game
+  as well as the play, so what an ending does to the rows the frame is on is
+  measured rather than reasoned about.
+
 ## [2.5.0] - 2026-09-10
 
 The first game mode, and the option that picks one. A maze has been played

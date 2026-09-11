@@ -255,7 +255,8 @@ one maze and it is not solved again for each.
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
 | `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |
-| `fit_frame(lines, size, focus)` | Cut a play screen to the rows the terminal has, around a row to keep |
+| `fit_frame(lines, size, focus, reserve)` | Cut a play screen to the rows the terminal has, around a row to keep and any kept back |
+| `wipe_rows(first, last, size)` | Clear a run of rows a shorter frame gave up, stopping at the bottom of the screen |
 | `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
 | `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
 | `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
@@ -337,13 +338,13 @@ player, so it never walks into a wall and needs no second algorithm:
 | --- | --- |
 | `Chaser(cell, point, speed)` | An antagonist waiting on a cell until the chase begins |
 | `Chaser.chasing(now, grid, cell, path)` | Start it if the player has walked far enough in, and say whether it is running |
-| `Chaser.advance(now, grid, target)` | Take every step the clock says it is owed, and report how many |
+| `Chaser.advance(now, grid, target)` | Take every step the clock says it is owed, and report how many of them moved it |
 | `Chaser.catches(cell)` | Whether it is standing where the player is |
 | `CHASE_SPEEDS` | Each preset speed, as the moves it makes in a second |
 | `MIN_CHASE_POINT`, `MAX_CHASE_POINT`, `DEFAULT_CHASE_POINT` | The range `--chase-point` takes, and the reasonable point |
 | `MIN_CHASE_SPEED`, `MAX_CHASE_SPEED`, `DEFAULT_CHASE_SPEED` | The presets `--chase-speed` takes, and the reasonable speed |
-| `MAX_CHASE_CATCH_UP` | The most moves one advance makes up after a stall |
-| `chase_setting(number, low, high)` | Round a chase option's number and hold it inside its range |
+| `MAX_CHASE_CATCH_UP` | The most moves one advance reaches for after a stall |
+| `chase_setting(number, low, high)` | Round a chase option's number and hold it inside its range, whatever number it is given |
 
 ```python
 import py_maze
@@ -352,6 +353,21 @@ grid = py_maze.MazeGenerator(width=9, height=11, seed=2024).generate()
 game = py_maze.chase_game(grid, chase_point=70, chase_speed=4)
 game.play()
 ```
+
+A chase setting is read the same way wherever it comes from. `chase_setting`
+rounds to the nearest whole number and holds the result inside the range, and
+`Chaser` reads its own `speed` with it, so a front end reading its numbers out
+of a file is handed the `int` the table promises rather than an exception: a
+value past either end resolves to that end, an infinity to the end it runs
+past, and a `nan`, which names no place on the range in either direction, to
+the bottom of it. `--chase-point` and `--chase-speed` never reach that far,
+naming a value they cannot read in a notice and carrying on without it.
+
+`Chaser.advance` reports the steps that moved the chaser rather than the
+moves the clock owed it. The two differ when there is nowhere to step - a
+chaser standing on the player it has caught - and `MAX_CHASE_CATCH_UP` bounds
+the moves reached for, so a stall over a chaser that cannot move is not a
+walk through everything the stall passed over.
 
 The terminal half is public too: `MazeGame` plays a maze at the console,
 `read_key` and `read_response` take single keypresses, `read_key_timed` waits

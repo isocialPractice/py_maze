@@ -14,6 +14,8 @@ and asks the chaser to move; the chaser owns where it is and whether it is
 moving at all.
 """
 
+import math
+
 from .solving import maze_progress, solve_maze
 
 __all__ = [
@@ -56,7 +58,13 @@ DEFAULT_CHASE_SPEED = 2
 # stalled - by a hint held on screen, or by the machine itself - owes the
 # chaser every move the clock passed over, and handing all of them back
 # at once would put it on top of a player who never had a frame to react
-# to. It takes what it is owed up to this and the rest is forgiven
+# to. It takes what it is owed up to this and the rest is forgiven.
+#
+# It bounds the moves the catch-up reaches for rather than the steps
+# that came of them: a chaser with nowhere to go - already standing on
+# the player, or cut off from them - takes none, and a cap counted in
+# steps would leave it working through every move a long stall passed
+# over looking for one
 MAX_CHASE_CATCH_UP = 2
 
 
@@ -76,8 +84,23 @@ def chase_setting(number, low, high):
         int: The number rounded to the nearest whole one, then held
         inside the range: anything under low resolves to low and
         anything over high to high, so an option cannot be set to a
-        value that makes the mode unplayable either way
+        value that makes the mode unplayable either way. A number that
+        names no place on the range answers rather than raises: an
+        infinity resolves to the end it runs past, and a nan, which is
+        no place in either direction, to low
     """
+
+    # infinities and nans have no whole number to round to, so they are
+    # settled against the range before anything is rounded. Holding them
+    # here is what lets the rule stand on its own: a front end built on
+    # chase_game(), reading its numbers out of a file, is handed the int
+    # this promises rather than the OverflowError or ValueError the
+    # rounding raises, and --chase-point and --chase-speed keep naming
+    # the value in a notice before ever reaching this
+    if math.isnan(number):
+        return low
+    if math.isinf(number):
+        return high if number > 0 else low
 
     # round half away from zero, which is the "nearest whole number" a
     # player means. Python's own round() would send 2.5 to 2
@@ -99,14 +122,16 @@ class Chaser:
                 they went
             point: Share of the maze, as a whole number of percent, the
                 player must have walked before it starts moving
-            speed: Which of :data:`CHASE_SPEEDS` it moves at, held
-                inside the presets that exist
+            speed: Which of :data:`CHASE_SPEEDS` it moves at, read the
+                way the option that names it is read: rounded whole and
+                held inside the presets that exist, by
+                :func:`chase_setting` rather than by a second rule here
         """
 
         self.x, self.y = cell
 
         self.point = point
-        self.speed = max(MIN_CHASE_SPEED, min(MAX_CHASE_SPEED, int(speed)))
+        self.speed = chase_setting(speed, MIN_CHASE_SPEED, MAX_CHASE_SPEED)
 
         # seconds between one move and the next, which is what the game
         # loop waits on rather than the preset number itself
@@ -196,18 +221,28 @@ class Chaser:
             target: The (x, y) being followed
 
         Returns:
-            int: How many steps were taken, which is nought whenever the
-            chase has not begun or the next move is not yet due
+            int: How many steps were taken, counting only the ones that
+            moved the chaser. It is nought whenever the chase has not
+            begun, the next move is not yet due, or there was nowhere
+            to step - a chaser standing on the player it has caught
+            takes no step however far past due the clock is
         """
 
         if not self.started:
             return 0
 
         taken = 0
-        while now >= self.next_move and taken < MAX_CHASE_CATCH_UP:
-            self.step(grid, target)
+        moves = 0
+        while now >= self.next_move and moves < MAX_CHASE_CATCH_UP:
+            # a move that found nowhere to go is still a move the clock
+            # owed and the cap counted, so the loop leaves on the same
+            # turn it would have. What it is not is a step, and the
+            # count handed back is steps
+            if self.step(grid, target):
+                taken += 1
+
             self.next_move += self.interval
-            taken += 1
+            moves += 1
 
         if self.next_move < now:
             # more moves were owed than the cap allows, so the debt is

@@ -51,9 +51,10 @@ from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
                   is_quiet, main, maze_char, maze_dimension, mode_summary,
                   notice, resolve_dimensions)
 from .game import (CAUGHT_BANNER, CAUGHT_OUTCOME, CONTROLS_LINE,
-                   ESCAPED_OUTCOME, GOODBYE_MESSAGE, HINT_SECONDS, HINT_STEPS,
-                   PLAIN_CAUGHT_BANNER, PLAIN_WIN_BANNER, TICK_SECONDS,
-                   WIN_BANNER, MazeGame, caught_banner, win_banner)
+                   ESCAPED_OUTCOME, EXIT_PROMPT, GOODBYE_MESSAGE,
+                   HINT_SECONDS, HINT_STEPS, PLAIN_CAUGHT_BANNER,
+                   PLAIN_WIN_BANNER, QUIT_MESSAGE, TICK_SECONDS, WIN_BANNER,
+                   MazeGame, caught_banner, win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
@@ -76,7 +77,7 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
                         fit_frame, fit_to_terminal, format_duration,
                         frame_diff, frame_text, frame_wraps, maze_lines,
                         print_maze, solution_overlay, status_line,
-                        summary_lines, terminal_size)
+                        summary_lines, terminal_size, wipe_rows)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
                     SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIN_NAME,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
@@ -153,6 +154,7 @@ __all__ = [
     'status_line',
     'summary_lines',
     'terminal_size',
+    'wipe_rows',
     # saves
     'DEFAULT_FORMAT',
     'FORMATS',
@@ -188,11 +190,13 @@ __all__ = [
     'CAUGHT_OUTCOME',
     'CONTROLS_LINE',
     'ESCAPED_OUTCOME',
+    'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
+    'QUIT_MESSAGE',
     'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',

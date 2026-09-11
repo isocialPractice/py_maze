@@ -434,17 +434,31 @@ class FakeMsvcrt:
 # deadline is reached by the test moving the clock rather than by the
 # test waiting for it. Sleeping is what moves it, which is what a reader
 # waiting for a key does between polls.
+#
+# A nap costs what the platform rounds it up to rather than what it asked
+# for, so the clock it moves and the total it was asked for are two
+# different numbers. A fake whose sleep is always exact cannot tell them
+# apart, and a reader counting its deadline down by the request passes
+# against one of them while overrunning the other.
 class FakeTime:
-    def __init__(self):
+    def __init__(self, granularity=1.0):
+        # Args:
+        #     granularity: What a nap really costs, as a multiple of what
+        #         it was asked for. A timer rounds a sleep up to the
+        #         resolution it keeps: a hundredth of a second measured
+        #         0.0157 on Windows under Python 3.10, which is where
+        #         1.6 comes from
+
         self.now = 0.0
         self.slept = []
+        self.granularity = granularity
 
     def monotonic(self):
         return self.now
 
     def sleep(self, seconds):
         self.slept.append(seconds)
-        self.now += seconds
+        self.now += seconds * self.granularity
 
 
 class TestMazeGenerator(unittest.TestCase):
@@ -730,12 +744,17 @@ class TestWindowsTimedInput(unittest.TestCase):
     # anywhere, and the clock is a fake so the deadline is reached by
     # the test moving it rather than by the test waiting for it
 
-    def read_key(self, keys, idle_polls=0, timeout=0.05):
+    # what a nap really costs on Windows, as a multiple of what it was
+    # asked for, so the reader is driven against a clock that behaves
+    # the way the platform's does
+    GRANULARITY = 1.6
+
+    def read_key(self, keys, idle_polls=0, timeout=0.05, granularity=1.0):
         # Returns:
         #     tuple: (key returned, the clock the wait was slept away on)
 
         fake = FakeMsvcrt(keys, idle_polls)
-        clock = FakeTime()
+        clock = FakeTime(granularity)
         with mock.patch.object(py_maze.keys, 'msvcrt', fake, create=True), \
                 mock.patch.object(py_maze.keys, 'time', clock):
             return py_maze.read_key_timed_windows(timeout), clock
@@ -772,6 +791,38 @@ class TestWindowsTimedInput(unittest.TestCase):
 
             self.assertAlmostEqual(sum(clock.slept), timeout)
             self.assertLessEqual(max(clock.slept), py_maze.KEY_POLL_INTERVAL)
+
+    def test_a_wait_ends_on_its_deadline_when_a_nap_costs_more(self):
+        # the deadline is measured against the clock rather than counted
+        # down by what each nap asked for, so a nap that costs half as
+        # long again as it was charged does not make the wait half as
+        # long again. Counted down, a twentieth of a second ran to 0.08
+        for timeout in (0.05, 0.025, 0.003):
+            _, clock = self.read_key([b'q'], idle_polls=100, timeout=timeout,
+                                     granularity=self.GRANULARITY)
+
+            self.assertGreaterEqual(clock.now, timeout)
+            self.assertLess(clock.now - timeout, py_maze.KEY_POLL_INTERVAL,
+                            'a wait of %s overran its deadline' % timeout)
+
+    def test_the_chase_interval_is_waited_for_what_it_says_it_is(self):
+        # the fastest preset moves six cells a second, so the loop asks
+        # for a sixth of one and draws on it. Counted down by what it
+        # asked for, that wait cost 0.265 on a real console and the
+        # chaser covered two cells a redraw for most of its moves
+        interval = 1.0 / py_maze.CHASE_SPEEDS[py_maze.MAX_CHASE_SPEED]
+        _, clock = self.read_key([b'q'], idle_polls=100, timeout=interval,
+                                 granularity=self.GRANULARITY)
+
+        self.assertLess(clock.now - interval, py_maze.KEY_POLL_INTERVAL)
+
+    def test_a_nap_that_costs_what_it_asked_for_waits_what_it_always_did(self):
+        # a platform whose sleep is exact is not made to wait any longer
+        # for the deadline being measured rather than counted
+        _, clock = self.read_key([b'q'], idle_polls=100, timeout=0.05)
+
+        self.assertAlmostEqual(clock.now, 0.05)
+        self.assertAlmostEqual(sum(clock.slept), 0.05)
 
     def test_a_deadline_shorter_than_a_poll_sleeps_only_that_long(self):
         _, clock = self.read_key([b'q'], idle_polls=100, timeout=0.003)
@@ -1549,12 +1600,13 @@ class TestFitFrame(unittest.TestCase):
              ['end', 'time 0:03   moves 4', '', 'controls'])
     FOOT = FRAME[-4:]
 
-    def fit(self, rows, focus=None):
+    def fit(self, rows, focus=None, reserve=0):
         # Returns:
-        #     list: The frame cut to a console that many rows deep
+        #     list: The frame cut to a console that many rows deep, less
+        #     any rows kept back for what is printed under it
 
         return py_maze.fit_frame(self.FRAME, terminal_size(80, rows),
-                                 focus=focus)
+                                 focus=focus, reserve=reserve)
 
     def test_a_frame_that_fits_is_left_alone(self):
         self.assertEqual(self.fit(40), self.FRAME)
@@ -1616,12 +1668,65 @@ class TestFitFrame(unittest.TestCase):
     def test_a_console_of_one_row_keeps_the_controls_line(self):
         self.assertEqual(self.fit(1), ['controls'])
 
+    def test_rows_kept_back_come_off_the_console_before_the_frame(self):
+        # the end of a game is printed under the frame and needs rows of
+        # its own, and the maze is what gives way for them exactly as it
+        # does for a console that shrank
+        fitted = self.fit(len(self.FRAME), reserve=3)
+
+        self.assertEqual(len(fitted), len(self.FRAME) - 3)
+        self.assertEqual(fitted[0], 'start')
+        self.assertEqual(fitted[-4:], self.FOOT)
+
+    def test_a_console_with_rows_to_spare_keeps_the_whole_frame(self):
+        self.assertEqual(self.fit(len(self.FRAME) + 3, reserve=3), self.FRAME)
+
+    def test_a_frame_with_nothing_kept_back_is_fitted_as_it_always_was(self):
+        # the rows a caller keeps back are the only thing the argument
+        # changes, so every console the frame was fitted to before is
+        # fitted to exactly as it was
+        for rows in range(1, len(self.FRAME) + 2):
+            self.assertEqual(self.fit(rows, reserve=0), self.fit(rows),
+                             'a console of %d rows' % rows)
+
     def test_the_overhead_is_the_head_and_the_foot_counted_together(self):
         # fit_to_terminal reserves these rows when the maze is carved
         # and fit_frame gives them up last when the console shrinks, so
         # the two have to be counting the same lines
         self.assertEqual(py_maze.FRAME_HEAD_ROWS + py_maze.FRAME_FOOT_ROWS,
                          py_maze.RENDER_ROW_OVERHEAD)
+
+
+class TestWipeRows(unittest.TestCase):
+    # a frame drawn shorter than the one already on screen leaves the
+    # rows it gave up holding lines of the old one, and a line printed
+    # over a row writes across it rather than clearing it
+
+    SIZE = terminal_size(80, 24)
+
+    def wipe(self, row):
+        return py_maze.ANSI_ROW % row + py_maze.ANSI_CLEAR_LINE
+
+    def test_it_addresses_and_clears_every_row_between_the_two(self):
+        # the rows are counted from 0, as a frame's lines are, and the
+        # escape counts from 1, as a screen's rows do
+        self.assertEqual(py_maze.wipe_rows(2, 4, self.SIZE),
+                         self.wipe(3) + self.wipe(4))
+
+    def test_no_row_between_the_two_is_no_writes_at_all(self):
+        self.assertEqual(py_maze.wipe_rows(4, 4, self.SIZE), '')
+        self.assertEqual(py_maze.wipe_rows(6, 4, self.SIZE), '')
+
+    def test_it_stops_at_the_bottom_of_the_screen(self):
+        # every address past the last row lands on the last row, so a
+        # wipe of rows a shrunken console no longer has would clear the
+        # controls line standing on the bottom of it
+        self.assertEqual(py_maze.wipe_rows(3, 9, terminal_size(80, 4)),
+                         self.wipe(4))
+
+    def test_output_with_no_terminal_behind_it_has_no_bottom_row(self):
+        self.assertEqual(py_maze.wipe_rows(0, 2, None),
+                         self.wipe(1) + self.wipe(2))
 
 
 class TestRenderFrame(unittest.TestCase):
@@ -4741,6 +4846,52 @@ class TestChaser(unittest.TestCase):
         self.assertEqual(self.chaser.advance(1000.0, self.grid, (3, 4)),
                          py_maze.MAX_CHASE_CATCH_UP)
 
+    def test_a_step_that_moved_nothing_is_not_a_step_it_reports(self):
+        # a chaser standing on the player it has caught finds no way to
+        # step, and the moves the clock owed it are not moves it made
+        self.chaser.start(0.0)
+        self.chaser.x, self.chaser.y = (3, 4)
+
+        self.assertEqual(self.chaser.advance(1000.0, self.grid, (3, 4)), 0)
+        self.assertEqual(self.chaser.moves, 0)
+
+    def test_what_it_reports_is_what_its_own_tally_counted(self):
+        # Chaser.moves only ever rises on a step that moved it, and the
+        # count handed back is the number a caller asking how hard the
+        # chase was wanted
+        self.chaser.start(0.0)
+        taken = self.chaser.advance(1000.0, self.grid, (3, 4))
+
+        self.assertEqual(taken, self.chaser.moves)
+
+    def test_a_chaser_with_nowhere_to_go_still_leaves_the_loop(self):
+        # the cap counts the moves the clock owed rather than the steps
+        # that came of them, so a stall over a chaser that cannot move
+        # is not a walk through every move the stall passed over
+        self.chaser.start(0.0)
+        self.chaser.x, self.chaser.y = (3, 4)
+        self.chaser.advance(1000.0, self.grid, (3, 4))
+
+        self.assertGreater(self.chaser.next_move, 1000.0)
+
+    def test_a_speed_that_names_no_preset_is_held_inside_them(self):
+        # the speed a library caller hands over is read by the rule
+        # --chase-speed reads its number with, so a value that names no
+        # preset builds a chaser rather than raising before one can run
+        for speed, preset in ((float('inf'), py_maze.MAX_CHASE_SPEED),
+                              (float('nan'), py_maze.MIN_CHASE_SPEED),
+                              (9, py_maze.MAX_CHASE_SPEED),
+                              (-4, py_maze.MIN_CHASE_SPEED)):
+            with self.subTest(speed=speed):
+                self.assertEqual(py_maze.Chaser((1, 0), speed=speed).speed,
+                                 preset)
+
+    def test_a_decimal_speed_rounds_to_the_preset_it_names(self):
+        # int() truncated it, so a chaser built with 2.6 moved at the
+        # preset below the one --chase-speed 2.6 gives it
+        self.assertEqual(py_maze.Chaser((1, 0), speed=2.6).speed, 3)
+        self.assertEqual(py_maze.Chaser((1, 0), speed=2.4).speed, 2)
+
     def test_the_debt_a_stall_left_is_written_off_rather_than_owed(self):
         # the moves the stall passed over are forgiven, so the chaser
         # does not then run flat out until it has worked through them
@@ -4788,6 +4939,30 @@ class TestChaseSetting(unittest.TestCase):
 
     def test_a_negative_decimal_rounds_before_it_is_held(self):
         self.assertEqual(py_maze.chase_setting(-2.5, 0, 5), 0)
+
+    def test_an_infinity_resolves_to_the_end_it_runs_past(self):
+        # nothing on the command line reaches this, chase_number naming
+        # the value in a notice first, but a front end built on
+        # chase_game() and reading its numbers out of a file does, and
+        # the range is what it asked to be held inside
+        self.assertEqual(py_maze.chase_setting(float('inf'), 20, 90), 90)
+        self.assertEqual(py_maze.chase_setting(float('-inf'), 20, 90), 20)
+
+    def test_a_number_that_is_no_number_resolves_to_the_bottom(self):
+        # a nan is no place on the range in either direction, so the
+        # bottom of it is where it lands rather than the ValueError the
+        # rounding used to raise
+        self.assertEqual(py_maze.chase_setting(float('nan'), 20, 90), 20)
+        self.assertEqual(py_maze.chase_setting(float('nan'), 0, 5), 0)
+
+    def test_every_number_it_is_given_answers_a_whole_one(self):
+        # the table promises an int, so the settings a caller cannot
+        # round are settled here rather than raising out of it
+        for number in (float('inf'), float('-inf'), float('nan'),
+                       2.5, 200, -8):
+            with self.subTest(number=number):
+                self.assertIsInstance(py_maze.chase_setting(number, 0, 5),
+                                      int)
 
 
 class TestChaseMode(unittest.TestCase):
@@ -4984,6 +5159,153 @@ class TestChasedGameEnds(unittest.TestCase):
 
         self.assertIsNone(session.game.outcome)
         self.assertNotIn('Outcome', session.output.getvalue())
+
+
+class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
+    # a chased summary carries one tally the plain one does not - the
+    # Outcome line - so a chased ending is a row taller. Nothing
+    # reserved rows for what is printed under the frame, so on a console
+    # the plain ending exactly fits the chased one took the screen up a
+    # row as it went out and the frame's first line, the start marker,
+    # went off the top with it. Measured on a real console at 100 by 28
+    # with a 9 by 7 maze, walked to the exit and caught alike
+
+    COLUMNS = 100
+
+    def height(self):
+        # the console the plain game's ending exactly fills: its frame,
+        # the lines printed under it, and the row the cursor is left on
+        # by the last of them
+        #
+        # Returns:
+        #     int: Rows the console holds
+
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+        return (len(game.frame()) +
+                len(game.ending(py_maze.WIN_BANNER, py_maze.EXIT_PROMPT)) + 1)
+
+    def play(self, keys, chaser=None, ticking=False):
+        # play a game out on that console, the ending included
+        #
+        # Returns:
+        #     tuple: (the session, the screen it was played on)
+
+        rows = self.height()
+        session = PlaySession(keys, chaser=chaser, ticking=ticking)
+        session.play(sizes=[terminal_size(self.COLUMNS, rows)])
+
+        return session, session.screen(height=rows, width=self.COLUMNS)
+
+    def ending(self, session, banner):
+        # Returns:
+        #     list: The lines the game printed under its frame
+
+        return session.game.ending(banner, py_maze.EXIT_PROMPT)
+
+    def assert_the_frame_survived(self, session, screen, banner):
+        # the frame and the ending are both on the console, in that
+        # order, with nothing scrolled off the top to make room
+        ending = self.ending(session, banner)
+        lines = screen.lines()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(lines[0], 'start')
+        self.assertIn('end', lines)
+        self.assertIn(session.game.status(), lines)
+        self.assertIn(py_maze.CONTROLS_LINE, lines)
+
+        # the ending sits on the rows the frame gave up and the ones
+        # below it, and the row the last line's newline left the cursor
+        # on is the bottom of the screen
+        self.assertEqual(lines[len(lines) - len(ending) - 1:-1], ending)
+        self.assertEqual(lines[-1], '')
+
+    def test_a_chased_ending_is_a_row_taller_than_a_plain_one(self):
+        # the premise of the tests below, read off the game rather than
+        # written down here: the Outcome line is the row the console
+        # the plain ending exactly fills does not have
+        plain = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+        chased = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
+                                  chaser=py_maze.Chaser((1, 0)))
+        chased.outcome = py_maze.CAUGHT_OUTCOME
+
+        self.assertEqual(
+            len(chased.ending(py_maze.CAUGHT_BANNER, py_maze.EXIT_PROMPT)),
+            len(plain.ending(py_maze.WIN_BANNER, py_maze.EXIT_PROMPT)) + 1)
+
+    def test_the_plain_game_fills_the_console_its_ending_needs(self):
+        # the console is sized for this one, so the whole frame is drawn
+        # and no row of the maze is given up: what the tests below are
+        # measured against
+        session, screen = self.play(TestMazeGame.ROUTE + [None])
+        frame = session.game.frame()
+
+        self.assert_the_frame_survived(session, screen, py_maze.WIN_BANNER)
+        self.assertEqual(screen.lines()[:len(frame)], frame)
+
+    def test_a_chase_played_to_a_catch_keeps_the_start_marker(self):
+        session, screen = self.play(['s', 'd', 'd', 's'] + [None] * 20,
+                                    chaser=py_maze.Chaser((1, 0)),
+                                    ticking=True)
+
+        self.assertTrue(session.game.caught())
+        self.assert_the_frame_survived(session, screen, py_maze.CAUGHT_BANNER)
+
+    def test_a_chase_played_to_the_exit_keeps_it_too(self):
+        # both endings are a row taller than the plain one, so both
+        # scrolled the screen
+        session, screen = self.play(TestMazeGame.ROUTE + [None],
+                                    chaser=py_maze.Chaser((1, 0)))
+
+        self.assertEqual(session.game.outcome, py_maze.ESCAPED_OUTCOME)
+        self.assert_the_frame_survived(session, screen, py_maze.WIN_BANNER)
+
+    def test_the_maze_is_what_the_extra_row_costs(self):
+        # the frame is cut the way a shrunken console cuts it: the maze
+        # is a window and gives a row up, and the foot of the screen -
+        # the end marker, the tally, the spacer and the controls line -
+        # stays where it is
+        session, screen = self.play(['s', 'd', 'd', 's'] + [None] * 20,
+                                    chaser=py_maze.Chaser((1, 0)),
+                                    ticking=True)
+        ending = self.ending(session, py_maze.CAUGHT_BANNER)
+        drawn = screen.lines()[:len(screen.lines()) - len(ending) - 1]
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(drawn[0], 'start')
+        self.assertEqual(len(drawn), len(session.game.frame()) - 1)
+        self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
+                         session.game.frame()[-py_maze.FRAME_FOOT_ROWS:])
+
+    def test_the_rows_the_frame_gave_up_are_wiped_before_they_are_used(self):
+        # a line printed over a row writes across it rather than
+        # clearing it, so the ending's blank lines would read as
+        # whatever the maze had on those rows
+        session, screen = self.play(['s', 'd', 'd', 's'] + [None] * 20,
+                                    chaser=py_maze.Chaser((1, 0)),
+                                    ticking=True)
+        ending = self.ending(session, py_maze.CAUGHT_BANNER)
+        blanks = [index for index, line in enumerate(ending) if not line]
+        lines = screen.lines()
+
+        self.assertTrue(blanks, 'the ending prints no blank line at all')
+        self.assertEqual(screen.scrolls, 0)
+        for index in blanks:
+            self.assertEqual(lines[len(lines) - len(ending) - 1 + index], '')
+
+    def test_quitting_prints_its_ending_under_the_frame_as_well(self):
+        # the parting message is an ending like any other: it waits for
+        # no key and so needs three rows fewer, which this console has,
+        # and the frame keeps every row of its maze
+        session, screen = self.play(['s', 'q'],
+                                    chaser=py_maze.Chaser((1, 0)))
+        frame = session.game.frame()
+        ending = session.game.ending(py_maze.QUIT_MESSAGE)
+        lines = screen.lines()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(lines[:len(frame)], frame)
+        self.assertEqual(lines[len(frame):len(frame) + len(ending)], ending)
 
 
 class TestCollectibleCount(unittest.TestCase):

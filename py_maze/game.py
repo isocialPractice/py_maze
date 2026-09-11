@@ -14,10 +14,11 @@ import time
 from .grid import find_entrance, find_exit
 from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
-from .rendering import (CHASER_MARKER, COLLECTIBLE_MARKER, HINT_MARKER,
-                        PLAYER_MARKER, ansi_enabled, can_encode, clear_screen,
-                        fit_frame, frame_diff, frame_text, frame_wraps,
-                        maze_lines, status_line, summary_lines, terminal_size)
+from .rendering import (ANSI_ROW, CHASER_MARKER, COLLECTIBLE_MARKER,
+                        HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_encode,
+                        clear_screen, fit_frame, frame_diff, frame_text,
+                        frame_wraps, maze_lines, status_line, summary_lines,
+                        terminal_size, wipe_rows)
 from .solving import solve_maze
 
 __all__ = [
@@ -25,11 +26,13 @@ __all__ = [
     'CAUGHT_OUTCOME',
     'CONTROLS_LINE',
     'ESCAPED_OUTCOME',
+    'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
+    'QUIT_MESSAGE',
     'TICK_SECONDS',
     'WIN_BANNER',
     'MazeGame',
@@ -51,6 +54,12 @@ TICK_SECONDS = 0.25
 
 # parting message for a quit or an interrupted game
 GOODBYE_MESSAGE = "Goodbye!"
+
+# the line above the tallies of a game the player quit, and the line
+# under the tallies of one that ended on its own and is waiting to be
+# dismissed
+QUIT_MESSAGE = "Thanks for playing!"
+EXIT_PROMPT = "Press any key to exit..."
 
 # the keys the player has, printed under the maze
 CONTROLS_LINE = ("Use arrow keys or WASD to move. "
@@ -288,11 +297,57 @@ class MazeGame:
                              self.collected, self.total_collectibles,
                              self.outcome)
 
-    def print_summary(self):
-        """Print the end-of-game summary under a blank line."""
+    def ending(self, banner, prompt=None):
+        """Build what is printed under the frame once the game is over.
 
-        print()
-        for line in self.summary():
+        The rows an ending needs are the lines it has, which is what
+        lets the frame be cut to make room for them, so it is built as
+        lines rather than printed a piece at a time.
+
+        Args:
+            banner: The line printed above the tallies
+            prompt: The line printed under them, for an ending waiting
+                to be dismissed. None for one that is not
+
+        Returns:
+            list: One string per line, the blank lines between them
+            included
+        """
+
+        lines = ["", banner, ""] + self.summary()
+        if prompt is not None:
+            lines += ["", prompt]
+
+        return lines
+
+    def print_ending(self, lines):
+        """Print an ending into rows kept clear for it under the frame.
+
+        The frame is drawn once more first, cut short by the rows the
+        ending needs. A screen the frame fills has none to spare
+        otherwise: printing under it takes the screen up a row for every
+        line that goes out, and the first line of the frame - the
+        ``start`` marker - goes off the top with it. Chase mode is where
+        that shows, its summary carrying one tally more than the plain
+        game's, but the rows are counted rather than assumed and every
+        ending is given the ones it needs.
+
+        Args:
+            lines: The ending's lines, as :meth:`ending` builds them
+        """
+
+        # a terminal that cannot be drawn on by row is wiped and
+        # written whole for every frame and nothing of it is fitted to
+        # the console, so there is no frame to cut and no room to keep:
+        # drawing again there would cost a wipe and change nothing.
+        #
+        # The row the cursor is left on by the last line's newline is a
+        # row of the screen like any other, and a newline written on the
+        # bottom row scrolls it, so it is counted with them
+        if ansi_enabled():
+            self.render(reserve=len(lines) + 1)
+
+        for line in lines:
             print(line)
 
     def frame(self):
@@ -323,7 +378,7 @@ class MazeGame:
         return (["start"] + maze_lines(self.maze, overlays) +
                 ["end", self.status(), "", CONTROLS_LINE])
 
-    def render(self, stream=None):
+    def render(self, stream=None, reserve=0):
         """Draw the play screen over the frame already on it.
 
         The first frame goes out whole, in a single write. Every frame
@@ -362,6 +417,11 @@ class MazeGame:
         Args:
             stream: Where the frame is written, defaulting to standard
                 output
+            reserve: Rows to leave clear under the frame, for what the
+                end of a game prints there. The frame is cut by them
+                and the rows it gives up are wiped, since a line
+                printed over a row writes across it rather than
+                clearing it
         """
 
         if stream is None:
@@ -396,7 +456,8 @@ class MazeGame:
         # than to the one the maze was generated for. A console shrunk
         # under a running game has no row to carry the overflow onto,
         # and what it costs is maze rather than the foot of the screen
-        lines = fit_frame(lines, size, focus=self.player_y)
+        lines = fit_frame(lines, size, focus=self.player_y,
+                          reserve=reserve)
 
         # a frame is only ever shorter than the last one because the
         # console lost the rows it gave up, and whatever was on them
@@ -413,12 +474,21 @@ class MazeGame:
             text = frame_diff(self.drawn_lines[:len(lines)], lines,
                               whole=True)
 
+        # rows kept back for an ending are rows the last frame drew on,
+        # and what it left there is still on the screen for whatever is
+        # printed over it to show through. Rows a shrunken console took
+        # went with the console and are not there to wipe
+        wiped = wipe_rows(len(lines), len(self.drawn_lines), size)
+
         self.drawn_lines = lines
 
-        if not text:
+        if not text and not wiped:
             return
 
-        stream.write(text)
+        # a redraw that wrote anything parks the cursor under the frame,
+        # which is where what follows the frame is printed from, so a
+        # wipe with no redraw behind it parks the cursor itself
+        stream.write(wiped + (text or ANSI_ROW % (len(lines) + 1)))
         stream.flush()
 
     def clear_screen(self, stream=None):
@@ -578,9 +648,7 @@ class MazeGame:
             self.outcome = outcome
 
         self.stop_clock()
-        print("\n" + banner)
-        self.print_summary()
-        print("\nPress any key to exit...")
+        self.print_ending(self.ending(banner, EXIT_PROMPT))
         self.get_key()
 
     def play(self):
@@ -621,8 +689,7 @@ class MazeGame:
 
                 if key == 'q':
                     self.stop_clock()
-                    print("\nThanks for playing!")
-                    self.print_summary()
+                    self.print_ending(self.ending(QUIT_MESSAGE))
                     break
                 elif key in ['w', 'up']:
                     self.move_player(0, -1)

@@ -84,6 +84,14 @@ however long it is left on screen. Quitting with `q` prints the summary for
 the game so far, and the `Collected` line is left out of a maze that had no
 collectibles in it.
 
+The summary is printed into rows kept back for it rather than onto whatever
+is left under the maze. A console the play screen fills has nothing left:
+every line printed under a full screen takes the screen up a row as it goes
+out, and the `start` marker at the top of the frame is what goes. The maze
+window gives up the rows the summary needs instead, exactly as it does for a
+console shrunk under a running game, so the maze and the tallies are read
+together however tight the fit.
+
 A console whose code page cannot draw the party poppers gets the plain
 congratulations instead, so the message arrives whatever the terminal can
 encode:
@@ -131,6 +139,10 @@ Outcome: caught by the chaser
 
 Press any key to exit...
 ```
+
+A chased summary is a row taller than a plain one for carrying that line,
+and the maze window is a row shorter on a console that has no spare row for
+it.
 
 Walking out instead reads `Outcome: reached the exit` under the same
 congratulations the plain game prints. The line belongs to the chase: a

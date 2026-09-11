@@ -299,18 +299,24 @@ def read_key_timed_windows(timeout):
 
     # the same idle poll the waiting reader makes, given an end to stop
     # at. The last sleep is cut short to the time that is left, so a
-    # deadline is not overrun by most of a poll interval. The wait is
-    # counted down rather than measured against a clock: what is left is
-    # what was actually slept away, so the last poll lands on the
-    # deadline exactly rather than a rounding short of it
-    left = timeout
+    # deadline is not overrun by most of a poll interval.
+    #
+    # What is left is read off the clock rather than counted down by
+    # what each nap asked for. A nap costs whatever the platform rounds
+    # it up to - a hundredth of a second costs about 0.0157 on Windows
+    # before Python 3.11 gave sleep a high-resolution timer - so a
+    # deadline counted down by the request runs over by that difference
+    # on every nap of it, half as long again over the whole wait. The
+    # quarter second the loop waited for its clock could carry that; the
+    # sixth of one it waits for the fastest chaser cannot, and a loop
+    # coming round late is a chaser covering two cells a redraw
+    end = time.monotonic() + timeout
     while not msvcrt.kbhit():
+        left = end - time.monotonic()
         if left <= 0:
             return None
 
-        nap = min(KEY_POLL_INTERVAL, left)
-        time.sleep(nap)
-        left -= nap
+        time.sleep(min(KEY_POLL_INTERVAL, left))
 
     # a key is waiting, so the reader that would poll for one returns it
     # without waiting and reads an arrow key as the two bytes it is
@@ -359,7 +365,12 @@ def read_key_timed_posix(timeout):
     # the wait happens inside raw mode rather than before it: a terminal
     # in its usual cooked mode holds a line back until Enter is pressed,
     # so waiting on standard input first would report nothing waiting
-    # until the player pressed Enter as well
+    # until the player pressed Enter as well.
+    #
+    # There is no deadline to keep here the way there is on Windows:
+    # select() is handed the whole timeout and waits it out itself, so
+    # the wait ends when the clock says rather than when a count of
+    # requested naps says
     def read():
         # the reader is resolved before the wait rather than after it,
         # so the descriptor that is waited on is the descriptor the key

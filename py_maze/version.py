@@ -8,4 +8,4 @@ own so both the package and the command line can read it without one
 importing the other.
 """
 
-__version__ = '2.5.0'
+__version__ = '2.6.0'

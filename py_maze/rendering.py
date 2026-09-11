@@ -54,6 +54,7 @@ __all__ = [
     'solution_overlay',
     'status_line',
     'summary_lines',
+    'wipe_rows',
     'terminal_size',
 ]
 
@@ -637,7 +638,38 @@ def fit_to_terminal(width, height, size=None, stream=None):
     return width, height
 
 
-def fit_frame(lines, size, focus=None):
+def wipe_rows(first, last, size=None):
+    """Build the writes that clear a run of rows of the screen.
+
+    A frame drawn shorter than the one already on screen leaves the rows
+    it gave up holding lines of the old one, and what is printed under a
+    frame writes over a row rather than clearing it, so a blank line of
+    an ending would read as whatever the maze had there.
+
+    Rows a shrunken console took are a different matter and are not
+    cleared: there is no row below the last one, so an address past it
+    lands on the last row and a wipe there would take the controls line
+    off it.
+
+    Args:
+        first: First row to clear, counted from 0 as a frame's lines are
+        last: The row after the last one cleared
+        size: The terminal the rows are on, or None when output is piped
+            and there is no bottom of the screen to stop at
+
+    Returns:
+        str: The escapes that address and clear each row, or an empty
+        string when there is no row between the two to clear
+    """
+
+    if size is not None:
+        last = min(last, size.lines)
+
+    return ''.join(ANSI_ROW % (row + 1) + ANSI_CLEAR_LINE
+                   for row in range(first, last))
+
+
+def fit_frame(lines, size, focus=None, reserve=0):
     """Cut a play screen down to the rows the terminal actually has.
 
     :func:`fit_to_terminal` asks this question of the maze before it is
@@ -663,6 +695,13 @@ def fit_frame(lines, size, focus=None):
             piped or redirected and there is no terminal to fit it to
         focus: Row of the maze the window is centred on, counted from
             the first row of the maze itself. None to show the top of it
+        reserve: Rows to keep clear below the frame, for a caller with
+            something to print under it. The end of a game is printed
+            there, and a screen the frame fills leaves it none: what is
+            printed takes the screen up a row as it goes out, and the
+            frame's first line goes off the top with it. Cutting the
+            frame by the rows the ending needs is what keeps both on
+            the screen together
 
     Returns:
         list: The lines that fit, never more than the screen has rows.
@@ -673,10 +712,13 @@ def fit_frame(lines, size, focus=None):
         the foot does not fit
     """
 
-    if size is None or len(lines) <= size.lines:
+    if size is None:
         return lines
 
-    rows = max(size.lines, 0)
+    rows = max(size.lines - reserve, 0)
+    if len(lines) <= rows:
+        return lines
+
     foot = lines[len(lines) - FRAME_FOOT_ROWS:]
     room = rows - FRAME_HEAD_ROWS - FRAME_FOOT_ROWS
 
