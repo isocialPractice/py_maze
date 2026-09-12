@@ -29,6 +29,73 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
+### Code Review Override - The Chase Point and the Interrupt's Ending
+
+- [ ] Put `wipe_rows` back in order in `py_maze/rendering.py`'s `__all__`
+  - **Issue**: the module's `__all__` runs alphabetically, the constants
+    first and the functions after, and 2.6.0 inserted `'wipe_rows'` between
+    `'summary_lines'` and `'terminal_size'`. `py_maze/__init__.py` placed
+    the same name correctly, after `'terminal_size'`, so the two files now
+    disagree about the order of one pair. Nothing caught it: the suite
+    checks `__all__` for uniqueness and for agreeing with the package, and
+    reads no order at all
+  - **Goal**: move `'wipe_rows'` below `'terminal_size'` in
+    `py_maze/rendering.py`
+  - From: Code Review Override - The Chase Point and the Interrupt's Ending
+- [ ] Say what `MazeGame.advance_chase` now answers with
+  - **Issue**: 2.6.0 taught `Chaser.advance` to count only the steps that
+    moved the chaser, and updated both its docstring and its
+    `docs/library.md` row. `MazeGame.advance_chase`, which the 2.6.0
+    changelog names as the surface a caller counts the chase by, still
+    lists the cases that answer nought as "a game with no chaser, one whose
+    chase has not begun and one whose next move is not yet due" - the
+    fourth, a chaser with nowhere to step, is the one that release added
+    and the only one the docstring does not name
+  - **Goal**: add that case to the `Returns:` of `MazeGame.advance_chase`
+    in `py_maze/game.py`, in the wording `Chaser.advance` already uses
+  - From: Code Review Override - The Chase Point and the Interrupt's Ending
+
+#### Found Issues
+
+- [ ] Settle a chaser's point the way 2.6.0 settled its speed
+  - **Issue**: `Chaser.__init__` now reads `speed` through `chase_setting`
+    but still stores `point` exactly as it was handed over, so the range
+    `MIN_CHASE_POINT` and `MAX_CHASE_POINT` name holds for one setting and
+    not for the other. `py_maze.chase_game(grid, chase_point=0)` builds a
+    game whose `caught()` is True before the first keypress: the chaser
+    waits on the entrance the player is standing on, and `begins(0.0)`
+    answers True there, which is the one thing `chase_game`'s own docstring
+    promises cannot happen. `chase_point=float('nan')` is the quiet half of
+    the same gap - `progress * 100 >= nan` is never True, so the chase
+    never starts and nothing says why. Neither value reaches this off the
+    command line, `chase_number` turning both into a notice, which is the
+    fault the 2.6.0 entry already named for `speed`: the guard sits in the
+    caller rather than in the rule
+  - **Goal**: read `point` with
+    `chase_setting(point, MIN_CHASE_POINT, MAX_CHASE_POINT)` in
+    `Chaser.__init__` as `speed` is read, say so in that argument's
+    docstring and in `chase_game`'s, and cover a point of 0, one past
+    `MAX_CHASE_POINT` and a `nan` in the suite. It changes what a released
+    public constructor does with a value it currently accepts, so it
+    belongs to a version rather than to a review
+  - From: Code Review Override - The Chase Point and the Interrupt's Ending
+- [ ] Print an interrupted game's goodbye into rows kept for it
+  - **Issue**: `MazeGame.play` ends three ways and 2.6.0 gave two of them
+    `print_ending` - the exit and the catch through `finish`, and `q`
+    inline. The `except KeyboardInterrupt` branch still writes
+    `print("\n" + GOODBYE_MESSAGE)` straight under the frame, so on the
+    console that release was measured against - 100 by 28 with a 9 by 7
+    maze, which the frame and a plain ending exactly fill - Ctrl+C takes
+    the screen up two rows and the `start` marker goes off the top, which
+    is the defect 2.6.0 fixed on the other two ways out. Nothing is drawn
+    after it: `play` returns, `cli` returns `EXIT_OK`, and the scrolled
+    frame is what the player is left looking at
+  - **Goal**: route that branch through `print_ending` with the two lines
+    it prints, so an interrupt reserves its rows as the other two exits do,
+    and add an interrupted game to `TestTheEndingIsGivenRowsOfItsOwn`
+    asserting the screen did not scroll
+  - From: Code Review Override - The Chase Point and the Interrupt's Ending
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
