@@ -121,16 +121,26 @@ class Chaser:
                 the player by the time the chase begins, whichever way
                 they went
             point: Share of the maze, as a whole number of percent, the
-                player must have walked before it starts moving
+                player must have walked before it starts moving, read
+                the way the option that names it is read: rounded whole
+                and held between :data:`MIN_CHASE_POINT` and
+                :data:`MAX_CHASE_POINT` by :func:`chase_setting`, so
+                the range those two name holds wherever the number came
+                from rather than only off the command line
             speed: Which of :data:`CHASE_SPEEDS` it moves at, read the
-                way the option that names it is read: rounded whole and
-                held inside the presets that exist, by
-                :func:`chase_setting` rather than by a second rule here
+                same way: rounded whole and held inside the presets
+                that exist, by :func:`chase_setting` rather than by a
+                second rule here
         """
 
         self.x, self.y = cell
 
-        self.point = point
+        # both settings are read through the same rule, so a point of 0
+        # cannot leave a chaser that has caught the player before the
+        # first keypress and a nan cannot leave one that never starts:
+        # the guard belongs to the chaser rather than to whichever
+        # caller happened to read the number
+        self.point = chase_setting(point, MIN_CHASE_POINT, MAX_CHASE_POINT)
         self.speed = chase_setting(speed, MIN_CHASE_SPEED, MAX_CHASE_SPEED)
 
         # seconds between one move and the next, which is what the game

@@ -54,8 +54,8 @@ __all__ = [
     'solution_overlay',
     'status_line',
     'summary_lines',
-    'wipe_rows',
     'terminal_size',
+    'wipe_rows',
 ]
 
 # characters the maze itself is drawn with

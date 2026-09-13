@@ -2037,7 +2037,17 @@ class PlaySession:
             self.clock.advance(1)
         if not self.keys:
             raise AssertionError("the game asked for more keys than scripted")
-        return self.keys.pop(0)
+
+        key = self.keys.pop(0)
+
+        # a scripted exception is raised rather than returned, so a
+        # Ctrl+C is written into a route the way TestInterruptedGame
+        # writes one: mock raises an exception out of an iterable
+        # side_effect, and this is a callable one
+        if isinstance(key, type) and issubclass(key, BaseException):
+            raise key
+
+        return key
 
     def play(self, homed=True, wipe=False, sizes=None):
         # run the loop to its end
@@ -4773,6 +4783,36 @@ class TestChaser(unittest.TestCase):
         self.assertEqual(py_maze.Chaser((1, 0), speed=99).speed,
                          py_maze.MAX_CHASE_SPEED)
 
+    def test_a_point_outside_the_range_is_held_inside_it(self):
+        # the point is read the way the speed is, so the range holds for
+        # a caller building a game as well as for the option
+        self.assertEqual(py_maze.Chaser((1, 0), point=0).point,
+                         py_maze.MIN_CHASE_POINT)
+        self.assertEqual(
+            py_maze.Chaser((1, 0), point=py_maze.MAX_CHASE_POINT + 1).point,
+            py_maze.MAX_CHASE_POINT)
+        self.assertEqual(py_maze.Chaser((1, 0), point=61.5).point, 62)
+
+    def test_a_point_that_is_no_number_at_all_still_names_a_place(self):
+        # a nan names no place on the range in either direction, and
+        # progress * 100 >= nan is never true, so an unguarded one left
+        # a chase that never began and said nothing about why
+        chaser = py_maze.Chaser((1, 0), point=float('nan'))
+
+        self.assertEqual(chaser.point, py_maze.MIN_CHASE_POINT)
+        self.assertTrue(chaser.begins(1.0))
+
+    def test_a_point_of_nought_does_not_catch_the_player_where_they_stand(self):
+        # the chaser waits on the entrance the player starts on, so a
+        # point of 0 would have begins() answering True there and the
+        # game caught before the first keypress - the one thing the
+        # chaser's own docstring promises cannot happen
+        chaser = py_maze.Chaser(py_maze.find_entrance(self.grid), point=0)
+        entrance = py_maze.find_entrance(self.grid)
+
+        self.assertFalse(chaser.chasing(0.0, self.grid, entrance, self.path))
+        self.assertFalse(chaser.catches(entrance))
+
     def test_nothing_starts_it_short_of_the_chase_point(self):
         for progress in (None, 0.0, 0.54):
             with self.subTest(progress=progress):
@@ -5054,6 +5094,33 @@ class TestChaseMode(unittest.TestCase):
                 self.assertLessEqual(game.tick(), py_maze.TICK_SECONDS)
                 self.assertLessEqual(game.tick(), game.chaser.interval)
 
+    def test_a_built_game_holds_the_point_inside_the_range_too(self):
+        # chase_game() is the surface a library caller builds a chase
+        # from, and nothing between it and the chaser reads the number:
+        # a point of 0 would leave the chase begun on the entrance the
+        # player is standing on, caught before the first keypress
+        game = py_maze.chase_game(self.grid, chase_point=0)
+
+        self.assertEqual(game.chaser.point, py_maze.MIN_CHASE_POINT)
+        self.assertEqual(game.advance_chase(), 0)
+        self.assertFalse(game.caught())
+
+    def test_a_built_game_settles_a_point_that_is_no_number(self):
+        # the quiet half of the same gap: progress * 100 >= nan is never
+        # true, so the chase never began and nothing said why
+        game = py_maze.chase_game(self.grid,
+                                  chase_point=float('nan'),
+                                  chase_speed=float('nan'))
+
+        self.assertEqual(game.chaser.point, py_maze.MIN_CHASE_POINT)
+        self.assertEqual(game.chaser.speed, py_maze.MIN_CHASE_SPEED)
+
+    def test_a_built_game_holds_a_point_past_the_top_of_the_range(self):
+        game = py_maze.chase_game(self.grid,
+                                  chase_point=py_maze.MAX_CHASE_POINT + 1)
+
+        self.assertEqual(game.chaser.point, py_maze.MAX_CHASE_POINT)
+
 
 class TestCaughtBanner(unittest.TestCase):
     def banner(self, encoding):
@@ -5184,13 +5251,30 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         return (len(game.frame()) +
                 len(game.ending(py_maze.WIN_BANNER, py_maze.EXIT_PROMPT)) + 1)
 
-    def play(self, keys, chaser=None, ticking=False):
+    def frame_height(self):
+        # the console the frame alone fills, which is the one an ending
+        # too short to need the rows above cannot be printed under: the
+        # cursor is already on the bottom row
+        #
+        # Returns:
+        #     int: Rows the console holds
+
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+        return len(game.frame())
+
+    def play(self, keys, chaser=None, ticking=False, rows=None):
         # play a game out on that console, the ending included
+        #
+        # Args:
+        #     rows: A console of another height, for an ending measured
+        #         against a different one. None for the console the
+        #         plain game's ending exactly fills
         #
         # Returns:
         #     tuple: (the session, the screen it was played on)
 
-        rows = self.height()
+        if rows is None:
+            rows = self.height()
         session = PlaySession(keys, chaser=chaser, ticking=ticking)
         session.play(sizes=[terminal_size(self.COLUMNS, rows)])
 
@@ -5306,6 +5390,45 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         self.assertEqual(screen.scrolls, 0)
         self.assertEqual(lines[:len(frame)], frame)
         self.assertEqual(lines[len(frame):len(frame) + len(ending)], ending)
+
+    def test_an_interrupt_is_given_rows_of_its_own_as_well(self):
+        # Ctrl+C is the third way out of the same maze. Its goodbye is
+        # two lines rather than a summary, so the console it shows on is
+        # the one the frame alone fills: printed straight under the
+        # frame it took the screen up two rows and the start marker went
+        # off the top with them. Nothing is drawn afterwards - play()
+        # returns and cli() returns EXIT_OK - so the scrolled frame is
+        # what the player is left looking at
+        session, screen = self.play(['s', KeyboardInterrupt],
+                                    rows=self.frame_height())
+        lines = screen.lines()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(lines[-3:], ['', py_maze.GOODBYE_MESSAGE, ''])
+
+    def test_the_maze_is_what_an_interrupt_costs_too(self):
+        # the frame is cut for it the way it is cut for the other two:
+        # the maze gives the rows up and the foot of the screen stays
+        session, screen = self.play(['s', KeyboardInterrupt],
+                                    rows=self.frame_height())
+        drawn = screen.lines()[:-3]
+
+        self.assertEqual(drawn[0], 'start')
+        self.assertEqual(len(drawn), len(session.game.frame()) - 3)
+        self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
+                         session.game.frame()[-py_maze.FRAME_FOOT_ROWS:])
+
+    def test_an_interrupt_dismissing_an_ending_leaves_it_on_screen(self):
+        # the frame was cut for the win screen already printed under it,
+        # and cutting it again for two lines would draw the maze back
+        # over what the player has just been told
+        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
+        ending = self.ending(session, py_maze.WIN_BANNER)
+        lines = screen.lines()
+
+        self.assertEqual(lines[-len(ending) - 3:-3], ending)
+        self.assertEqual(lines[-3:], ['', py_maze.GOODBYE_MESSAGE, ''])
 
 
 class TestCollectibleCount(unittest.TestCase):

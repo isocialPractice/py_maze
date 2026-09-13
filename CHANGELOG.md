@@ -5,6 +5,56 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-09-13
+
+The two halves of 2.6.0 that were finished on one side only. That release
+taught `Chaser` to read its `speed` through `chase_setting` and left `point`
+stored exactly as it was handed over, so the range `MIN_CHASE_POINT` and
+`MAX_CHASE_POINT` name held for one setting and not for the other; and it
+gave two of the three ways out of a maze an ending printed into rows kept for
+it and left the third writing straight under the frame. No option behaves
+differently and nothing is added to the public surface.
+
+### Fixed
+
+- `Chaser` holds its `point` inside the range the same way it holds its
+  speed. `py_maze.chase_game(grid, chase_point=0)` built a game whose
+  `caught()` was True before the first keypress: the chaser waits on the
+  entrance the player is standing on, and `begins(0.0)` answered True there -
+  the one thing `chase_game`'s own docstring promises cannot happen.
+  `chase_point=float('nan')` was the quiet half of it, `progress * 100 >= nan`
+  never being true, so the chase never began and nothing said why. Neither
+  value reached this off the command line, `chase_number` turning both into a
+  notice, which is the fault 2.6.0 already named for `speed`: the guard sat in
+  the caller rather than in the rule. A point is now rounded and held between
+  `MIN_CHASE_POINT` and `MAX_CHASE_POINT` wherever the number came from.
+- An interrupted game prints its goodbye into rows kept for it. `q` and both
+  endings through `finish` were given them in 2.6.0 and the
+  `except KeyboardInterrupt` branch was not, so on a console the frame alone
+  fills Ctrl+C took the screen up two rows and the `start` marker went off
+  the top with them. That is a shorter console than the one 2.6.0 was
+  measured on, the goodbye being two lines where a summary is seven: on the
+  suite's hand-built maze it shows at ten rows and is gone by thirteen.
+  Nothing is drawn afterwards:
+  `play` returns, `cli` returns `EXIT_OK`, and the scrolled frame is what the
+  player was left looking at. An interrupt dismissing an ending already on
+  screen still prints under it, the frame having been cut for that ending
+  already.
+
+### Changed
+
+- `MazeGame.advance_chase` names the fourth case that answers nought. 2.6.0
+  taught `Chaser.advance` to count only the steps that moved the chaser and
+  said so in its own docstring and its `docs/library.md` row; the method the
+  changelog names as the surface a caller counts the chase by still listed
+  three.
+- `wipe_rows` sits with the rest of the alphabet in `py_maze.rendering`'s
+  `__all__`. 2.6.0 inserted it between `summary_lines` and `terminal_size`
+  while `py_maze/__init__.py` placed it correctly, so the two files disagreed
+  about the order of one pair. The suite reads `__all__` for uniqueness and
+  for agreeing with the package and reads no order at all, which is why
+  nothing caught it.
+
 ## [2.6.0] - 2026-09-11
 
 Four faults in 2.5.0, all of them in the two things chase mode leans on that

@@ -341,7 +341,7 @@ player, so it never walks into a wall and needs no second algorithm:
 | `Chaser.advance(now, grid, target)` | Take every step the clock says it is owed, and report how many of them moved it |
 | `Chaser.catches(cell)` | Whether it is standing where the player is |
 | `CHASE_SPEEDS` | Each preset speed, as the moves it makes in a second |
-| `MIN_CHASE_POINT`, `MAX_CHASE_POINT`, `DEFAULT_CHASE_POINT` | The range `--chase-point` takes, and the reasonable point |
+| `MIN_CHASE_POINT`, `MAX_CHASE_POINT`, `DEFAULT_CHASE_POINT` | The range a chase point is held inside, and the reasonable point |
 | `MIN_CHASE_SPEED`, `MAX_CHASE_SPEED`, `DEFAULT_CHASE_SPEED` | The presets `--chase-speed` takes, and the reasonable speed |
 | `MAX_CHASE_CATCH_UP` | The most moves one advance reaches for after a stall |
 | `chase_setting(number, low, high)` | Round a chase option's number and hold it inside its range, whatever number it is given |
@@ -356,12 +356,19 @@ game.play()
 
 A chase setting is read the same way wherever it comes from. `chase_setting`
 rounds to the nearest whole number and holds the result inside the range, and
-`Chaser` reads its own `speed` with it, so a front end reading its numbers out
-of a file is handed the `int` the table promises rather than an exception: a
-value past either end resolves to that end, an infinity to the end it runs
-past, and a `nan`, which names no place on the range in either direction, to
-the bottom of it. `--chase-point` and `--chase-speed` never reach that far,
-naming a value they cannot read in a notice and carrying on without it.
+`Chaser` reads both its `point` and its `speed` with it, so a front end
+reading its numbers out of a file is handed the `int` the table promises
+rather than an exception: a value past either end resolves to that end, an
+infinity to the end it runs past, and a `nan`, which names no place on the
+range in either direction, to the bottom of it. `--chase-point` and
+`--chase-speed` never reach that far, naming a value they cannot read in a
+notice and carrying on without it.
+
+The range is the chaser's rather than the option's, which is what makes
+`chase_game(grid, chase_point=0)` a game that begins at `MIN_CHASE_POINT`
+instead of one already caught: the chaser waits on the entrance the player
+starts on, so a point of nought would have the chase begun and won before the
+first keypress.
 
 `Chaser.advance` reports the steps that moved the chaser rather than the
 moves the clock owed it. The two differ when there is nowhere to step - a

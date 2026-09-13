@@ -92,6 +92,13 @@ window gives up the rows the summary needs instead, exactly as it does for a
 console shrunk under a running game, so the maze and the tallies are read
 together however tight the fit.
 
+Interrupting with Ctrl+C is given the same rows. Its goodbye is two lines
+rather than a summary, so it asks the maze window for fewer of them, but it
+is the third way out of the same maze and nothing is drawn after it: a
+scrolled frame would be the last thing on screen. An interrupt pressed on a
+summary already waiting for a key prints under it instead, the rows for that
+summary having been kept back already.
+
 A console whose code page cannot draw the party poppers gets the plain
 congratulations instead, so the message arrives whatever the terminal can
 encode:

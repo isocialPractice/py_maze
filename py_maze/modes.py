@@ -71,9 +71,13 @@ def chase_game(grid, collectibles=(), chase_point=DEFAULT_CHASE_POINT,
         grid: 2D list of booleans (True = wall, False = path)
         collectibles: Cells holding a collectible to pick up
         chase_point: Share of the maze, as a whole number of percent,
-            the player must have walked before the chase begins
+            the player must have walked before the chase begins, read
+            by :func:`py_maze.chase_setting` and so held between
+            :data:`py_maze.MIN_CHASE_POINT` and
+            :data:`py_maze.MAX_CHASE_POINT` however it was arrived at
         chase_speed: Which of :data:`py_maze.CHASE_SPEEDS` the chaser
-            moves at
+            moves at, read the same way and held inside the presets
+            that exist
         **settings: Settings belonging to the other modes
 
     Returns:

@@ -221,8 +221,10 @@ class MazeGame:
 
         Returns:
             int: How many steps the chaser took, which is nought for a
-            game with no chaser, one whose chase has not begun and one
-            whose next move is not yet due
+            game with no chaser, one whose chase has not begun, one
+            whose next move is not yet due, and one where there was
+            nowhere to step - a chaser standing on the player it has
+            caught takes no step however far past due the clock is
         """
 
         if self.chaser is None:
@@ -724,5 +726,22 @@ class MazeGame:
                     break
         except KeyboardInterrupt:
             # the key readers restore the terminal before letting the
-            # interrupt through, so leaving quietly is all that is left
-            print("\n" + GOODBYE_MESSAGE)
+            # interrupt through, so leaving quietly is all that is left.
+            #
+            # Quietly still means into rows kept for it: a blank line
+            # and the goodbye printed straight under a frame that fills
+            # the console take the screen up two rows and the start
+            # marker goes off the top with them. An interrupt is the
+            # third way out of the same maze rather than a lesser one,
+            # and nothing is drawn after it - play returns, and the
+            # scrolled frame is what the player is left looking at.
+            #
+            # A stopped clock means an ending has already gone out and
+            # this interrupt is the keypress dismissing it. The frame
+            # was cut for that ending, so cutting it again for this one
+            # would draw the maze back over what the player has just
+            # been told, and the goodbye goes under it as it always did
+            if self.stopped is None:
+                self.print_ending(["", GOODBYE_MESSAGE])
+            else:
+                print("\n" + GOODBYE_MESSAGE)
