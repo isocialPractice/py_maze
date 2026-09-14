@@ -29,6 +29,30 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
+### UI/UX Override - The Interrupt's Rows on a Real Console
+
+#### Found Issues
+
+- [ ] The win and caught banners draw as replacement characters on the
+  console, where the plain banner was promised
+  - **Issue**: `win_banner` and `caught_banner` fall back to the plain
+    wording only when `can_encode` reports that the output encoding cannot
+    carry the glyph. On a Windows console `sys.stdout.encoding` is `utf-8`,
+    which carries both glyphs, so the fallback never fires - but a console
+    screen buffer cell holds one UCS-2 code unit and both glyphs are
+    outside the BMP: `\N{PARTY POPPER}` is U+1F389 and `\N{SKULL}` is
+    U+1F480. The cell ends up holding U+FFFD, so the player reads a
+    replacement character where `docs/playing.md` promises either the
+    glyph or the plain banner. Measured 09.14.2026 by printing
+    `win_banner()` into an allocated console twice, with
+    `PYTHONIOENCODING=utf-8` set and removed: two U+FFFD cells both times
+    and `utf-8` reported both times, so it is the console rather than the
+    test harness. Unchanged in 2.5.0, 2.6.0 and 2.6.1, and in every
+    console capture kept since the 09.10 run. Windows Terminal draws them
+    correctly, so it is per console host rather than per platform
+  - **Goal**: Resolve to [console-banner-glyphs.prompt.md](.claude/prompts/console-banner-glyphs.prompt.md)
+  - From: UI/UX Override - The Interrupt's Rows on a Real Console
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
