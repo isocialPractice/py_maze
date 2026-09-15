@@ -31,14 +31,17 @@ __all__ = [
     'FRAME_HEAD_ROWS',
     'FRONTIER_MARKER',
     'HINT_MARKER',
+    'LAST_BMP_CODE_POINT',
     'OPEN_MARKER',
     'PLAYER_MARKER',
     'RENDER_ROW_OVERHEAD',
     'SOLUTION_MARKER',
     'VISITED_MARKER',
     'WALL_MARKER',
+    'WINDOWS_TERMINAL_VARIABLE',
     'animate_search',
     'ansi_enabled',
+    'can_display',
     'can_encode',
     'clear_screen',
     'collectible_overlay',
@@ -102,6 +105,17 @@ ANSI_ROW = '\x1b[%d;1H'
 ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 STD_OUTPUT_HANDLE = -11
 
+# the last code point a Windows console screen buffer cell can hold. A
+# cell is one UCS-2 code unit, so a character above this is stored as
+# U+FFFD and drawn as a replacement character however well the console's
+# code page encodes it
+LAST_BMP_CODE_POINT = 0xFFFF
+
+# the environment variable Windows Terminal announces itself in. It
+# draws a character above the plane the console host it replaced is
+# limited to, so the two are not the same destination
+WINDOWS_TERMINAL_VARIABLE = 'WT_SESSION'
+
 # what enable_windows_ansi() last answered, so the console mode is asked
 # for and set once rather than once a frame
 _windows_ansi = None
@@ -162,11 +176,13 @@ def is_a_terminal(stream):
     # Returns:
     #     True when the stream is a terminal, False when it has been
     #     piped or redirected, or replaced with something that has no
-    #     file descriptor to ask about
+    #     file descriptor to ask about. A stand-in whose fileno()
+    #     answers with something that is not a descriptor is the last
+    #     of those rather than a fault, so it is refused like the rest
 
     try:
         return os.isatty(stream.fileno())
-    except (AttributeError, ValueError, OSError):
+    except (AttributeError, TypeError, ValueError, OSError):
         return False
 
 
@@ -247,6 +263,11 @@ def ansi_enabled(stream=None):
 def can_encode(text, stream=None):
     """Report whether a stream's encoding can carry the given text.
 
+    This is half of the question a caller with a glyph to print is
+    really asking: an encoding that carries a character is not a
+    destination that draws it. :func:`can_display` asks the whole of it
+    and calls this for the encoding half.
+
     Args:
         text: The text that is about to be written
         stream: The stream it would be written to, defaulting to
@@ -272,6 +293,47 @@ def can_encode(text, stream=None):
         return False
 
     return True
+
+
+def can_display(text, stream=None):
+    """Report whether a stream can draw the given text, not merely carry it.
+
+    Encoding is only half of it. A Windows console screen buffer cell
+    holds one UCS-2 code unit, so a character above the basic
+    multilingual plane is stored as U+FFFD and drawn as a replacement
+    character however well the console's code page encodes it: on a
+    console reporting ``utf-8``, which encodes anything, the party
+    poppers of the win banner arrive as two question marks. Windows
+    Terminal draws them, so the limit belongs to the console host rather
+    than to the platform.
+
+    Args:
+        text: The text that is about to be written
+        stream: The stream it would be written to, defaulting to
+            standard output
+
+    Returns:
+        True when the text arrives as it was written, False when the
+        encoding would raise rather than carry it or the destination
+        would draw something else in its place, so a caller with a plain
+        alternative to hand knows to reach for it
+    """
+
+    if stream is None:
+        stream = sys.stdout
+
+    if not can_encode(text, stream):
+        return False
+
+    if sys.platform != 'win32' or os.environ.get(WINDOWS_TERMINAL_VARIABLE):
+        return True
+
+    # a redirected stream is a file or a pipe rather than a screen
+    # buffer, and takes whatever the encoding carried
+    if not is_a_terminal(stream):
+        return True
+
+    return all(ord(character) <= LAST_BMP_CODE_POINT for character in text)
 
 
 def clear_screen(stream=None):

@@ -5,6 +5,79 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-09-15
+
+Two things a player reads that the terminal was never really asked about.
+The end-of-game banners chose their glyphs by asking whether the output
+encoding could carry them, which is a different question from whether the
+screen they are going to can draw them, and on the console `cmd.exe` opens
+the two answers disagree. The goodbye that dismisses an ending was given the
+one row that ending had left over rather than rows of its own, which is the
+half of 2.6.1's interrupt fix that was left standing. Both are answered by
+asking the fuller question, and the first of them adds a public name for it,
+which is what makes this a minor release rather than the patch two bug fixes
+would otherwise be.
+
+### Added
+
+- `can_display(text, stream)` in `py_maze.rendering`, the whole of the
+  question `can_encode` answers half of: whether the text arrives as it was
+  written, the encoding and the destination both asked. `can_encode` is
+  unchanged and still exported - "can this encoding carry it" is a real
+  question of its own - and now says in its docstring that it is the
+  encoding half of a larger one.
+- `LAST_BMP_CODE_POINT` and `WINDOWS_TERMINAL_VARIABLE`, the two facts
+  `can_display` reads the console off: the last code point a screen buffer
+  cell can hold, and the environment variable Windows Terminal announces
+  itself in.
+
+### Fixed
+
+- `win_banner` and `caught_banner` fall back to the plain wording on a
+  console that encodes the glyph and still cannot draw it. The fallback
+  asked `can_encode`, and a Windows console reports `utf-8`, which encodes
+  `\N{PARTY POPPER}` and `\N{SKULL}` perfectly well - so the glyph banner
+  went out and the player read `? Congratulations! You solved the maze! ?`.
+  A console screen buffer cell holds one UCS-2 code unit and both glyphs sit
+  above the basic multilingual plane, so the cell holds U+FFFD instead and
+  draws a replacement character, which is neither of the two things
+  `docs/playing.md` promised. Both banners now ask `can_display`, which
+  refuses a character that wide on a console host and allows it everywhere
+  else: Windows Terminal draws them and still gets them, a redirected stream
+  is a file rather than a screen buffer and still gets them, and a legacy
+  code page is refused for the reason it always was. Unchanged since 2.5.0,
+  and per console host rather than per platform.
+- The goodbye that dismisses an ending is given rows of its own. 2.6.1 sent
+  the `except KeyboardInterrupt` branch through `print_ending` only where no
+  ending had gone out, and printed the goodbye raw where one had - which
+  kept the maze from being drawn back over a summary the player was reading,
+  and left the goodbye with a single row to land its two lines in. On the
+  suite's hand-built maze at 100 columns, walking to the exit and pressing
+  Ctrl+C at "Press any key to exit..." scrolled the screen two rows at 16
+  rows and one at 19, taking `start` and the first maze row off the top;
+  dismissing the same ending with an ordinary key scrolled nothing at any
+  height. The frame is now cut for the summary and the goodbye together and
+  both are written back, so the summary reads where it was and the maze
+  window gives up the extra rows the way it does for every other ending.
+
+### Changed
+
+- `MazeGame.print_ending` takes a `printed` argument: the lines an earlier
+  ending left under the frame, which a later one is printed below. They sit
+  on rows the frame gave up, so the redraw's own wipe does not reach them
+  and they are cleared and rewritten rather than printed across.
+- `is_a_terminal` answers False for a stand-in stream whose `fileno()` hands
+  back something that is not a descriptor, rather than letting the
+  `TypeError` out. That is the same "nothing to ask about" case as the three
+  it already refused.
+- The suite's scripted keyboard raises an exception instance as well as an
+  exception class. `PlaySession.key` guarded on the class alone, so a route
+  written `[..., KeyboardInterrupt()]` handed the instance back as a
+  keypress - which mock's own `side_effect`, the thing the helper says it
+  matches, does not do. Nothing failed today: no scripted route used the
+  instance form, and one written later would have walked past it and run off
+  the end of its script.
+
 ## [2.6.1] - 2026-09-13
 
 The two halves of 2.6.0 that were finished on one side only. That release

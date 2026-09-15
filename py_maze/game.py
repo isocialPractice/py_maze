@@ -15,7 +15,7 @@ from .grid import find_entrance, find_exit
 from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
 from .rendering import (ANSI_ROW, CHASER_MARKER, COLLECTIBLE_MARKER,
-                        HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_encode,
+                        HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_display,
                         clear_screen, fit_frame, frame_diff, frame_text,
                         frame_wraps, maze_lines, status_line, summary_lines,
                         terminal_size, wipe_rows)
@@ -66,13 +66,13 @@ CONTROLS_LINE = ("Use arrow keys or WASD to move. "
                  "Press 'h' for a hint, 'q' to quit.")
 
 # the banner shown when the maze is solved, and the plain text a console
-# that cannot carry the party poppers gets instead
+# that cannot draw the party poppers gets instead
 WIN_BANNER = ("\N{PARTY POPPER} Congratulations! You solved the maze! "
               "\N{PARTY POPPER}")
 PLAIN_WIN_BANNER = "Congratulations! You solved the maze!"
 
 # the banner shown when the chaser catches the player, and the plain text
-# for a console that cannot carry the skulls
+# for a console that cannot draw the skulls
 CAUGHT_BANNER = "\N{SKULL} Caught! The chaser reached you. \N{SKULL}"
 PLAIN_CAUGHT_BANNER = "Caught! The chaser reached you."
 
@@ -91,12 +91,15 @@ def win_banner(stream=None):
 
     Returns:
         str: The congratulations, with the party poppers when the
-        output encoding can carry them and without when it cannot, so a
+        destination can draw them and without when it cannot, so a
         console on a legacy code page reads the message rather than
-        being handed a UnicodeEncodeError instead of it
+        being handed a UnicodeEncodeError instead of it, and a console
+        whose cells cannot hold a character that wide reads it rather
+        than a pair of replacement characters
     """
 
-    return WIN_BANNER if can_encode(WIN_BANNER, stream) else PLAIN_WIN_BANNER
+    return (WIN_BANNER if can_display(WIN_BANNER, stream)
+            else PLAIN_WIN_BANNER)
 
 
 def caught_banner(stream=None):
@@ -107,13 +110,15 @@ def caught_banner(stream=None):
             standard output
 
     Returns:
-        str: The bad news, with the skulls when the output encoding can
-        carry them and without when it cannot, so a console on a legacy
+        str: The bad news, with the skulls when the destination can
+        draw them and without when it cannot, so a console on a legacy
         code page reads the message rather than being handed a
-        UnicodeEncodeError instead of it
+        UnicodeEncodeError instead of it, and a console whose cells
+        cannot hold a character that wide reads it rather than a pair
+        of replacement characters
     """
 
-    return (CAUGHT_BANNER if can_encode(CAUGHT_BANNER, stream)
+    return (CAUGHT_BANNER if can_display(CAUGHT_BANNER, stream)
             else PLAIN_CAUGHT_BANNER)
 
 
@@ -170,6 +175,12 @@ class MazeGame:
         # has moved every line of that frame off the row it was written
         # to, and nothing in the lines themselves says so
         self.drawn_size = None
+
+        # the lines printed under the frame by the last ending that
+        # went out, which sit on rows the frame gave up. An ending
+        # printed under that one needs rows for both, since cutting the
+        # frame again moves the frame down over them
+        self.printed_ending = []
 
         # the clock runs from the first render to the end of the game, so
         # the summary reports how long the maze took rather than how long
@@ -322,7 +333,7 @@ class MazeGame:
 
         return lines
 
-    def print_ending(self, lines):
+    def print_ending(self, lines, printed=()):
         """Print an ending into rows kept clear for it under the frame.
 
         The frame is drawn once more first, cut short by the rows the
@@ -336,6 +347,14 @@ class MazeGame:
 
         Args:
             lines: The ending's lines, as :meth:`ending` builds them
+            printed: Lines an earlier ending already left under the
+                frame, for an ending printed below it. They sit on rows
+                the frame gave up, so cutting it again moves the frame
+                down over them: the frame is cut for both endings
+                together and both are written back, which leaves the
+                earlier one reading where the player is reading it.
+                Where there is no frame to cut they are on the screen
+                already and are left where they are
         """
 
         # a terminal that cannot be drawn on by row is wiped and
@@ -346,8 +365,30 @@ class MazeGame:
         # The row the cursor is left on by the last line's newline is a
         # row of the screen like any other, and a newline written on the
         # bottom row scrolls it, so it is counted with them
+        self.printed_ending = list(printed) + list(lines)
+
         if ansi_enabled():
-            self.render(reserve=len(lines) + 1)
+            # where the earlier ending's rows start, read before the
+            # redraw moves the foot of the frame up past them
+            under = len(self.drawn_lines)
+            self.render(reserve=len(self.printed_ending) + 1)
+
+            if printed:
+                # those rows are below the frame, so the redraw's own
+                # wipe never reaches them, and a line printed over a
+                # row writes across it rather than clearing it: a
+                # shorter line would read with the tail of the longer
+                # one still behind it.
+                #
+                # A redraw parks the cursor under the frame, and one
+                # that wrote nothing leaves it where it was, which is
+                # under the ending printed last. Addressing the row
+                # puts it back either way
+                sys.stdout.write(
+                    wipe_rows(under, under + len(printed), terminal_size()) +
+                    ANSI_ROW % (len(self.drawn_lines) + 1))
+
+            lines = self.printed_ending
 
         for line in lines:
             print(line)
@@ -736,12 +777,13 @@ class MazeGame:
             # and nothing is drawn after it - play returns, and the
             # scrolled frame is what the player is left looking at.
             #
-            # A stopped clock means an ending has already gone out and
-            # this interrupt is the keypress dismissing it. The frame
-            # was cut for that ending, so cutting it again for this one
-            # would draw the maze back over what the player has just
-            # been told, and the goodbye goes under it as it always did
-            if self.stopped is None:
-                self.print_ending(["", GOODBYE_MESSAGE])
-            else:
-                print("\n" + GOODBYE_MESSAGE)
+            # An ending already on screen is one this interrupt is the
+            # keypress dismissing, and the frame was cut for it once
+            # already. Cutting it for that ending and this goodbye
+            # together and writing both back is what keeps the summary
+            # where the player is reading it while the goodbye lands in
+            # rows of its own, rather than on the single row the ending
+            # left over. The maze gives those rows up, as it does for
+            # every other ending
+            self.print_ending(["", GOODBYE_MESSAGE],
+                              printed=self.printed_ending)

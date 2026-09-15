@@ -29,94 +29,6 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
-### UI/UX Override - The Interrupt's Rows on a Real Console
-
-#### Found Issues
-
-- [ ] The win and caught banners draw as replacement characters on the
-  console, where the plain banner was promised
-  - **Issue**: `win_banner` and `caught_banner` fall back to the plain
-    wording only when `can_encode` reports that the output encoding cannot
-    carry the glyph. On a Windows console `sys.stdout.encoding` is `utf-8`,
-    which carries both glyphs, so the fallback never fires - but a console
-    screen buffer cell holds one UCS-2 code unit and both glyphs are
-    outside the BMP: `\N{PARTY POPPER}` is U+1F389 and `\N{SKULL}` is
-    U+1F480. The cell ends up holding U+FFFD, so the player reads a
-    replacement character where `docs/playing.md` promises either the
-    glyph or the plain banner. Measured 09.14.2026 by printing
-    `win_banner()` into an allocated console twice, with
-    `PYTHONIOENCODING=utf-8` set and removed: two U+FFFD cells both times
-    and `utf-8` reported both times, so it is the console rather than the
-    test harness. Unchanged in 2.5.0, 2.6.0 and 2.6.1, and in every
-    console capture kept since the 09.10 run. Windows Terminal draws them
-    correctly, so it is per console host rather than per platform
-  - **Goal**: Resolve to [console-banner-glyphs.prompt.md](.claude/prompts/console-banner-glyphs.prompt.md)
-  - From: UI/UX Override - The Interrupt's Rows on a Real Console
-
-### Code Review Override - The Goodbye That Dismisses an Ending
-
-#### Resolve Issues
-
-- [ ] Goodbye Rows 1: the goodbye that dismisses an ending still takes the
-  frame's head with it
-  - **Issue**: 2.6.1 routed the `except KeyboardInterrupt` branch of
-    `MazeGame.play` through `print_ending` only when `self.stopped is None`,
-    and printed `"\n" + GOODBYE_MESSAGE` raw when it is not. The guard is
-    right as far as it goes - cutting the frame a second time would draw the
-    maze back over the summary the player has just been read - but it leaves
-    the other half of the same defect standing. `finish` reserves
-    `len(ending) + 1` rows and the ending fills all but the last of them, so
-    the two lines the goodbye prints have one row to land in and take the
-    screen up two. Measured on the suite's hand-built maze at 100 columns:
-    walk `TestMazeGame.ROUTE` to the exit and press Ctrl+C at "Press any key
-    to exit...", and the screen scrolls 2 rows at 16, 17 and 18 rows, 1 at
-    19 and none by 20, taking `start` and the first maze row off the top.
-    Dismissing the same ending with an ordinary key scrolls nothing at any
-    of those heights, so Ctrl+C is still the one way out of the maze that
-    costs the frame - the whole subject of
-    `TestTheEndingIsGivenRowsOfItsOwn`. The new
-    `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen` asserts the
-    summary survived but not `screen.scrolls`, which is what its two
-    siblings in that class and `assert_the_frame_survived` both assert, so
-    nothing caught it. `docs/playing.md` reads "An interrupt pressed on a
-    summary already waiting for a key prints under it instead, the rows for
-    that summary having been kept back already", which a reader takes as a
-    promise that nothing scrolls there
-  - **Goal**: give the dismissing goodbye rows of its own without redrawing
-    the maze over the summary. The ending is already on screen, so the frame
-    can be cut again for the ending *plus* the goodbye and both printed
-    back - `finish` keeping the lines it printed, and the branch calling
-    `print_ending` with those lines and the two more. That costs 3 maze rows
-    on a console the ending fills, which is what a shrunken console already
-    costs everywhere else in `render`, but it adds state to `MazeGame` and
-    couples `play` to what `finish` drew, so it is a shape for the run to
-    choose rather than a line to change - reserving the two rows up front in
-    `finish` is the other, and costs them to every player who presses an
-    ordinary key. Whichever is taken, assert `screen.scrolls == 0` in
-    `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen` the way its
-    siblings do, cover the chased ending as well as the plain one, and say
-    what happens in `docs/playing.md` rather than implying it
-  - From: Code Review Override - The Chase Point and the Interrupt's Ending
-
-#### Found Issues
-
-- [ ] `PlaySession.key` raises a scripted exception class but returns a
-  scripted exception instance
-  - **Issue**: the helper 2.6.1 added to `test_py_maze.py` guards with
-    `isinstance(key, type) and issubclass(key, BaseException)`, so it raises
-    `KeyboardInterrupt` but hands `KeyboardInterrupt()` back as though it
-    were a keypress. Its own comment says it writes an interrupt "the way
-    `TestInterruptedGame` writes one", and mock's iterable `side_effect`
-    raises an instance exactly as it raises a class, so the two forms are
-    interchangeable everywhere else in the suite and are not here. No
-    scripted key is an instance today, so nothing fails now: a test written
-    later with `[..., KeyboardInterrupt()]` would have the game read the
-    instance as an unrecognised key, walk on, and fail with "the game asked
-    for more keys than scripted" - or pass while testing nothing
-  - **Goal**: accept both in `PlaySession.key`, raising when `key` is a
-    `BaseException` instance as well as when it is a subclass of one
-  - From: Code Review Override - The Goodbye That Dismisses an Ending
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1328,5 +1240,80 @@ No items are currently queued in this section.
     and add an interrupted game to `TestTheEndingIsGivenRowsOfItsOwn`
     asserting the screen did not scroll
   - From: Code Review Override - The Chase Point and the Interrupt's Ending
+- [x] The win and caught banners draw as replacement characters on the
+  console, where the plain banner was promised
+  - **Issue**: `win_banner` and `caught_banner` fall back to the plain
+    wording only when `can_encode` reports that the output encoding cannot
+    carry the glyph. On a Windows console `sys.stdout.encoding` is `utf-8`,
+    which carries both glyphs, so the fallback never fires - but a console
+    screen buffer cell holds one UCS-2 code unit and both glyphs are
+    outside the BMP: `\N{PARTY POPPER}` is U+1F389 and `\N{SKULL}` is
+    U+1F480. The cell ends up holding U+FFFD, so the player reads a
+    replacement character where `docs/playing.md` promises either the
+    glyph or the plain banner. Measured 09.14.2026 by printing
+    `win_banner()` into an allocated console twice, with
+    `PYTHONIOENCODING=utf-8` set and removed: two U+FFFD cells both times
+    and `utf-8` reported both times, so it is the console rather than the
+    test harness. Unchanged in 2.5.0, 2.6.0 and 2.6.1, and in every
+    console capture kept since the 09.10 run. Windows Terminal draws them
+    correctly, so it is per console host rather than per platform
+  - **Goal**: Resolve to [console-banner-glyphs.prompt.md](.claude/prompts/console-banner-glyphs.prompt.md)
+  - From: UI/UX Override - The Interrupt's Rows on a Real Console
+- [x] Goodbye Rows 1: the goodbye that dismisses an ending still takes the
+  frame's head with it
+  - **Issue**: 2.6.1 routed the `except KeyboardInterrupt` branch of
+    `MazeGame.play` through `print_ending` only when `self.stopped is None`,
+    and printed `"\n" + GOODBYE_MESSAGE` raw when it is not. The guard is
+    right as far as it goes - cutting the frame a second time would draw the
+    maze back over the summary the player has just been read - but it leaves
+    the other half of the same defect standing. `finish` reserves
+    `len(ending) + 1` rows and the ending fills all but the last of them, so
+    the two lines the goodbye prints have one row to land in and take the
+    screen up two. Measured on the suite's hand-built maze at 100 columns:
+    walk `TestMazeGame.ROUTE` to the exit and press Ctrl+C at "Press any key
+    to exit...", and the screen scrolls 2 rows at 16, 17 and 18 rows, 1 at
+    19 and none by 20, taking `start` and the first maze row off the top.
+    Dismissing the same ending with an ordinary key scrolls nothing at any
+    of those heights, so Ctrl+C is still the one way out of the maze that
+    costs the frame - the whole subject of
+    `TestTheEndingIsGivenRowsOfItsOwn`. The new
+    `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen` asserts the
+    summary survived but not `screen.scrolls`, which is what its two
+    siblings in that class and `assert_the_frame_survived` both assert, so
+    nothing caught it. `docs/playing.md` reads "An interrupt pressed on a
+    summary already waiting for a key prints under it instead, the rows for
+    that summary having been kept back already", which a reader takes as a
+    promise that nothing scrolls there
+  - **Goal**: give the dismissing goodbye rows of its own without redrawing
+    the maze over the summary. The ending is already on screen, so the frame
+    can be cut again for the ending *plus* the goodbye and both printed
+    back - `finish` keeping the lines it printed, and the branch calling
+    `print_ending` with those lines and the two more. That costs 3 maze rows
+    on a console the ending fills, which is what a shrunken console already
+    costs everywhere else in `render`, but it adds state to `MazeGame` and
+    couples `play` to what `finish` drew, so it is a shape for the run to
+    choose rather than a line to change - reserving the two rows up front in
+    `finish` is the other, and costs them to every player who presses an
+    ordinary key. Whichever is taken, assert `screen.scrolls == 0` in
+    `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen` the way its
+    siblings do, cover the chased ending as well as the plain one, and say
+    what happens in `docs/playing.md` rather than implying it
+  - From: Code Review Override - The Chase Point and the Interrupt's Ending
+- [x] `PlaySession.key` raises a scripted exception class but returns a
+  scripted exception instance
+  - **Issue**: the helper 2.6.1 added to `test_py_maze.py` guards with
+    `isinstance(key, type) and issubclass(key, BaseException)`, so it raises
+    `KeyboardInterrupt` but hands `KeyboardInterrupt()` back as though it
+    were a keypress. Its own comment says it writes an interrupt "the way
+    `TestInterruptedGame` writes one", and mock's iterable `side_effect`
+    raises an instance exactly as it raises a class, so the two forms are
+    interchangeable everywhere else in the suite and are not here. No
+    scripted key is an instance today, so nothing fails now: a test written
+    later with `[..., KeyboardInterrupt()]` would have the game read the
+    instance as an unrecognised key, walk on, and fail with "the game asked
+    for more keys than scripted" - or pass while testing nothing
+  - **Goal**: accept both in `PlaySession.key`, raising when `key` is a
+    `BaseException` instance as well as when it is a subclass of one
+  - From: Code Review Override - The Goodbye That Dismisses an Ending
 
 </details>

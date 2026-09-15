@@ -2043,8 +2043,14 @@ class PlaySession:
         # a scripted exception is raised rather than returned, so a
         # Ctrl+C is written into a route the way TestInterruptedGame
         # writes one: mock raises an exception out of an iterable
-        # side_effect, and this is a callable one
-        if isinstance(key, type) and issubclass(key, BaseException):
+        # side_effect, and this is a callable one. Mock raises an
+        # instance exactly as it raises a class, so both forms are
+        # scripted keys here as well - an instance handed back as a
+        # keypress would be walked past as a key the game has no use
+        # for, and the route would run off the end of its script
+        if isinstance(key, BaseException) or (isinstance(key, type)
+                                              and issubclass(key,
+                                                             BaseException)):
             raise key
 
         return key
@@ -2144,6 +2150,43 @@ def cursor_rows(text):
     #     list: The rows a write moved the cursor to, in order
 
     return [int(row) for row in re.findall(r'\x1b\[(\d+);1H', text)]
+
+
+class TestScriptedKeys(unittest.TestCase):
+    # a scripted keyboard is the other instrument, and an exception
+    # written into a route is the one entry that is not a keypress at
+    # all. Mock raises an instance out of an iterable side_effect
+    # exactly as it raises a class, so a route written either way means
+    # the same thing here: a class handed back as a key would be walked
+    # past as a key the game has no use for, and the route would run off
+    # the end of its script rather than ending on the interrupt
+
+    def session(self, keys):
+        return PlaySession(keys)
+
+    def test_a_scripted_exception_class_is_raised(self):
+        session = self.session([KeyboardInterrupt])
+
+        with self.assertRaises(KeyboardInterrupt):
+            session.key()
+
+    def test_a_scripted_exception_instance_is_raised_as_well(self):
+        session = self.session([KeyboardInterrupt()])
+
+        with self.assertRaises(KeyboardInterrupt):
+            session.key()
+
+    def test_an_ordinary_key_is_still_handed_back(self):
+        self.assertEqual(self.session(['s']).key(), 's')
+
+    def test_a_route_written_with_an_instance_ends_on_it(self):
+        # the whole point of accepting both: the game reads the route to
+        # its end and the interrupt is what stops it, rather than the
+        # script running dry a step later
+        session = PlaySession(TestMazeGame.ROUTE + [KeyboardInterrupt()])
+        session.play(sizes=[terminal_size(100, 40)])
+
+        self.assertIn(py_maze.GOODBYE_MESSAGE, session.output.getvalue())
 
 
 class TestTerminalScreenBottom(unittest.TestCase):
@@ -4726,6 +4769,136 @@ class TestCanEncode(unittest.TestCase):
             self.assertTrue(py_maze.can_encode('\N{PARTY POPPER}'))
 
 
+class TestCanDisplay(unittest.TestCase):
+    # a console cell is not the same question as a code page. The cell
+    # holds one UCS-2 code unit, so a character above the basic
+    # multilingual plane is stored as U+FFFD and drawn as a replacement
+    # character on a console reporting utf-8, which encodes it happily.
+    # Measured 09.14.2026 on a console allocated with AllocConsole and
+    # read back with ReadConsoleOutputCharacterW: two replacement cells
+    # where the party poppers were written, with PYTHONIOENCODING forced
+    # to utf-8 and with it removed alike
+
+    POPPER = '\N{PARTY POPPER}'
+
+    def console(self, encoding='utf-8'):
+        # Returns:
+        #     A stream standing in for a console screen buffer: it names
+        #     an encoding and answers as a terminal
+
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return stream
+
+    def on_windows(self, stream, terminal=True, windows_terminal=False):
+        # the console host the glyph is written to, as the three things
+        # can_display reads it off: the platform, whether the stream is
+        # a terminal at all, and whether Windows Terminal announced
+        # itself in the environment
+        #
+        # Returns:
+        #     A context manager holding all three in place
+
+        environment = dict(os.environ)
+        environment.pop(py_maze.WINDOWS_TERMINAL_VARIABLE, None)
+        if windows_terminal:
+            environment[py_maze.WINDOWS_TERMINAL_VARIABLE] = '1'
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(sys, 'platform', 'win32'))
+        stack.enter_context(mock.patch.dict(os.environ, environment,
+                                            clear=True))
+        stack.enter_context(mock.patch.object(py_maze.rendering,
+                                              'is_a_terminal',
+                                              return_value=terminal))
+        return stack
+
+    def test_a_console_cell_cannot_hold_a_character_above_the_plane(self):
+        with self.on_windows(self.console()):
+            self.assertFalse(py_maze.can_display(self.POPPER, self.console()))
+
+    def test_the_same_console_takes_a_character_inside_it(self):
+        with self.on_windows(self.console()):
+            self.assertTrue(py_maze.can_display('Solved!', self.console()))
+
+    def test_windows_terminal_draws_what_the_console_host_cannot(self):
+        with self.on_windows(self.console(), windows_terminal=True):
+            self.assertTrue(py_maze.can_display(self.POPPER, self.console()))
+
+    def test_a_redirected_stream_is_a_file_rather_than_a_buffer(self):
+        with self.on_windows(self.console(), terminal=False):
+            self.assertTrue(py_maze.can_display(self.POPPER, self.console()))
+
+    def test_no_other_platform_draws_a_cell_at_a_time(self):
+        with mock.patch.object(sys, 'platform', 'linux'), \
+                mock.patch.object(py_maze.rendering, 'is_a_terminal',
+                                  return_value=True):
+            self.assertTrue(py_maze.can_display(self.POPPER, self.console()))
+
+    def test_the_encoding_is_still_asked_first(self):
+        # the older half of the question, which every platform answers:
+        # a code page that cannot carry the glyph refuses it wherever
+        # the text was going
+        with mock.patch.object(sys, 'platform', 'linux'):
+            self.assertFalse(py_maze.can_display(self.POPPER,
+                                                 self.console('cp437')))
+
+    def test_a_stream_with_no_encoding_takes_anything(self):
+        self.assertTrue(py_maze.can_display(self.POPPER, io.StringIO()))
+
+    def test_standard_output_is_the_default_stream(self):
+        with mock.patch.object(sys, 'stdout', io.StringIO()):
+            self.assertTrue(py_maze.can_display(self.POPPER))
+
+    def test_the_plane_it_names_is_the_one_the_cell_holds(self):
+        # a UCS-2 cell holds a code unit, so the boundary is the last
+        # code point that fits in one
+        self.assertEqual(py_maze.LAST_BMP_CODE_POINT, 0xFFFF)
+        self.assertGreater(ord(self.POPPER), py_maze.LAST_BMP_CODE_POINT)
+        self.assertGreater(ord('\N{SKULL}'), py_maze.LAST_BMP_CODE_POINT)
+
+
+class TestBannersOnAConsoleThatCannotDrawThem(unittest.TestCase):
+    # what the defect looked like to a player: a console reporting
+    # utf-8, which the encoding question passes, and a pair of
+    # replacement characters where the glyphs were promised
+
+    def console(self):
+        stream = mock.Mock()
+        stream.encoding = 'utf-8'
+        return stream
+
+    def on_a_console_host(self):
+        stack = contextlib.ExitStack()
+        environment = dict(os.environ)
+        environment.pop(py_maze.WINDOWS_TERMINAL_VARIABLE, None)
+        stack.enter_context(mock.patch.object(sys, 'platform', 'win32'))
+        stack.enter_context(mock.patch.dict(os.environ, environment,
+                                            clear=True))
+        stack.enter_context(mock.patch.object(py_maze.rendering,
+                                              'is_a_terminal',
+                                              return_value=True))
+        return stack
+
+    def test_the_win_banner_falls_back_to_the_plain_wording(self):
+        with self.on_a_console_host():
+            self.assertEqual(py_maze.win_banner(self.console()),
+                             py_maze.PLAIN_WIN_BANNER)
+
+    def test_the_caught_banner_falls_back_as_well(self):
+        with self.on_a_console_host():
+            self.assertEqual(py_maze.caught_banner(self.console()),
+                             py_maze.PLAIN_CAUGHT_BANNER)
+
+    def test_the_encoding_alone_would_have_passed_both(self):
+        # the reason the fallback never fired: utf-8 encodes both
+        # glyphs, so the older question answers yes to each
+        self.assertTrue(py_maze.can_encode(py_maze.WIN_BANNER,
+                                           self.console()))
+        self.assertTrue(py_maze.can_encode(py_maze.CAUGHT_BANNER,
+                                           self.console()))
+
+
 class TestChaser(unittest.TestCase):
     # the antagonist is a cell and a clock: where it steps comes from
     # the solver the game already runs, when it steps from a preset
@@ -5419,16 +5592,70 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
                          session.game.frame()[-py_maze.FRAME_FOOT_ROWS:])
 
+    def assert_the_goodbye_landed_under(self, session, screen, banner):
+        # the summary is still where the player was reading it, the
+        # goodbye is in rows under it rather than on the one row the
+        # summary left over, and nothing went off the top to pay for
+        # them
+        ending = self.ending(session, banner)
+        lines = screen.lines()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(lines[-len(ending) - 3:-3], ending)
+        self.assertEqual(lines[-3:], ['', py_maze.GOODBYE_MESSAGE, ''])
+
     def test_an_interrupt_dismissing_an_ending_leaves_it_on_screen(self):
-        # the frame was cut for the win screen already printed under it,
-        # and cutting it again for two lines would draw the maze back
-        # over what the player has just been told
+        # the win screen is already printed under the frame, and the
+        # rows it is on are rows the frame gave up. The goodbye asks for
+        # two more, so the frame is cut for the summary and the goodbye
+        # together and both are written back: cutting it for the goodbye
+        # alone would draw the maze over what the player has just been
+        # told, and printing the goodbye onto the one row left would
+        # take the start marker off the top
+        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
+
+        self.assert_the_goodbye_landed_under(session, screen,
+                                             py_maze.WIN_BANNER)
+
+    def test_an_interrupt_dismissing_a_chased_ending_does_the_same(self):
+        # a chased summary is a row taller, so this console is two rows
+        # short of the goodbye rather than one: the rows are counted
+        # rather than assumed
+        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt],
+                                    chaser=py_maze.Chaser((1, 0)))
+
+        self.assertEqual(session.game.outcome, py_maze.ESCAPED_OUTCOME)
+        self.assert_the_goodbye_landed_under(session, screen,
+                                             py_maze.WIN_BANNER)
+
+    def test_the_maze_is_what_dismissing_an_ending_costs(self):
+        # the frame is cut for it the way it is cut everywhere else: the
+        # maze window gives the rows up and the foot of the screen - the
+        # end marker, the tally, the spacer and the controls line -
+        # stays where it is
+        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
+        ending = self.ending(session, py_maze.WIN_BANNER)
+        drawn = screen.lines()[:-len(ending) - 3]
+
+        self.assertEqual(drawn[0], 'start')
+        self.assertEqual(len(drawn), len(session.game.frame()) - 2)
+        self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
+                         session.game.frame()[-py_maze.FRAME_FOOT_ROWS:])
+
+    def test_the_summary_is_written_back_rather_than_left_behind(self):
+        # the rows it moves onto held the maze a moment ago, and a line
+        # printed over a row writes across it rather than clearing it,
+        # so a tally shorter than the banner it replaces would read with
+        # the tail of the banner still behind it
         session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
         ending = self.ending(session, py_maze.WIN_BANNER)
         lines = screen.lines()
+        blanks = [index for index, line in enumerate(ending) if not line]
 
-        self.assertEqual(lines[-len(ending) - 3:-3], ending)
-        self.assertEqual(lines[-3:], ['', py_maze.GOODBYE_MESSAGE, ''])
+        self.assertTrue(blanks, 'the ending prints no blank line at all')
+        for index in blanks:
+            self.assertEqual(lines[len(lines) - len(ending) - 3 + index], '')
 
 
 class TestCollectibleCount(unittest.TestCase):

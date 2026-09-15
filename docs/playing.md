@@ -96,16 +96,24 @@ Interrupting with Ctrl+C is given the same rows. Its goodbye is two lines
 rather than a summary, so it asks the maze window for fewer of them, but it
 is the third way out of the same maze and nothing is drawn after it: a
 scrolled frame would be the last thing on screen. An interrupt pressed on a
-summary already waiting for a key prints under it instead, the rows for that
-summary having been kept back already.
+summary already waiting for a key asks for two rows more than that summary
+was given: the maze window gives them up as well, and the summary and the
+goodbye are written back together, so the tallies stay where they are being
+read and nothing scrolls off the top.
 
-A console whose code page cannot draw the party poppers gets the plain
-congratulations instead, so the message arrives whatever the terminal can
-encode:
+A console that cannot draw the party poppers gets the plain congratulations
+instead, so the message arrives whatever the terminal can show:
 
 ```
 Congratulations! You solved the maze!
 ```
+
+That covers two different terminals. A legacy code page cannot encode the
+glyph at all; a classic console window - what `cmd.exe` and a desktop
+shortcut open - encodes it perfectly well and still cannot draw it, because
+a cell of its screen holds too little to store a character that wide and
+shows a replacement character in its place. Both get the plain wording.
+Windows Terminal draws the glyphs, and gets them.
 
 ## Chase Mode
 
@@ -157,8 +165,10 @@ plain game has one way out, so a summary saying which was taken would say
 nothing, and it is left off. Quitting is neither of the two, so it is left
 off there as well.
 
-A console whose code page cannot draw the skulls gets `Caught! The chaser
-reached you.` on its own, exactly as the congratulations falls back.
+A console that cannot draw the skulls gets `Caught! The chaser reached
+you.` on its own, on the same terms as the congratulations above: a code
+page that cannot encode them and a console window whose cells cannot hold
+them both read the plain wording.
 
 How far in the chase begins and how fast the chaser moves are both settings:
 `--chase-point` takes a share of the maze from 20 to 90, and `--chase-speed`

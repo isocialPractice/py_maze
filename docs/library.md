@@ -260,6 +260,7 @@ one maze and it is not solved again for each.
 | `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
 | `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
 | `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
+| `can_display(text, stream)` | Whether a destination draws the text as written, the encoding and the screen buffer cell both asked |
 | `clear_screen`, `ansi_enabled`, `can_encode` | The rest of the escape sequence machinery behind a redraw |
 
 An overlay is a `(marker, cells)` pair, and `maze_lines` takes a sequence of
