@@ -98,6 +98,57 @@ into a `## Complete` section at the bottom of this file.
     keeps
   - From: UI/UX Override - The Banners and the Dismissing Goodbye
 
+### Code Review Override - The Rows a Grown Console Gives Back
+
+#### Found Issues
+
+- [ ] Nothing pins what a redirected run prints when an interrupt dismisses
+  an ending
+  - **Issue**: `MazeGame.print_ending` reads `printed` only inside its
+    `if ansi_enabled():` branch, so a run with no terminal to draw on
+    prints the goodbye alone and leaves the summary where it already is -
+    which its own docstring now promises: "Where there is no frame to cut
+    they are on the screen already and are left where they are". Nothing
+    asserts it. `TestInterruptedGame.play` redirects stdout to a
+    `StringIO`, which makes `ansi_enabled` False, and
+    `test_interrupt_on_the_win_screen_is_handled` asserts only that
+    `Congratulations` and `GOODBYE_MESSAGE` are both somewhere in the
+    output. Move the `lines = self.printed_ending` assignment in
+    `py_maze/game.py` out of the `ansi_enabled()` branch and the suite
+    still passes 799 of 799, with the summary printed twice on every
+    piped run - the regression that would reach a player reading a
+    `py_maze > run.log`
+  - **Goal**: add a test to `TestInterruptedGame` asserting that walking
+    `TestMazeGame.ROUTE` to the exit and interrupting at the prompt counts
+    the banner and each summary line exactly once in the redirected
+    output, and the goodbye once after them
+  - From: Code Review Override - The Rows a Grown Console Gives Back
+- [ ] `can_display` reads every Windows terminal that is not Windows
+  Terminal as the classic console host
+  - **Issue**: the console test in `py_maze/rendering.py` is three reads
+    and no measurement - `sys.platform == 'win32'`, `WT_SESSION` unset,
+    and `is_a_terminal` - so a Windows terminal emulator that is neither
+    the classic host nor Windows Terminal is answered as the classic host.
+    ConEmu and a conpty-backed VS Code integrated terminal both set no
+    `WT_SESSION` and both leave stdout a terminal, so both are handed
+    `PLAIN_WIN_BANNER` and `PLAIN_CAUGHT_BANNER` where they could have
+    drawn the glyphs. Nothing is lost and nothing raises - this is the
+    safe direction of the two, and mintty is already unaffected because
+    Git Bash leaves stdout a pipe rather than a console - but the hatch is
+    written as though Windows had two destinations when it has more, and
+    neither `docs/playing.md` nor the function says so. Asking the buffer
+    instead is worse than the guess: `GetConsoleMode` reports nothing
+    about what a cell can hold, and writing a character and reading the
+    cell back would put a glyph on screen before the banner the player is
+    waiting for
+  - **Goal**: name the limit where the hatch is stated rather than
+    widening the test - say in `can_display` and in `docs/playing.md` that
+    the plain wording is what a Windows console gets unless Windows
+    Terminal announced itself, so an emulator that could have drawn the
+    glyphs reads plainly rather than wrongly. Pairs with the hatch item
+    above, which asks the same two files to say what the hatch rests on
+  - From: Code Review Override - The Rows a Grown Console Gives Back
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
