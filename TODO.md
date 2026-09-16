@@ -29,6 +29,75 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
+### UI/UX Override - The Banners and the Dismissing Goodbye
+
+#### Found Issues
+
+- [ ] The Windows Terminal escape hatch has never been read back on a
+  Windows Terminal
+  - **Issue**: `can_display` returns True for anything once `WT_SESSION` is
+    set, on the ground that Windows Terminal draws a character above the
+    basic multilingual plane where a classic console host stores U+FFFD.
+    That ground is the whole reason the hatch exists, and
+    `py_maze/rendering.py` states it as fact while `docs/playing.md` now
+    repeats it to the reader as "Windows Terminal draws the glyphs, and
+    gets them". The 09.16.2026 console run confirmed the half of it that
+    can be asserted from code: with `WT_SESSION` set, `can_display`
+    answered True for both banners and the glyph wording was chosen, so
+    2.7.0 has not made every Windows terminal plain. The other half was
+    never reached, because Windows Terminal would not start from an
+    unattended run - the `wt.exe` alias, `start "" wt.exe`, and
+    `WindowsTerminal.exe` from the package folder each returned at once and
+    left no window and no process, while mintty launched from the same
+    shell without trouble. So the one host the hatch is written for is the
+    one host the banners have never been read back on, and if the ground is
+    wrong a player there reads two replacement characters, which is the
+    defect 2.7.0 fixed in the other host
+  - **Goal**: run `.tmp/ui-ux/emulator_2_7_0.py` from inside a real Windows
+    Terminal session, which writes the chosen banner's codepoints and the
+    cells behind them to a file and needs nobody to watch it, and record
+    what it read. If no run can start one, say in `py_maze/rendering.py`
+    and `docs/playing.md` that the hatch rests on Windows Terminal's
+    documented behaviour rather than on anything measured here
+  - From: UI/UX Override - The Banners and the Dismissing Goodbye
+- [ ] The suite pins the dismissing goodbye at one console height, where
+  the defect spanned five
+  - **Issue**: `TestTheEndingIsGivenRowsOfItsOwn.play` already takes a
+    `rows=` argument for measuring an ending against a console of another
+    height, but all three tests 2.7.0 added -
+    `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen`, its
+    chased sibling, and `test_the_maze_is_what_dismissing_an_ending_costs` -
+    use the default, the console the plain ending exactly fills. The
+    archived item measured the defect at 16, 17, 18 and 19 rows as well,
+    and those are the heights where the maze window has fewest rows left to
+    give: the 09.16 console sweep found the window cut to a single maze row
+    at the tightest of them, and the ending still readable there. Nothing
+    in the suite would catch a fix that held only at the one height it was
+    written against
+  - **Goal**: sweep the heights the archived item named in those three
+    tests, asserting at each one what `assert_the_goodbye_landed_under`
+    already asserts at one - `screen.scrolls` is 0, `lines[0]` is `start`,
+    and the ending reads back unchanged
+  - From: UI/UX Override - The Banners and the Dismissing Goodbye
+- [ ] `docs/playing.md` says the tallies stay where they are, and they move
+  up two rows
+  - **Issue**: the page reads "the summary and the goodbye are written back
+    together, so the tallies stay where they are being read and nothing
+    scrolls off the top". The second half is true and was measured. The
+    first half is not quite: cutting the frame for both endings moves its
+    foot up, and everything under it moves up with it, so the summary is
+    rewritten two rows higher than the player was reading it. Measured at
+    every height of the 09.16 sweep - 16 through 22 rows plain, 17 through
+    22 chased, 20 and 21 caught - and it was two rows in all fifteen runs,
+    never none. Nothing is lost and nothing scrolls, so this is wording
+    rather than behaviour, but a reader takes "stay where they are" as the
+    same rows and the archived item asked for this page to say what happens
+    rather than imply it
+  - **Goal**: say that the summary moves up by the rows the frame gives up
+    and stays whole and on screen, which is the promise the fix actually
+    keeps
+  - From: UI/UX Override - The Banners and the Dismissing Goodbye
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
