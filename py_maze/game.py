@@ -383,9 +383,18 @@ class MazeGame:
                 # A redraw parks the cursor under the frame, and one
                 # that wrote nothing leaves it where it was, which is
                 # under the ending printed last. Addressing the row
-                # puts it back either way
+                # puts it back either way.
+                #
+                # A console the player drags taller between the two
+                # endings hands the frame back rows the earlier one was
+                # printed on, and the resize redraws the frame whole
+                # over them. Only the rows still below the frame are
+                # the earlier ending's to wipe: starting at the row it
+                # was printed on would clear the foot of the screen off
+                # the frame just drawn
+                first = max(under, len(self.drawn_lines))
                 sys.stdout.write(
-                    wipe_rows(under, under + len(printed), terminal_size()) +
+                    wipe_rows(first, under + len(printed), terminal_size()) +
                     ANSI_ROW % (len(self.drawn_lines) + 1))
 
             lines = self.printed_ending

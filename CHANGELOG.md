@@ -5,6 +5,24 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The goodbye that dismisses an ending no longer takes the foot of the
+  screen with it on a console the player made taller while the ending was
+  waiting. 2.7.0 cut the frame for both endings and wiped the rows the
+  earlier one was printed on, but read where those rows start before the
+  redraw and wiped from there whatever the redraw had since drawn. A
+  console grown between the two hands the frame back the rows it gave up,
+  and the resize redraws the frame whole over them, so the wipe cleared
+  rows of the frame it had just drawn: on the suite's hand-built maze at
+  100 columns, winning at 15 rows and pressing Ctrl+C at "Press any key to
+  exit..." after dragging the window out to 28 rows left the tally, the
+  spacer and the controls line blank. The wipe now starts below the frame
+  rather than where the earlier ending was, so only the rows still holding
+  it are cleared.
+
 ## [2.7.0] - 2026-09-15
 
 Two things a player reads that the terminal was never really asked about.

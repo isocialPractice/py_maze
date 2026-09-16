@@ -5657,6 +5657,43 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         for index in blanks:
             self.assertEqual(lines[len(lines) - len(ending) - 3 + index], '')
 
+    def grown(self, keys, short, tall):
+        # play the game out on a console the player makes taller once
+        # the win screen is on it: one render opens the game, one
+        # follows each keypress, and one more cuts the frame for the
+        # ending finish prints. Every render after those is the
+        # interrupt's own
+        #
+        # Returns:
+        #     tuple: (the session, the screen it was left on)
+
+        session = PlaySession(keys)
+        before = [terminal_size(self.COLUMNS, short)] * (len(keys) + 1)
+        session.play(sizes=before + [terminal_size(self.COLUMNS, tall)])
+
+        return session, session.screen(height=tall, width=self.COLUMNS)
+
+    def test_a_console_grown_between_the_two_keeps_the_frame_whole(self):
+        # the rows the first ending was printed on are rows the frame
+        # gave up, and a console the player drags taller hands them
+        # back: the redraw writes the frame over them again. Wiping
+        # the rows that ending was on would then clear rows of the
+        # frame just drawn, and the rows at the bottom of it are the
+        # foot of the screen - the end marker, the tally, the spacer
+        # and the controls line
+        session, screen = self.grown(TestMazeGame.ROUTE + [KeyboardInterrupt],
+                                     self.height() - 3, self.height() + 10)
+        frame = session.game.frame()
+        ending = self.ending(session, py_maze.WIN_BANNER)
+        lines = screen.lines()
+
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(lines[:len(frame)], frame)
+        self.assertEqual(lines[len(frame):len(frame) + len(ending)], ending)
+        self.assertEqual(lines[len(frame) + len(ending):
+                               len(frame) + len(ending) + 2],
+                         ['', py_maze.GOODBYE_MESSAGE])
+
 
 class TestCollectibleCount(unittest.TestCase):
     def test_accepts_nought_and_above(self):
