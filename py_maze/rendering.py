@@ -113,7 +113,17 @@ LAST_BMP_CODE_POINT = 0xFFFF
 
 # the environment variable Windows Terminal announces itself in. It
 # draws a character above the plane the console host it replaced is
-# limited to, so the two are not the same destination
+# limited to, so the two are not the same destination.
+#
+# That last claim is Windows Terminal's documented behaviour rather than
+# anything measured here: the banners have never been read back inside
+# one. Windows Terminal is a packaged application and will not start
+# from an unattended run - the `wt.exe` alias, a `-w _new` window, a
+# child batch file and `shell:appsFolder` each returned at once and left
+# no window and no process - so the console runs kept beside this
+# repository can only set the variable and watch the branch below be
+# taken. What they do show is that setting it lets both banners through,
+# which is the regression that would make every Windows terminal plain
 WINDOWS_TERMINAL_VARIABLE = 'WT_SESSION'
 
 # what enable_windows_ansi() last answered, so the console mode is asked
@@ -307,6 +317,18 @@ def can_display(text, stream=None):
     Terminal draws them, so the limit belongs to the console host rather
     than to the platform.
 
+    Which console host is reported rather than measured, and Windows has
+    more than the two this asks about. A terminal that sets no
+    ``WT_SESSION`` and leaves standard output a console is read as the
+    classic host, so ConEmu and a conpty-backed editor terminal are
+    handed the plain wording where they could have drawn the glyphs.
+    That is the safe direction of the two - the plain wording arrives
+    everywhere, where a wrong guess the other way puts replacement
+    characters on the screen - and it is where the guessing stops:
+    ``GetConsoleMode`` reports nothing about what a cell can hold, and
+    writing a character to read the cell back would put a glyph on
+    screen ahead of the banner the player is waiting for.
+
     Args:
         text: The text that is about to be written
         stream: The stream it would be written to, defaulting to
@@ -316,7 +338,10 @@ def can_display(text, stream=None):
         True when the text arrives as it was written, False when the
         encoding would raise rather than carry it or the destination
         would draw something else in its place, so a caller with a plain
-        alternative to hand knows to reach for it
+        alternative to hand knows to reach for it. A Windows console
+        that did not announce itself as Windows Terminal is answered
+        False for a character above the plane, whichever terminal it
+        turns out to be
     """
 
     if stream is None:
@@ -325,6 +350,8 @@ def can_display(text, stream=None):
     if not can_encode(text, stream):
         return False
 
+    # a host that announced itself as Windows Terminal is taken at its
+    # word, on the documented behaviour recorded with the variable above
     if sys.platform != 'win32' or os.environ.get(WINDOWS_TERMINAL_VARIABLE):
         return True
 
@@ -333,6 +360,9 @@ def can_display(text, stream=None):
     if not is_a_terminal(stream):
         return True
 
+    # every Windows console left is read as the classic host, the
+    # emulators among them included: the plain wording is what a Windows
+    # console gets unless Windows Terminal announced itself
     return all(ord(character) <= LAST_BMP_CODE_POINT for character in text)
 
 

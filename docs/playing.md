@@ -98,8 +98,11 @@ is the third way out of the same maze and nothing is drawn after it: a
 scrolled frame would be the last thing on screen. An interrupt pressed on a
 summary already waiting for a key asks for two rows more than that summary
 was given: the maze window gives them up as well, and the summary and the
-goodbye are written back together, so the tallies stay where they are being
-read and nothing scrolls off the top.
+goodbye are written back together. Cutting the frame for both moves its foot
+up by the rows the goodbye asks for, so the tallies are rewritten that far
+higher than they were being read - two rows, at every console height they
+have been measured at - and stay whole and on screen, with nothing scrolled
+off the top to pay for them.
 
 A console that cannot draw the party poppers gets the plain congratulations
 instead, so the message arrives whatever the terminal can show:
@@ -113,7 +116,21 @@ glyph at all; a classic console window - what `cmd.exe` and a desktop
 shortcut open - encodes it perfectly well and still cannot draw it, because
 a cell of its screen holds too little to store a character that wide and
 shows a replacement character in its place. Both get the plain wording.
-Windows Terminal draws the glyphs, and gets them.
+
+Windows Terminal announces itself in an environment variable, and a terminal
+that announces itself is taken at its word: it is documented as drawing a
+character that wide, so it gets the glyphs. That is the one thing here read
+off the documentation rather than measured on the screen, because Windows
+Terminal is a packaged application and will not start from the unattended
+runs this project checks itself with.
+
+Every other Windows console reads plainly. The test is the announcement and
+nothing else, so a terminal emulator that is neither the classic host nor
+Windows Terminal - ConEmu, or an editor's integrated terminal - is handed
+the plain wording even where it could have drawn the glyphs. That is the
+side of the guess that costs a reader nothing: the message arrives either
+way, where guessing the other way would put two replacement characters on
+the screen. Setting `WT_SESSION` yourself is what overrides it.
 
 ## Chase Mode
 

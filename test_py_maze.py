@@ -1159,6 +1159,34 @@ class TestInterruptedGame(unittest.TestCase):
         self.assertIn('Congratulations', output)
         self.assertIn(py_maze.GOODBYE_MESSAGE, output)
 
+    def test_a_redirected_run_prints_the_win_screen_once(self):
+        # a run with nothing to draw on by row has no frame to cut, so
+        # the summary the win screen printed is already on the screen
+        # and is left where it is: only the goodbye goes out under it.
+        #
+        # The lines are counted rather than merely found. Writing the
+        # summary back as well - which is what an ending printed under a
+        # cut frame does, and the one line of `print_ending` that tells
+        # the two apart - would read as the maze having been won twice,
+        # and a `py_maze > run.log` is where a player meets it
+        output = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
+        lines = output.split('\n')
+
+        # the banner is chosen against the stream it is printed to, and
+        # a redirected one takes the glyphs wherever its encoding does,
+        # so it is asked the same question the run asked
+        ending = self.game.ending(py_maze.win_banner(io.StringIO()),
+                                  py_maze.EXIT_PROMPT)
+
+        for line in filter(None, ending):
+            self.assertEqual(lines.count(line), 1,
+                             '%r printed %d times' % (line,
+                                                      lines.count(line)))
+
+        self.assertEqual(lines.count(py_maze.GOODBYE_MESSAGE), 1)
+        self.assertGreater(lines.index(py_maze.GOODBYE_MESSAGE),
+                           lines.index(ending[-1]))
+
     def test_quitting_still_thanks_the_player(self):
         output = self.play(['q'])
 
@@ -5435,6 +5463,46 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
         return len(game.frame())
 
+    # consoles an ending is measured on, counted from the tightest one
+    # that holds it
+    SWEEP_ROWS = 5
+
+    def dismissing_heights(self, chased=False):
+        # the consoles an interrupt dismissing an ending was read on.
+        # The tightest is the one it exactly fits: the frame cut down to
+        # its last maze row, the summary already printed under it, the
+        # goodbye's two lines, and the row the last newline leaves the
+        # cursor on. Four taller consoles follow, the last of them with
+        # rows enough that the frame is not cut at all.
+        #
+        # On the suite's maze that is 16 through 20 rows, which is where
+        # the defect was measured: the screen scrolled 2 rows at 16, 17
+        # and 18, 1 at 19 and none by 20. A chased summary carries the
+        # Outcome line a plain one does not, so its five sit a row
+        # higher throughout, and a console below the tightest holds the
+        # goodbye at no height at all
+        #
+        # Args:
+        #     chased: True for a game played with a chaser, whose
+        #         summary is the row taller
+        #
+        # Returns:
+        #     range: Rows each console of the sweep holds
+
+        game = py_maze.MazeGame(
+            grid_from_strings(TestMazeGame.MAZE),
+            chaser=py_maze.Chaser((1, 0)) if chased else None)
+        if chased:
+            game.outcome = py_maze.ESCAPED_OUTCOME
+
+        # the frame cut as far as it goes: the start marker, one maze
+        # row and the foot of the screen
+        window = len(game.frame()) - len(game.maze) + 1
+        tightest = window + len(
+            game.ending(py_maze.WIN_BANNER, py_maze.EXIT_PROMPT)) + 3
+
+        return range(tightest, tightest + self.SWEEP_ROWS)
+
     def play(self, keys, chaser=None, ticking=False, rows=None):
         # play a game out on that console, the ending included
         #
@@ -5612,36 +5680,60 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         # together and both are written back: cutting it for the goodbye
         # alone would draw the maze over what the player has just been
         # told, and printing the goodbye onto the one row left would
-        # take the start marker off the top
-        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
+        # take the start marker off the top.
+        #
+        # Swept across every console the defect was read on rather than
+        # the one the plain ending exactly fills: it scrolled at four of
+        # the five, and those are the heights where the maze window has
+        # fewest rows left to give
+        for rows in self.dismissing_heights():
+            with self.subTest(rows=rows):
+                session, screen = self.play(
+                    TestMazeGame.ROUTE + [KeyboardInterrupt], rows=rows)
 
-        self.assert_the_goodbye_landed_under(session, screen,
-                                             py_maze.WIN_BANNER)
+                self.assert_the_goodbye_landed_under(session, screen,
+                                                     py_maze.WIN_BANNER)
 
     def test_an_interrupt_dismissing_a_chased_ending_does_the_same(self):
-        # a chased summary is a row taller, so this console is two rows
-        # short of the goodbye rather than one: the rows are counted
-        # rather than assumed
-        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt],
-                                    chaser=py_maze.Chaser((1, 0)))
+        # a chased summary is a row taller, so the tightest console of
+        # its sweep is a row taller too and each one is that much
+        # shorter of the goodbye: the rows are counted rather than
+        # assumed
+        for rows in self.dismissing_heights(chased=True):
+            with self.subTest(rows=rows):
+                session, screen = self.play(
+                    TestMazeGame.ROUTE + [KeyboardInterrupt],
+                    chaser=py_maze.Chaser((1, 0)), rows=rows)
 
-        self.assertEqual(session.game.outcome, py_maze.ESCAPED_OUTCOME)
-        self.assert_the_goodbye_landed_under(session, screen,
-                                             py_maze.WIN_BANNER)
+                self.assertEqual(session.game.outcome,
+                                 py_maze.ESCAPED_OUTCOME)
+                self.assert_the_goodbye_landed_under(session, screen,
+                                                     py_maze.WIN_BANNER)
 
     def test_the_maze_is_what_dismissing_an_ending_costs(self):
         # the frame is cut for it the way it is cut everywhere else: the
         # maze window gives the rows up and the foot of the screen - the
         # end marker, the tally, the spacer and the controls line -
-        # stays where it is
-        session, screen = self.play(TestMazeGame.ROUTE + [KeyboardInterrupt])
-        ending = self.ending(session, py_maze.WIN_BANNER)
-        drawn = screen.lines()[:-len(ending) - 3]
+        # stays where it is.
+        #
+        # What it gives up is whatever the console has left once the
+        # summary, the goodbye and the cursor's own row are taken off
+        # it, so it is read off the height rather than written down: the
+        # window is down to a single maze row on the tightest console of
+        # the sweep and the frame is not cut at all on the tallest
+        for rows in self.dismissing_heights():
+            with self.subTest(rows=rows):
+                session, screen = self.play(
+                    TestMazeGame.ROUTE + [KeyboardInterrupt], rows=rows)
+                ending = self.ending(session, py_maze.WIN_BANNER)
+                frame = session.game.frame()
+                drawn = screen.lines()[:-len(ending) - 3]
 
-        self.assertEqual(drawn[0], 'start')
-        self.assertEqual(len(drawn), len(session.game.frame()) - 2)
-        self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
-                         session.game.frame()[-py_maze.FRAME_FOOT_ROWS:])
+                self.assertEqual(drawn[0], 'start')
+                self.assertEqual(len(drawn),
+                                 min(len(frame), rows - len(ending) - 3))
+                self.assertEqual(drawn[-py_maze.FRAME_FOOT_ROWS:],
+                                 frame[-py_maze.FRAME_FOOT_ROWS:])
 
     def test_the_summary_is_written_back_rather_than_left_behind(self):
         # the rows it moves onto held the maze a moment ago, and a line

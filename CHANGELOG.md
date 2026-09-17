@@ -5,7 +5,15 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.1] - 2026-09-17
+
+The release 2.7.0's own review asked for: the same behaviour, pinned where
+it was only asserted, and said where it was only implied. The console fix
+2.7.0 shipped was measured across five console heights and tested at one of
+them; a redirected run's ending was described in a docstring and asserted
+nowhere; and the Windows terminal test was written as though the platform
+had two destinations when it has more. Nothing a player does behaves
+differently and nothing is added to the public surface.
 
 ### Fixed
 
@@ -22,6 +30,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spacer and the controls line blank. The wipe now starts below the frame
   rather than where the earlier ending was, so only the rows still holding
   it are cleared.
+
+### Changed
+
+- The suite sweeps the dismissing goodbye across every console height the
+  defect was measured on rather than the one the plain ending exactly
+  fills. `test_an_interrupt_dismissing_an_ending_leaves_it_on_screen`, its
+  chased sibling and `test_the_maze_is_what_dismissing_an_ending_costs` each
+  run five consoles now, counted from the tightest one the summary and the
+  goodbye both fit on - where the maze window is down to a single row - up
+  to the one with rows to spare and no cut to make. On the suite's maze that
+  is 16 through 20 rows, which is where the archived defect was read: it
+  scrolled 2 rows at 16, 17 and 18, 1 at 19 and none by 20. A chased summary
+  carries the Outcome line a plain one does not, so its five sit a row
+  higher. A cut that held at one height and not the others passed the suite
+  before this and fails it now.
+- `TestInterruptedGame` counts what a redirected run prints. `print_ending`
+  writes an earlier ending back only where there is a frame to cut, and its
+  docstring promises that a run with no terminal leaves that ending where it
+  already is, but nothing asserted it: the existing test looked for the
+  banner and the goodbye somewhere in the output, which a summary printed
+  twice satisfies. Walking the route to the exit and interrupting at the
+  prompt now counts the banner and every summary line exactly once, with the
+  goodbye after them, so the duplicate a `py_maze > run.log` would show is
+  caught where it happens.
+- `can_display` says which Windows consoles it is really telling apart. Its
+  test is the `WT_SESSION` announcement and nothing else, so a terminal
+  emulator that is neither the classic console host nor Windows Terminal is
+  handed the plain wording where it could have drawn the glyphs. That is the
+  safe direction of the two, and it is where the guessing stops: the console
+  mode reports nothing about what a cell can hold, and writing a character
+  to read the cell back would put a glyph on screen ahead of the banner the
+  player is waiting for. The function and `docs/playing.md` now name the
+  limit rather than reading as though Windows had two destinations.
+- The `WT_SESSION` escape hatch says what it rests on. Windows Terminal
+  drawing a character above the basic multilingual plane is its documented
+  behaviour rather than anything this project has measured: it is a packaged
+  application and will not start from an unattended run, so the console runs
+  kept beside the repository can only set the variable and watch the branch
+  be taken. `py_maze/rendering.py` and `docs/playing.md` both say so now,
+  where they stated it as fact.
+- `docs/playing.md` says what an interrupt does to the tallies rather than
+  implying it. The page read that "the tallies stay where they are being
+  read", where cutting the frame for the summary and the goodbye together
+  moves the frame's foot up and rewrites the summary two rows higher - in
+  all fifteen console runs of the 09.16 sweep, never none. Nothing is lost
+  and nothing scrolls, which is the promise the fix actually keeps, and the
+  page now makes that one.
 
 ## [2.7.0] - 2026-09-15
 
