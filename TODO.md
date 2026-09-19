@@ -29,6 +29,94 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
+### Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+
+- [ ] The dismissing sweep derives its tightest console but writes its span
+  down
+  - **Issue**: `dismissing_heights` in `test_py_maze.py` reads its floor off
+    the game - `len(game.frame()) - len(game.maze) + 1`, plus the ending and
+    3 - and then spans it with a written-down `SWEEP_ROWS = 5`. Its comment's
+    headline claim, "the last of them with rows enough that the frame is not
+    cut at all", holds only because that span happens to equal
+    `len(TestMazeGame.MAZE)`: reaching the uncut console needs
+    `SWEEP_ROWS - 1 >= len(frame) - window`, which is `len(maze) - 1`. Give
+    the hand-built maze one more row and the tallest swept console is still
+    being cut, the comment is false, and nothing fails - all three swept
+    tests pass at any span, because each asserts only what the height it was
+    handed implies
+  - **Goal**: derive the span the way the floor is derived. The first console
+    that leaves the frame uncut is `len(game.frame()) + len(ending) + 3` - 20
+    rows plain and 21 chased on the present fixture, which is where the sweep
+    already ends - so count up to it rather than adding a constant to the
+    floor, and keep a named constant only for any headroom wanted past it
+  - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+- [ ] The swept frame-length assertion cannot fail
+  - **Issue**: in `test_the_maze_is_what_dismissing_an_ending_costs`,
+    `drawn = screen.lines()[:-len(ending) - 3]` slices a screen that reads
+    back at exactly `rows` lines however little was written on it, so
+    `len(drawn)` is `rows - len(ending) - 3` by construction. The assertion
+    `assertEqual(len(drawn), min(len(frame), rows - len(ending) - 3))` then
+    compares that against a `min` whose other arm is the larger at every
+    swept height - `len(frame)` is 10 against 6, 7, 8, 9 and 10 - so the
+    expected value reduces to the slice length again and the line holds
+    whatever the game drew. It replaced a `len(frame) - 2` that named a
+    figure. The test still bites through `drawn[0] == 'start'` and its
+    `FRAME_FOOT_ROWS` comparison, which is what caught the floored cut the
+    release mutation-tested
+  - **Goal**: measure the frame rather than the slice - find the foot in
+    `screen.lines()` and assert the frame occupies the rows above it - or
+    drop the line, so the test does not read as pinning a height that nothing
+    checks
+  - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+
+#### Found Issues
+
+- [ ] The override branch of `.claude/constants.md` names no file for a GUI
+  test an override turn wants
+  - **Issue**: under `## Code Review Conditions` `->` `### Initial Prompt`,
+    the branch a run takes when `TODO.md` carries code review overrides reads
+    in full:
+
+    ```markdown
+    - If any code review overrides exist in `TODO.md`, then:
+      - **Run**: Resolve code review overrides as normal
+      - **On complete**: Create a new flag file `.claude/code-review.skipped`
+    ```
+
+    Its **On complete** creates one file, and that file is not a GUI-test
+    request - so a run reading `.claude/constants.md` alone has nowhere to
+    record a GUI test wanted on an override turn. Everything else the route
+    needs is already written: the `- Else:` branch below it moves
+    `.claude/ui-ux-test-next-run.request` to `.claude/ui-ux-test.request` on
+    the following turn, and `#### If ui-ux-tester.agent` stands the tester
+    down on `.claude/code-review.skipped` first and
+    `.claude/ui-ux-test-next-run.request` second. That ordering is what makes
+    the gap bite rather than merely read oddly: a request written as
+    `.claude/ui-ux-test.request` on an override turn is piped to an agent
+    that exits on the `code-review.skipped` the same turn just created, and
+    nothing in the tester's stand-down deletes it, while one written as
+    `.claude/ui-ux-test-next-run.request` survives to be moved back and run.
+    Only the clause that creates the second file is missing. No test has
+    actually been lost to this here, because **Decide the Next Step** in
+    `automate-todo.instructions.md` names the next-run file and the
+    09.15.2026 override run wrote it - but the constants outrank that
+    document, and the file that wins is the one with the gap
+  - **Goal**: the correction is the operator's to carry across.
+    `.claude/constants.md` is the user's file and no run edits it, so this
+    item cannot close the gap itself. The clause it is missing is a sibling
+    of the `code-review.skipped` line under the override branch's
+    **On complete**, worded as the `- Else:` branch already words the same
+    case: *"If determined that a UI/UX test is needed, create
+    `.claude/ui-ux-test-next-run.request` rather than
+    `.claude/ui-ux-test.request`, then write data to it that will help the
+    UI/UX test agent `ui-ux-tester.agent` perform a test next scheduled run
+    of the task, as if the UI/UX test agent is not going to be skipped"*.
+    Working this item is one read of `.claude/constants.md`: check it off
+    either way, and say in the run's output whether the override branch now
+    names `.claude/ui-ux-test-next-run.request`, so the operator hears about
+    this once per raising rather than once per run
+  - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
