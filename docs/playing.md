@@ -97,12 +97,13 @@ rather than a summary, so it asks the maze window for fewer of them, but it
 is the third way out of the same maze and nothing is drawn after it: a
 scrolled frame would be the last thing on screen. An interrupt pressed on a
 summary already waiting for a key asks for two rows more than that summary
-was given: the maze window gives them up as well, and the summary and the
-goodbye are written back together. Cutting the frame for both moves its foot
-up by the rows the goodbye asks for, so the tallies are rewritten that far
-higher than they were being read - two rows, at every console height they
-have been measured at - and stay whole and on screen, with nothing scrolled
-off the top to pay for them.
+was given: the maze window gives up whichever of them it still has, and the
+summary and the goodbye are written back together. Cutting the frame for both
+moves its foot up by the rows it gave, so the tallies are rewritten that far
+higher than they were being read - on a console still drawing the maze, two
+rows where nothing was spare under the summary, one where a single row was
+and none at all once there were two - and stay whole and on screen, with
+nothing scrolled off the top to pay for them.
 
 A console that cannot draw the party poppers gets the plain congratulations
 instead, so the message arrives whatever the terminal can show:

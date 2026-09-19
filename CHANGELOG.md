@@ -5,6 +5,25 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `docs/playing.md` no longer promises the tallies always move two rows when
+  an interrupt dismisses a summary that is waiting for a key. 2.7.1 replaced
+  the page's claim that they hold still with one that they are rewritten
+  "two rows, at every console height they have been measured at", and two is
+  what the frame gives up only while the console has nothing spare under the
+  summary. On the suite's hand-built maze at 100 columns the tallies move two
+  rows at 16, 17 and 18, one at 19 and none at all from 20 up, where the
+  frame is never cut for the goodbye because the rows it needs were already
+  free. The last two of those are inside the five-console sweep the same
+  release added, so the page and the suite disagreed about the same heights.
+  The page now names what the frame had left to give rather than a fixed
+  figure, and says it of a console still drawing the maze: below that the
+  frame is down to its foot before the interrupt is pressed and gives up
+  more than two.
+
 ## [2.7.1] - 2026-09-17
 
 The release 2.7.0's own review asked for: the same behaviour, pinned where
