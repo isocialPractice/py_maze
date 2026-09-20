@@ -5,10 +5,41 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.2] - 2026-09-20
+
+A review of the console sweep 2.7.1 added: it derived the tightest console
+it measures on and then wrote down how far to count from there, and the
+frame height one of its tests checks was read off the slice that produced
+it. Both are now read off the game and the screen instead. Nothing a player
+does behaves differently and nothing is added to the public surface.
 
 ### Fixed
 
+- The sweep the dismissed-ending tests run across no longer spans a
+  written-down five rows. `dismissing_heights` derived its floor from the
+  game (the frame cut to a single maze row, the summary printed under it,
+  the goodbye's two lines and the row the last newline leaves the cursor on)
+  and then reached the top of the sweep by adding a constant, so its claim
+  to end on a console tall enough to leave the frame uncut held only while
+  that constant happened to equal the maze's row count. On a hand-built maze
+  one row taller the tallest swept console is still being cut, and nothing
+  fails to say so: all three swept tests assert only what the height they
+  were handed implies. Both ends are now derived. The sweep counts up to the
+  first console that holds the whole frame under the same summary, goodbye
+  and cursor row, so it widens with the maze rather than trailing it. On the
+  suite's maze it is the same 16 through 20 rows, and 17 through 21 chased.
+- `test_the_maze_is_what_dismissing_an_ending_costs` no longer checks a
+  frame height against the slice it was measured from. A screen reads back
+  at its full height however little was written on it, so slicing the
+  summary and the goodbye off the bottom of one gives a length fixed by the
+  arithmetic that cut it, and comparing that against
+  `min(len(frame), rows - len(ending) - 3)` reduced to the slice length
+  again at every swept height - the line held whatever the game drew. The
+  frame's foot is now found on the screen and the rows above it counted, so
+  a frame cut by a row too many moves the foot and the test fails, which it
+  does at all five swept heights when the fit is given one row less to work
+  with. The summary is asserted to begin on the row the measured frame ends
+  on.
 - `docs/playing.md` no longer promises the tallies always move two rows when
   an interrupt dismisses a summary that is waiting for a key. 2.7.1 replaced
   the page's claim that they hold still with one that they are rewritten
