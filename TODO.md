@@ -29,99 +29,6 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
-### Code Review Override - The GUI Test Clause at Its Third Raising
-
-- [ ] Nothing pins either end of the dismissing sweep 2.7.2 derived
-  - **Issue**: `dismissing_heights` in `test_py_maze.py` now reads both ends
-    off the game, but nothing asserts what either end is for. Replace its
-    `return range(window + under, len(game.frame()) + under + 1)` with
-    `return range(window + under, window + under + 1)` - a sweep of one
-    console - and all 14 tests of `TestTheEndingIsGivenRowsOfItsOwn` still
-    pass; so do `range(window + under, len(game.frame()) + under)`, which
-    stops a row short of the uncut console, and
-    `range(window + under + 1, ...)`, which drops the tightest one. That is
-    the state the completed item diagnosed in the written-down span - "all
-    three swept tests pass at any span, because each asserts only what the
-    height it was handed implies" - and deriving the ends fixed the value
-    without making it checkable, so the next edit to either end narrows the
-    sweep in silence exactly as `SWEEP_ROWS` did
-  - **Goal**: pin the two ends the comment claims, the way
-    `test_a_chased_ending_is_a_row_taller_than_a_plain_one` already pins the
-    premise of the same sweep. One test is enough: on the sweep's first
-    console the drawn frame is down to a single maze row, so `frame_foot_at`
-    returns `py_maze.FRAME_HEAD_ROWS + 1`, and on its last the frame is
-    drawn whole, so it returns `len(frame) - py_maze.FRAME_FOOT_ROWS`. Both
-    read off the `frame_foot_at` the same release added, so no new machinery
-    is needed
-  - From: Code Review Override - The GUI Test Clause at Its Third Raising
-- [ ] Two neighbours still measure the drawn frame from the slice that cut it
-  - **Issue**: `test_the_maze_is_what_the_extra_row_costs` (line 5627) and
-    `test_the_maze_is_what_an_interrupt_costs_too` (line 5685) carry the
-    length assertion `test_the_maze_is_what_dismissing_an_ending_costs` was
-    just rewritten to stop carrying. Both slice `screen.lines()` by
-    arithmetic and then assert the slice's length against
-    `len(session.game.frame())` minus a figure, and a screen reads back at
-    its full height however little was written on it, so each is an identity
-    on the console `play` sizes for it. Giving `fit_frame` one row less
-    (`size.lines - reserve - 1`) fails both tests on the `FRAME_FOOT_ROWS`
-    comparison below the line and never on the line itself. Neither test
-    loses coverage to this - that comparison is what bites - but the class
-    now measures the same quantity two ways, one of which the release just
-    established says nothing
-  - **Goal**: measure both with `frame_foot_at` the way
-    `test_the_maze_is_what_dismissing_an_ending_costs` now does, or drop the
-    length line from each, so the class has one idiom for how tall the frame
-    was drawn
-  - From: Code Review Override - The GUI Test Clause at Its Third Raising
-
-#### Found Issues
-
-- [ ] GUI Test Clause 1 - the constants file still names no GUI-test file on
-  an override turn, and the check that kept asking has run out of attempts
-  - **Issue**: `.claude/agent-note.md` carried a check that read
-    `.claude/constants.md` and asked one question of it - if an override turn
-    wanted a GUI test, which file would it write, and would the tester read
-    it. The check failed on 09.19.2026, on 09.20.2026 and again on
-    09.21.2026, which is three attempts of three, so the note has been
-    retired and this item is what is left of it. The branch under
-    `## Code Review Conditions` `->` `### Initial Prompt` still reads in full:
-
-    ```markdown
-    - If any code review overrides exist in `TODO.md`, then:
-      - **Run**: Resolve code review overrides as normal
-      - **On complete**: Create a new flag file `.claude/code-review.skipped`
-    ```
-
-    Its **On complete** creates one file and that file is not a GUI-test
-    request, which is the first of the check's two failure conditions: the
-    override branch names no GUI-test file at all. The rest of the route is
-    unchanged and still in place - `#### If ui-ux-tester.agent` stands the
-    tester down on `.claude/code-review.skipped` first and
-    `.claude/ui-ux-test-next-run.request` second, and the `- Else:` branch of
-    `### Initial Prompt` moves the latter back to `.claude/ui-ux-test.request`
-    on a following turn. Only the clause that writes the next-run file is
-    missing, so a run reading `.claude/constants.md` alone has nowhere to
-    record a GUI test wanted on an override turn
-  - **Goal**: no run can close this, because `.claude/constants.md` is the
-    user's file and the automation never edits it. The correction is the
-    operator's to carry across from `mcp-todo`'s own `TODO.md`, where
-    `## Code Review Conditions` `->` `### Initial Prompt` is the canonical
-    copy this repository's file is cut from. The missing clause is a sibling
-    of the `code-review.skipped` line under the override branch's
-    **On complete**, worded as the `- Else:` branch already words the same
-    case: *"If determined that a UI/UX test is needed, create
-    `.claude/ui-ux-test-next-run.request` rather than
-    `.claude/ui-ux-test.request`, then write data to it that will help the
-    UI/UX test agent `ui-ux-tester.agent` perform a test next scheduled run
-    of the task, as if the UI/UX test agent is not going to be skipped"*.
-    Working this item is one read of `.claude/constants.md`: check it off
-    either way, and say in the run's output whether the override branch now
-    names `.claude/ui-ux-test-next-run.request`. This is the last raising the
-    automation makes - the agent note that had been retrying is gone, so once
-    this item is archived nothing here asks again, and the gap stays open
-    until a person closes it
-  - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1600,6 +1507,93 @@ No items are currently queued in this section.
     either way, and say in the run's output whether the override branch now
     names `.claude/ui-ux-test-next-run.request`, so the operator hears about
     this once per raising rather than once per run
+  - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+- [x] Nothing pins either end of the dismissing sweep 2.7.2 derived
+  - **Issue**: `dismissing_heights` in `test_py_maze.py` now reads both ends
+    off the game, but nothing asserts what either end is for. Replace its
+    `return range(window + under, len(game.frame()) + under + 1)` with
+    `return range(window + under, window + under + 1)` - a sweep of one
+    console - and all 14 tests of `TestTheEndingIsGivenRowsOfItsOwn` still
+    pass; so do `range(window + under, len(game.frame()) + under)`, which
+    stops a row short of the uncut console, and
+    `range(window + under + 1, ...)`, which drops the tightest one. That is
+    the state the completed item diagnosed in the written-down span - "all
+    three swept tests pass at any span, because each asserts only what the
+    height it was handed implies" - and deriving the ends fixed the value
+    without making it checkable, so the next edit to either end narrows the
+    sweep in silence exactly as `SWEEP_ROWS` did
+  - **Goal**: pin the two ends the comment claims, the way
+    `test_a_chased_ending_is_a_row_taller_than_a_plain_one` already pins the
+    premise of the same sweep. One test is enough: on the sweep's first
+    console the drawn frame is down to a single maze row, so `frame_foot_at`
+    returns `py_maze.FRAME_HEAD_ROWS + 1`, and on its last the frame is
+    drawn whole, so it returns `len(frame) - py_maze.FRAME_FOOT_ROWS`. Both
+    read off the `frame_foot_at` the same release added, so no new machinery
+    is needed
+  - From: Code Review Override - The GUI Test Clause at Its Third Raising
+- [x] Two neighbours still measure the drawn frame from the slice that cut it
+  - **Issue**: `test_the_maze_is_what_the_extra_row_costs` (line 5627) and
+    `test_the_maze_is_what_an_interrupt_costs_too` (line 5685) carry the
+    length assertion `test_the_maze_is_what_dismissing_an_ending_costs` was
+    just rewritten to stop carrying. Both slice `screen.lines()` by
+    arithmetic and then assert the slice's length against
+    `len(session.game.frame())` minus a figure, and a screen reads back at
+    its full height however little was written on it, so each is an identity
+    on the console `play` sizes for it. Giving `fit_frame` one row less
+    (`size.lines - reserve - 1`) fails both tests on the `FRAME_FOOT_ROWS`
+    comparison below the line and never on the line itself. Neither test
+    loses coverage to this - that comparison is what bites - but the class
+    now measures the same quantity two ways, one of which the release just
+    established says nothing
+  - **Goal**: measure both with `frame_foot_at` the way
+    `test_the_maze_is_what_dismissing_an_ending_costs` now does, or drop the
+    length line from each, so the class has one idiom for how tall the frame
+    was drawn
+  - From: Code Review Override - The GUI Test Clause at Its Third Raising
+- [x] GUI Test Clause 1 - the constants file still names no GUI-test file on
+  an override turn, and the check that kept asking has run out of attempts
+  - **Issue**: `.claude/agent-note.md` carried a check that read
+    `.claude/constants.md` and asked one question of it - if an override turn
+    wanted a GUI test, which file would it write, and would the tester read
+    it. The check failed on 09.19.2026, on 09.20.2026 and again on
+    09.21.2026, which is three attempts of three, so the note has been
+    retired and this item is what is left of it. The branch under
+    `## Code Review Conditions` `->` `### Initial Prompt` still reads in full:
+
+    ```markdown
+    - If any code review overrides exist in `TODO.md`, then:
+      - **Run**: Resolve code review overrides as normal
+      - **On complete**: Create a new flag file `.claude/code-review.skipped`
+    ```
+
+    Its **On complete** creates one file and that file is not a GUI-test
+    request, which is the first of the check's two failure conditions: the
+    override branch names no GUI-test file at all. The rest of the route is
+    unchanged and still in place - `#### If ui-ux-tester.agent` stands the
+    tester down on `.claude/code-review.skipped` first and
+    `.claude/ui-ux-test-next-run.request` second, and the `- Else:` branch of
+    `### Initial Prompt` moves the latter back to `.claude/ui-ux-test.request`
+    on a following turn. Only the clause that writes the next-run file is
+    missing, so a run reading `.claude/constants.md` alone has nowhere to
+    record a GUI test wanted on an override turn
+  - **Goal**: no run can close this, because `.claude/constants.md` is the
+    user's file and the automation never edits it. The correction is the
+    operator's to carry across from `mcp-todo`'s own `TODO.md`, where
+    `## Code Review Conditions` `->` `### Initial Prompt` is the canonical
+    copy this repository's file is cut from. The missing clause is a sibling
+    of the `code-review.skipped` line under the override branch's
+    **On complete**, worded as the `- Else:` branch already words the same
+    case: *"If determined that a UI/UX test is needed, create
+    `.claude/ui-ux-test-next-run.request` rather than
+    `.claude/ui-ux-test.request`, then write data to it that will help the
+    UI/UX test agent `ui-ux-tester.agent` perform a test next scheduled run
+    of the task, as if the UI/UX test agent is not going to be skipped"*.
+    Working this item is one read of `.claude/constants.md`: check it off
+    either way, and say in the run's output whether the override branch now
+    names `.claude/ui-ux-test-next-run.request`. This is the last raising the
+    automation makes - the agent note that had been retrying is gone, so once
+    this item is archived nothing here asks again, and the gap stays open
+    until a person closes it
   - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
 
 </details>

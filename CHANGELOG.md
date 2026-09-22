@@ -5,6 +5,40 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.3] - 2026-09-22
+
+A review of the two figures 2.7.2 derived: the console sweep now reads both
+its ends off the game, but nothing said what either end was for, and two
+tests beside the one that release rewrote still measured a drawn frame from
+the slice that cut it. Both are test-suite changes. Nothing a player does
+behaves differently and nothing is added to the public surface.
+
+### Fixed
+
+- The dismissed-ending sweep now has both of its ends pinned. 2.7.2 derived
+  them - the tightest console is the frame cut to a single maze row and the
+  tallest is the first that leaves it uncut - but every test that runs
+  across the sweep asserts only what the height it was handed implies, so
+  narrowing the sweep to a single console left all 14 of them passing, as
+  did stopping a row short of the uncut console or dropping the tightest
+  one. `test_the_sweep_runs_from_a_cut_frame_to_a_whole_one` plays the game
+  out on the first and last consoles of the sweep and finds the frame's foot
+  on each: `FRAME_HEAD_ROWS + 1` on the first, because the window is down to
+  one maze row, and `len(frame) - FRAME_FOOT_ROWS` on the last, because the
+  frame is drawn whole. All three narrowings now fail.
+- `test_the_maze_is_what_the_extra_row_costs` and
+  `test_the_maze_is_what_an_interrupt_costs_too` no longer check a frame
+  height against the slice it was measured from. Both carried the assertion
+  `test_the_maze_is_what_dismissing_an_ending_costs` was rewritten to drop
+  in 2.7.2: they sliced the screen by arithmetic and then compared the
+  slice's length against the frame's, and a screen reads back at its full
+  height however little was written on it, so the comparison was an identity
+  on the console each sizes for. Giving the frame fit one row less failed
+  both on the foot comparison underneath and never on the length line. Both
+  now find the frame's foot on the screen and count the rows above it, which
+  is the one idiom the class has for how tall the frame was drawn, and the
+  same one-row cut now fails each on the length line itself.
+
 ## [2.7.2] - 2026-09-20
 
 A review of the console sweep 2.7.1 added: it derived the tightest console
