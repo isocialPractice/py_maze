@@ -29,66 +29,6 @@ into a `## Complete` section at the bottom of this file.
   itself unchanged
   - From: Maze Analysis and Statistics
 
-### Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
-
-- [ ] The sweep's two pinned ends are read off a screen nothing holds still
-  - **Issue**: `test_the_sweep_runs_from_a_cut_frame_to_a_whole_one`
-    (`test_py_maze.py` line 5587) asserts an absolute row index on each
-    end of the sweep - `frame_foot_at(...) == py_maze.FRAME_HEAD_ROWS + 1`
-    on `sweep[0]` and `== len(frame) - py_maze.FRAME_FOOT_ROWS` on
-    `sweep[-1]` - and is the only test in
-    `TestTheEndingIsGivenRowsOfItsOwn` that reads an index off the screen
-    without first pinning the screen's top. A scroll shifts every row up
-    with it, so a frame drawn with `k` maze rows more than the end claims,
-    on a console that then scrolls `k` rows to pay for them, leaves the
-    foot on the same index and the assertion holds for an end that is not
-    the one the comment names. That state is reachable: it is what
-    `fit_frame` reserving a row too few does at `sweep[0]`, which is the
-    exact defect this class exists to catch, and only the neighbouring
-    swept tests catch it today. Every other index-reading test in the
-    class takes the guard first, in one of the two idioms the class has -
-    `self.assertEqual(screen.scrolls, 0)` in `assert_the_frame_survived`
-    and `assert_the_goodbye_landed_under`, or `drawn[0] == 'start'` in
-    `test_the_maze_is_what_dismissing_an_ending_costs` and the two
-    neighbours rewritten beside it
-  - **Goal**: guard both plays in the new test the way the rest of the
-    class guards the same read, so the pinned end means the frame was cut
-    to what the end claims rather than cut to that much once a scroll is
-    added back. `self.assertEqual(screen.lines()[0], 'start')` after each
-    `play` is enough and matches the idiom the sibling frame-height tests
-    already use; `screen.scrolls` says the same thing if the helper idiom
-    is preferred
-  - From: Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
-- [ ] Both tests that lost a tautology gained a sibling's assertion verbatim
-  - **Issue**: the two rewrites replaced the trailing
-    `drawn[-FRAME_FOOT_ROWS:] == frame[-FRAME_FOOT_ROWS:]` - correctly, it
-    is an identity once `frame_foot_at` has located the foot by matching
-    those same rows - but each replacement is a line a sibling test
-    already asserts on an identical play, so neither test gained anything
-    for what it gave up. In `test_the_maze_is_what_an_interrupt_costs_too`
-    (line 5705) the new `lines[len(drawn):] == ['', GOODBYE_MESSAGE, '']`
-    is `lines[-3:]` once the `len(drawn) == len(frame) - 3` above it
-    holds, which is character for character the third assertion of
-    `test_an_interrupt_is_given_rows_of_its_own_as_well` (line 5689),
-    playing the same keys on the same console. In
-    `test_the_maze_is_what_the_extra_row_costs` (line 5634) the new
-    `lines[len(drawn):len(drawn) + len(ending)] == ending` resolves to
-    `lines[len(lines) - len(ending) - 1:-1]`, which is the ending
-    assertion `assert_the_frame_survived` already makes for the same play
-    in `test_a_chase_played_to_a_catch_keeps_the_start_marker` (line
-    5617). Nothing is lost and nothing is wrong, but the class factors
-    its shared assertions into helpers rather than restating them, and
-    each of these two tests now carries its own subject on a single line
-  - **Goal**: give each rewrite a trailing assertion its siblings do not
-    already make, or drop the line and let the helper the sibling calls
-    carry it - either way the class keeps one statement of each fact. The
-    open question worth answering first is whether the foot's contents
-    are asserted anywhere for these two plays now that the tautology is
-    gone: `frame_foot_at` fails loudly when the foot is nowhere on the
-    screen, and the length line pins where it landed, so the coverage is
-    there, but it is worth writing down rather than rediscovering
-  - From: Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1655,5 +1595,62 @@ No items are currently queued in this section.
     this item is archived nothing here asks again, and the gap stays open
     until a person closes it
   - From: Code Review Override - The Override Turn With Nowhere to Put a GUI Test
+- [x] The sweep's two pinned ends are read off a screen nothing holds still
+  - **Issue**: `test_the_sweep_runs_from_a_cut_frame_to_a_whole_one`
+    (`test_py_maze.py` line 5587) asserts an absolute row index on each
+    end of the sweep - `frame_foot_at(...) == py_maze.FRAME_HEAD_ROWS + 1`
+    on `sweep[0]` and `== len(frame) - py_maze.FRAME_FOOT_ROWS` on
+    `sweep[-1]` - and is the only test in
+    `TestTheEndingIsGivenRowsOfItsOwn` that reads an index off the screen
+    without first pinning the screen's top. A scroll shifts every row up
+    with it, so a frame drawn with `k` maze rows more than the end claims,
+    on a console that then scrolls `k` rows to pay for them, leaves the
+    foot on the same index and the assertion holds for an end that is not
+    the one the comment names. That state is reachable: it is what
+    `fit_frame` reserving a row too few does at `sweep[0]`, which is the
+    exact defect this class exists to catch, and only the neighbouring
+    swept tests catch it today. Every other index-reading test in the
+    class takes the guard first, in one of the two idioms the class has -
+    `self.assertEqual(screen.scrolls, 0)` in `assert_the_frame_survived`
+    and `assert_the_goodbye_landed_under`, or `drawn[0] == 'start'` in
+    `test_the_maze_is_what_dismissing_an_ending_costs` and the two
+    neighbours rewritten beside it
+  - **Goal**: guard both plays in the new test the way the rest of the
+    class guards the same read, so the pinned end means the frame was cut
+    to what the end claims rather than cut to that much once a scroll is
+    added back. `self.assertEqual(screen.lines()[0], 'start')` after each
+    `play` is enough and matches the idiom the sibling frame-height tests
+    already use; `screen.scrolls` says the same thing if the helper idiom
+    is preferred
+  - From: Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
+- [x] Both tests that lost a tautology gained a sibling's assertion verbatim
+  - **Issue**: the two rewrites replaced the trailing
+    `drawn[-FRAME_FOOT_ROWS:] == frame[-FRAME_FOOT_ROWS:]` - correctly, it
+    is an identity once `frame_foot_at` has located the foot by matching
+    those same rows - but each replacement is a line a sibling test
+    already asserts on an identical play, so neither test gained anything
+    for what it gave up. In `test_the_maze_is_what_an_interrupt_costs_too`
+    (line 5705) the new `lines[len(drawn):] == ['', GOODBYE_MESSAGE, '']`
+    is `lines[-3:]` once the `len(drawn) == len(frame) - 3` above it
+    holds, which is character for character the third assertion of
+    `test_an_interrupt_is_given_rows_of_its_own_as_well` (line 5689),
+    playing the same keys on the same console. In
+    `test_the_maze_is_what_the_extra_row_costs` (line 5634) the new
+    `lines[len(drawn):len(drawn) + len(ending)] == ending` resolves to
+    `lines[len(lines) - len(ending) - 1:-1]`, which is the ending
+    assertion `assert_the_frame_survived` already makes for the same play
+    in `test_a_chase_played_to_a_catch_keeps_the_start_marker` (line
+    5617). Nothing is lost and nothing is wrong, but the class factors
+    its shared assertions into helpers rather than restating them, and
+    each of these two tests now carries its own subject on a single line
+  - **Goal**: give each rewrite a trailing assertion its siblings do not
+    already make, or drop the line and let the helper the sibling calls
+    carry it - either way the class keeps one statement of each fact. The
+    open question worth answering first is whether the foot's contents
+    are asserted anywhere for these two plays now that the tautology is
+    gone: `frame_foot_at` fails loudly when the foot is nowhere on the
+    screen, and the length line pins where it landed, so the coverage is
+    there, but it is worth writing down rather than rediscovering
+  - From: Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
 
 </details>

@@ -5590,18 +5590,32 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         # window down to a single row, and the tallest leaves the frame
         # uncut. Nothing else asserts what either end is for - each
         # swept test checks only what the height it was handed implies -
-        # so a sweep narrowed to one console passes them all
+        # so a sweep narrowed to one console passes them all.
+        #
+        # The start marker is checked on each end first, the guard the
+        # rest of the class takes before reading an index off the
+        # screen: a row index is only where the game drew something
+        # while nothing has scrolled off the top. A frame drawn with k
+        # maze rows more than the end claims, on a console that scrolls
+        # k rows to pay for them, leaves the foot on the same index -
+        # and that is the state a frame fit a row too short reaches at
+        # the tightest end, which is the defect this class exists to
+        # catch
         sweep = self.dismissing_heights()
         keys = TestMazeGame.ROUTE + [KeyboardInterrupt]
 
         session, screen = self.play(keys, rows=sweep[0])
         frame = session.game.frame()
-        self.assertEqual(self.frame_foot_at(screen.lines(), frame),
+        lines = screen.lines()
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(self.frame_foot_at(lines, frame),
                          py_maze.FRAME_HEAD_ROWS + 1)
 
         session, screen = self.play(keys, rows=sweep[-1])
         frame = session.game.frame()
-        self.assertEqual(self.frame_foot_at(screen.lines(), frame),
+        lines = screen.lines()
+        self.assertEqual(lines[0], 'start')
+        self.assertEqual(self.frame_foot_at(lines, frame),
                          len(frame) - py_maze.FRAME_FOOT_ROWS)
 
     def test_the_plain_game_fills_the_console_its_ending_needs(self):
@@ -5641,11 +5655,19 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         # screen, the one idiom this class has for the question: a
         # screen reads back at its full height however little was
         # written on it, so a slice cut by arithmetic is as long as the
-        # arithmetic and says nothing about what the game drew
+        # arithmetic and says nothing about what the game drew.
+        #
+        # The foot's own contents are asserted by that search rather
+        # than below: frame_foot_at matches the foot's rows against the
+        # frame and fails the test outright when they are nowhere on
+        # the screen, so the length line pins a row the rows were found
+        # on. Where the ending landed on this play is the subject of
+        # test_a_chase_played_to_a_catch_keeps_the_start_marker, which
+        # asserts it through assert_the_frame_survived on the same keys
+        # and the same console
         session, screen = self.play(['s', 'd', 'd', 's'] + [None] * 20,
                                     chaser=py_maze.Chaser((1, 0)),
                                     ticking=True)
-        ending = self.ending(session, py_maze.CAUGHT_BANNER)
         frame = session.game.frame()
         lines = screen.lines()
         drawn = lines[:self.frame_foot_at(lines, frame) +
@@ -5654,7 +5676,6 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         self.assertEqual(screen.scrolls, 0)
         self.assertEqual(drawn[0], 'start')
         self.assertEqual(len(drawn), len(frame) - 1)
-        self.assertEqual(lines[len(drawn):len(drawn) + len(ending)], ending)
 
     def test_the_rows_the_frame_gave_up_are_wiped_before_they_are_used(self):
         # a line printed over a row writes across it rather than
@@ -5706,7 +5727,15 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
         # the frame is cut for it the way it is cut for the other two:
         # the maze gives the rows up and the foot of the screen stays.
         # Found on the screen rather than sliced off the bottom of one,
-        # for the reason the other two give
+        # for the reason the other two give.
+        #
+        # The foot's own contents are asserted by that search rather
+        # than below: frame_foot_at matches the foot's rows against the
+        # frame and fails the test outright when they are nowhere on
+        # the screen, so the length line pins a row the rows were found
+        # on. Where the goodbye landed on this play is the subject of
+        # test_an_interrupt_is_given_rows_of_its_own_as_well, which
+        # asserts it on the same keys and the same console
         session, screen = self.play(['s', KeyboardInterrupt],
                                     rows=self.frame_height())
         frame = session.game.frame()
@@ -5716,8 +5745,6 @@ class TestTheEndingIsGivenRowsOfItsOwn(unittest.TestCase):
 
         self.assertEqual(drawn[0], 'start')
         self.assertEqual(len(drawn), len(frame) - 3)
-        self.assertEqual(lines[len(drawn):],
-                         ['', py_maze.GOODBYE_MESSAGE, ''])
 
     def assert_the_goodbye_landed_under(self, session, screen, banner):
         # the summary is still where the player was reading it, the

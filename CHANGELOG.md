@@ -5,6 +5,43 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.4] - 2026-09-24
+
+A review of the two tests 2.7.3 rewrote: the sweep now has both of its ends
+pinned, but neither was read off a screen anything held still, and the two
+assertions that replaced a tautology were each a line a sibling test already
+made on the same play. Both are test-suite changes. Nothing a player does
+behaves differently and nothing is added to the public surface.
+
+### Fixed
+
+- `test_the_sweep_runs_from_a_cut_frame_to_a_whole_one` now checks the start
+  marker is still on the top row before it reads an index off the screen,
+  the guard every other index-reading test in
+  `TestTheEndingIsGivenRowsOfItsOwn` takes in one of its two forms. An index
+  says where the game drew something only while nothing has scrolled off the
+  top: a frame drawn with `k` maze rows more than the end claims, on a
+  console that then scrolls `k` rows to pay for them, leaves the foot on the
+  same index and the assertion holds for an end that is not the one the
+  comment names. That state is what `fit_frame` reserving a row too few
+  reaches at the tightest end of the sweep, which is the defect the class
+  exists to catch, and the test passed it. It now fails on the start marker
+  at that end.
+- `test_the_maze_is_what_the_extra_row_costs` and
+  `test_the_maze_is_what_an_interrupt_costs_too` no longer restate an
+  assertion a sibling test makes. Each gained one in 2.7.3 in place of the
+  tautology it dropped, and each replacement compares the same rows a
+  sibling compares on identical keys and an identical console: the ending
+  slice in the first is the one `assert_the_frame_survived` checks for
+  `test_a_chase_played_to_a_catch_keeps_the_start_marker`, and the goodbye
+  slice in the second is the third assertion of
+  `test_an_interrupt_is_given_rows_of_its_own_as_well`. Both lines are gone,
+  so each fact is stated once and each test carries its own subject. What
+  the tautology covered is covered still: `frame_foot_at` matches the
+  frame's foot rows against the screen and fails the test outright when they
+  are nowhere on it, so the length line above pins a row those rows were
+  found on, and both tests now say so where they are read.
+
 ## [2.7.3] - 2026-09-22
 
 A review of the two figures 2.7.2 derived: the console sweep now reads both
