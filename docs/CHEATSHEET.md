@@ -26,12 +26,18 @@ summary: >-
 | `--format` | `-f` | `text` | `text`, `json` |
 | `--solve` | `-S` | off | flag |
 | `--animate` | `-a` | off | flag |
+| `--stats` | | off | flag |
 | `--quiet` | `-q` | off | flag |
 | `--version` | `-V` | | flag |
 | `--help` | `-h` | | flag |
 
 Capital `-H` is height, `-S` solves, `-A` is the algorithm, `-o` saves,
-`-m` is the mode. Lowercase `-h` is the help and `-s` is the seed.
+`-m` is the mode. Lowercase `-h` is the help and `-s` is the seed. `--stats`
+has no short flag, both `s` letters being taken.
+
+`--stats` prints under the maze and leaves the picture alone. A quiet run
+reports the measurements, having been asked for them; a `--format json` run
+prints the document alone.
 
 Both chase options round a decimal to the nearest whole number, resolve a
 number outside their range to the nearer end of it, and answer anything that
@@ -62,6 +68,8 @@ py_maze --seed 2024 --save - | py_maze --load - --solve
 py_maze --load drawn.txt --wall-char '#' --open-char '.' --quiet
 py_maze --mode chase                     # something follows you halfway in
 py_maze -m chase --chase-point 20 --chase-speed 5
+py_maze -d hard --stats                  # what the maze measures, under it
+py_maze -q --stats                       # the maze and the measurements
 ```
 
 ## Modes
@@ -160,6 +168,8 @@ A maze is a **grid**: rows of booleans, `True` for a wall, addressed
 | Solve | `solve_maze(grid, start, end)` |
 | Watch it solve | `search_frames(grid, start, end)` |
 | Measure a route | `solution_runs(path)`, `maze_progress(grid, cell, path)` |
+| Measure a maze | `maze_stats(grid, path)` |
+| Read its parts | `dead_ends(grid)`, `junctions(grid)`, `longest_corridor(grid)` |
 | Play a mode | `game_mode(name)`, `plain_game(...)`, `chase_game(...)` |
 | Draw | `maze_lines(grid, overlays)`, `print_maze(...)` |
 | Write, read | `write_save(...)`, `read_save(...)`, `save_json(...)` |

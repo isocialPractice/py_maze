@@ -9,7 +9,9 @@ its places from that same generator means a seed reproduces the pickups
 along with the walls.
 
 :func:`braid_maze` is the one thing here that undoes what a carver did: it
-opens dead ends, which is what gives a maze more than one way through.
+opens dead ends, which is what gives a maze more than one way through. The
+dead ends themselves are read by :func:`py_maze.analysis.dead_ends`, so
+what a braid opens and what ``--stats`` counts are the one reading.
 
 The carved maze is the grid described in :mod:`py_maze.grid`.
 """
@@ -17,6 +19,7 @@ The carved maze is the grid described in :mod:`py_maze.grid`.
 import random
 
 from .algorithms import DEFAULT_ALGORITHM, carver
+from .analysis import dead_ends
 from .grid import (MOVES, find_entrance, find_exit, open_cells,
                    open_neighbors, walled_grid)
 from .rendering import maze_lines, solution_overlay
@@ -81,29 +84,6 @@ def place_collectibles(grid, count, rng=None):
     return set(rng.sample(spots, min(count, len(spots))))
 
 
-def dead_ends(grid):
-    # the cells of a maze with one way in and no way on
-    #
-    # The entrance and the exit sit on the border and have a single open
-    # neighbour apiece, but neither is a dead end to open: they are how
-    # the maze is entered and left. Only the cells inside it count.
-    #
-    # Args:
-    #     grid: 2D list of booleans (True = wall, False = path)
-    #
-    # Returns:
-    #     list: The (x, y) of each dead end, in reading order
-
-    ends = []
-    for x, y in open_cells(grid):
-        if not (0 < x < len(grid[0]) - 1 and 0 < y < len(grid) - 1):
-            continue
-        if sum(1 for _ in open_neighbors(grid, x, y)) == 1:
-            ends.append((x, y))
-
-    return ends
-
-
 def removable_walls(grid, x, y):
     # the walls of a cell with another part of the maze behind them
     #
@@ -159,7 +139,8 @@ def braid_maze(grid, share, rng=None):
     if rng is None:
         rng = random
 
-    ends = dead_ends(grid)
+    # the reader yields its dead ends, and they are shuffled in place
+    ends = list(dead_ends(grid))
     rng.shuffle(ends)
 
     for x, y in ends[:round(len(ends) * min(share, 1.0))]:

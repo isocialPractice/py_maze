@@ -13,6 +13,7 @@ import random
 import sys
 
 from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
+from .analysis import maze_stats
 from .chase import (DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, MAX_CHASE_POINT,
                     MAX_CHASE_SPEED, MIN_CHASE_POINT, MIN_CHASE_SPEED,
                     chase_setting)
@@ -24,7 +25,8 @@ from .keys import read_response
 from .modes import DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS, MODES, game_mode
 from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
                         animate_search, collectible_overlay, fit_to_terminal,
-                        print_maze, solution_overlay, terminal_size)
+                        print_maze, solution_overlay, stats_lines,
+                        terminal_size)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIN_NAME,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, picture_chars,
                     read_save, save_json, write_save)
@@ -425,6 +427,16 @@ def build_parser():
     parser.add_argument("--animate", "-a", action="store_true",
                         help="Step through the solver's search on screen "
                              "before showing the solved maze")
+    parser.add_argument("--stats", action="store_true",
+                        help="Print what the maze measures under it: how "
+                             "many cells it has, how many of them are open, "
+                             "its dead ends, its junctions, its longest "
+                             "straight corridor and the steps its shortest "
+                             "route takes. The maze itself is drawn exactly "
+                             "as it would be without this, and a quiet run "
+                             "still reports them, having been asked to. A "
+                             "--format json run prints the document alone, "
+                             "so nothing is printed under it there")
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="Print the maze and nothing else: no banner, no "
                              "seed line and no play prompt, so a run whose "
@@ -678,6 +690,15 @@ def main():
             # maze still shows what there is to pick up along the way
             print_maze(maze_grid, collectible_overlay(collectibles) +
                        solution_overlay(solution))
+
+            # the measurements go under the maze rather than into it, and
+            # a quiet run prints them too: --quiet drops what was never
+            # asked for, and this was asked for. A solved run hands over
+            # the route it already has rather than paying for a second
+            # search
+            if args.stats:
+                for line in stats_lines(maze_stats(maze_grid, solution)):
+                    print(line)
 
         if not quiet:
             if seed is not None:

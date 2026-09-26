@@ -5,6 +5,75 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-26
+
+Reading a maze, beside carving one, solving one and drawing one. Every
+measurement here is taken from a grid that already exists, so a generated
+maze and one read out of a file are measured the same way and nothing about
+the maze changes for having been measured. The one reader that already
+existed is the reason the rest do: `braid_maze` has always had to find the
+dead ends before it could open them, and that reading was locked inside
+`py_maze/generation.py` where nothing else could ask for it. It is now the
+public `dead_ends`, so what a braid acts on and what a report counts are one
+reading rather than two that have to be kept agreeing.
+
+### Added
+
+- `py_maze/analysis.py`, a module for measuring a maze rather than making
+  one. It imports the grid and the solver and nothing else, so it joins the
+  modules that leave the terminal alone, and it modifies nothing: a
+  measurement is taken and handed back.
+- `dead_ends(grid)`, yielding every cell inside a maze with one way in and no
+  way on, in reading order. This is the reading `braid_maze` takes before it
+  opens a share of them, moved out of `py_maze/generation.py` where it was a
+  private helper nothing else could reach. The entrance and the exit are left
+  out: both sit on the border with a single open neighbour apiece, and
+  neither is a dead end to open.
+- `junctions(grid)`, yielding every cell where three or more ways meet. Three
+  open neighbours is a fork and four a crossroads, while two is a corridor
+  passing through, so counting them is what says how much branching a carver
+  left rather than eyeballing the picture. Braiding a maze makes more of
+  them, every dead end opened joining a cell to the corridor behind it.
+- `longest_corridor(grid)`, the cells in the longest unbroken straight run,
+  across a row or down a column. It is how far a maze can be crossed without
+  turning. It says nothing on its own about which carver made the maze -
+  measured across the three, the algorithm with the longest run is not the
+  same one from seed to seed - so the comparison between them stays a number
+  to be measured rather than one predicted here.
+- `maze_stats(grid, path)`, the whole of the above as one dictionary: `cells`
+  for every position of the grid, `open` for the ones the player can stand
+  on, `dead_ends`, `junctions`, `longest_corridor`, and `solution` for the
+  steps the shortest route takes. `cells` and `open` are counted over the
+  same positions, so the second reads as a share of the first. The solution
+  is the one measurement that has to be searched for, so a caller holding a
+  route already passes it as `path` rather than paying for a second search,
+  the way `maze_progress` already takes one. A maze with no way through has
+  no route to measure and reports `None` for it, the rest of the
+  measurements still being there to take.
+- `--stats`, printing those measurements under the maze it measured. The
+  picture is exactly the one a run without the flag draws: the tallies go
+  under it rather than into it, above the seed line, and the flag adds
+  nothing to the maze itself. A quiet run reports them too - `--quiet` drops
+  what was never asked for, and this was asked for, which is how `--solve`
+  is already read - while a `--format json` run prints its document alone.
+  There is no short flag: `-s` is the seed and `-S` solves, and no letter
+  left reads as this.
+- `stats_lines(stats)`, what `--stats` prints, written the way `status_line`
+  writes the tally under a maze being played rather than as a table, so the
+  two read alike. Two lines rather than one: six tallies on a single line
+  runs past an 80 column terminal, and the split falls between what the maze
+  is made of and how far through it goes.
+
+### Changed
+
+- `py_maze/generation.py` reads its dead ends from `py_maze.analysis` rather
+  than finding them itself. `braid_maze` behaves exactly as it did, taking
+  the same random numbers in the same order, so a seed braids the maze it
+  always braided.
+- The library page checks every `>>>` example on it rather than only the
+  first. The new one under **Measuring a maze** would otherwise have been
+  prose nothing ran, which is the drift the check exists to catch.
+
 ## [2.7.4] - 2026-09-24
 
 A review of the two tests 2.7.3 rewrote: the sweep now has both of its ends

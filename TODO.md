@@ -7,26 +7,25 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Add `dead_ends(grid)` yielding every cell with one open neighbour and
-  no way on, which `braid_maze` already finds for itself in
-  `py_maze/generation.py` and which nothing else can reach
+- [ ] Carry the same measurements in the JSON document under a `stats` key
+  when `--stats` is given, so a script reads them rather than parsing the
+  printed lines
   - From: Maze Analysis and Statistics
-- [ ] Add `junctions(grid)` yielding every cell with three or more open
-  neighbours, so the branching of a maze can be counted rather than
-  eyeballed
+- [ ] Report the share of the maze the solution walks through, which is what
+  separates a maze that is mostly one long corridor from one that is mostly
+  wrong turns
   - From: Maze Analysis and Statistics
-- [ ] Add a `maze_stats(grid)` to a new `py_maze/analysis.py` returning the
-  measurements the rest of this section reports: the cell count, the open
-  cell count, the dead end count, the junction count, the longest corridor
-  and the solution length. One call, one dictionary, no terminal
+- [ ] Measure a braided maze before and after braiding in the same run, so
+  `--braid 0.25 --stats` says how many dead ends were opened rather than how
+  many are left
   - From: Maze Analysis and Statistics
-- [ ] Add the analysis names to `py_maze/__init__.py`, the module to
-  `PACKAGE_MODULES` and `TERMINAL_FREE_MODULES` in the suite, and a table to
-  `docs/library.md`, since nothing here touches a terminal
+- [ ] Add a difficulty score built from the measurements above, documented
+  as what it is made of rather than as a number to trust, so `--stats` says
+  something a player understands
   - From: Maze Analysis and Statistics
-- [ ] Add a `--stats` flag printing those measurements under the maze, in
-  the style of the status line rather than as a table, and leaving the maze
-  itself unchanged
+- [ ] Write `docs/analysis.md` covering the measurements and what each one
+  means for a maze, and add it to `docs/_data/nav.yml` and the README's
+  documentation table
   - From: Maze Analysis and Statistics
 
 ## Fixes and Hardening
@@ -280,19 +279,6 @@ generated maze and on one read out of a file. New options with the current
 output unchanged, so completing items in this section is a minor version
 update.
 
-- [ ] Add a `maze_stats(grid)` to a new `py_maze/analysis.py` returning the
-  measurements the rest of this section reports: the cell count, the open
-  cell count, the dead end count, the junction count, the longest corridor
-  and the solution length. One call, one dictionary, no terminal
-- [ ] Add `dead_ends(grid)` yielding every cell with one open neighbour and
-  no way on, which `braid_maze` already finds for itself in
-  `py_maze/generation.py` and which nothing else can reach
-- [ ] Add `junctions(grid)` yielding every cell with three or more open
-  neighbours, so the branching of a maze can be counted rather than
-  eyeballed
-- [ ] Add a `--stats` flag printing those measurements under the maze, in
-  the style of the status line rather than as a table, and leaving the maze
-  itself unchanged
 - [ ] Carry the same measurements in the JSON document under a `stats` key
   when `--stats` is given, so a script reads them rather than parsing the
   printed lines
@@ -308,9 +294,6 @@ update.
 - [ ] Measure a braided maze before and after braiding in the same run, so
   `--braid 0.25 --stats` says how many dead ends were opened rather than how
   many are left
-- [ ] Add the analysis names to `py_maze/__init__.py`, the module to
-  `PACKAGE_MODULES` and `TERMINAL_FREE_MODULES` in the suite, and a table to
-  `docs/library.md`, since nothing here touches a terminal
 - [ ] Write `docs/analysis.md` covering the measurements and what each one
   means for a maze, and add it to `docs/_data/nav.yml` and the README's
   documentation table
@@ -1652,5 +1635,26 @@ No items are currently queued in this section.
     screen, and the length line pins where it landed, so the coverage is
     there, but it is worth writing down rather than rediscovering
   - From: Code Review Override - The Pinned Ends With Nothing Holding the Screen Still
+- [x] Add `dead_ends(grid)` yielding every cell with one open neighbour and
+  no way on, which `braid_maze` already finds for itself in
+  `py_maze/generation.py` and which nothing else can reach
+  - From: Maze Analysis and Statistics
+- [x] Add `junctions(grid)` yielding every cell with three or more open
+  neighbours, so the branching of a maze can be counted rather than
+  eyeballed
+  - From: Maze Analysis and Statistics
+- [x] Add a `maze_stats(grid)` to a new `py_maze/analysis.py` returning the
+  measurements the rest of this section reports: the cell count, the open
+  cell count, the dead end count, the junction count, the longest corridor
+  and the solution length. One call, one dictionary, no terminal
+  - From: Maze Analysis and Statistics
+- [x] Add the analysis names to `py_maze/__init__.py`, the module to
+  `PACKAGE_MODULES` and `TERMINAL_FREE_MODULES` in the suite, and a table to
+  `docs/library.md`, since nothing here touches a terminal
+  - From: Maze Analysis and Statistics
+- [x] Add a `--stats` flag printing those measurements under the maze, in
+  the style of the status line rather than as a table, and leaving the maze
+  itself unchanged
+  - From: Maze Analysis and Statistics
 
 </details>

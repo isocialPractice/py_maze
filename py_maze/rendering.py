@@ -55,6 +55,7 @@ __all__ = [
     'maze_lines',
     'print_maze',
     'solution_overlay',
+    'stats_lines',
     'status_line',
     'summary_lines',
     'terminal_size',
@@ -594,6 +595,37 @@ def summary_lines(elapsed, moves, collected=0, total=0, outcome=None):
         lines.append("Outcome: %s" % outcome)
 
     return lines
+
+
+def stats_lines(stats):
+    """Build the measurements shown under a maze, as --stats prints them.
+
+    Each line is a run of tallies written the way :func:`status_line`
+    writes its own - the label, the number, and three spaces to the next
+    pair - rather than as a table, so what a player reads under a maze
+    reads like what they read under one being played. Two lines rather
+    than one keeps either from running past a terminal's last column: the
+    first says what the maze is made of and the second how far through it
+    goes.
+
+    Args:
+        stats: The measurements, as :func:`py_maze.analysis.maze_stats`
+            returns them
+
+    Returns:
+        list: One string per line. A maze with no way through has no
+        solution to measure, and the tally says so in that word rather
+        than in a number that would read as a route of no steps
+    """
+
+    solution = stats['solution']
+
+    return ["cells %d   open %d   dead ends %d   junctions %d"
+            % (stats['cells'], stats['open'], stats['dead_ends'],
+               stats['junctions']),
+            "longest corridor %d   solution %s"
+            % (stats['longest_corridor'],
+               'none' if solution is None else solution)]
 
 
 def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,

@@ -50,6 +50,7 @@ py_maze/
 │   └── division.py     # Recursive division
 ├── generation.py       # Carving a maze, braiding it, scattering its pickups
 ├── solving.py          # Breadth-first search over a grid
+├── analysis.py         # Measuring a maze that already exists
 ├── rendering.py        # Drawing a maze, and measuring the terminal
 ├── saves.py            # Reading and writing save files
 ├── keys.py             # Single keypresses, and the terminal imports

@@ -21,6 +21,7 @@ The modules, and what each one owns:
 - :mod:`py_maze.generation` - carving a maze and scattering its pickups
 - :mod:`py_maze.solving` - breadth-first search over a grid, and how far
   along one a cell is
+- :mod:`py_maze.analysis` - measuring a maze that already exists
 - :mod:`py_maze.rendering` - drawing a maze, and measuring the terminal it
   is drawn on
 - :mod:`py_maze.saves` - reading and writing save files
@@ -40,6 +41,7 @@ script with ``py_maze``.
 
 from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
                          carve_backtracker, carve_division, carve_prim, carver)
+from .analysis import dead_ends, junctions, longest_corridor, maze_stats
 from .chase import (CHASE_SPEEDS, DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED,
                     MAX_CHASE_CATCH_UP, MAX_CHASE_POINT, MAX_CHASE_SPEED,
                     MIN_CHASE_POINT, MIN_CHASE_SPEED, Chaser, chase_setting)
@@ -77,8 +79,8 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
                         clear_screen, collectible_overlay, fit_dimension,
                         fit_frame, fit_to_terminal, format_duration,
                         frame_diff, frame_text, frame_wraps, maze_lines,
-                        print_maze, solution_overlay, status_line,
-                        summary_lines, terminal_size, wipe_rows)
+                        print_maze, solution_overlay, stats_lines,
+                        status_line, summary_lines, terminal_size, wipe_rows)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
                     SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIN_NAME,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
@@ -119,6 +121,11 @@ __all__ = [
     'search_frames',
     'solution_runs',
     'solve_maze',
+    # analysis
+    'dead_ends',
+    'junctions',
+    'longest_corridor',
+    'maze_stats',
     # rendering
     'ANSI_CLEAR',
     'ANSI_CLEAR_LINE',
@@ -155,6 +162,7 @@ __all__ = [
     'maze_lines',
     'print_maze',
     'solution_overlay',
+    'stats_lines',
     'status_line',
     'summary_lines',
     'terminal_size',

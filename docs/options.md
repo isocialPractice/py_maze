@@ -24,6 +24,7 @@ summary: >-
 | `--format` | `-f` | `text` | How the maze is written: `text`, the picture, or `json`, a document |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
 | `--animate` | `-a` | off | Step through the solver's search on screen |
+| `--stats` | | off | Print what the maze measures under it: cells, open cells, dead ends, junctions, longest corridor and solution |
 | `--quiet` | `-q` | off | Print the maze and nothing else: no banner, no seed line, no prompt |
 | `--version` | `-V` | | Show the installed version and exit |
 | `--help` | `-h` | | Show usage and exit |
@@ -35,7 +36,14 @@ algorithm. The short flag for `--save` is `-o`, as in an output file, since
 `-s` is already the seed. `--wall-char` and `--open-char` have no short
 flags: they are read by a loader rather than typed at a prompt. `-m` is the
 mode; the two chase options have no short flags, being settings for a mode
-rather than everyday typing.
+rather than everyday typing. `--stats` has none either, there being no letter
+left that reads as it: `-s` is the seed and `-S` solves.
+
+`--stats` prints under the maze rather than into it, so the picture is the
+one a run without it draws. A quiet run still reports the measurements,
+because a flag that was asked for is not what `--quiet` drops, and this is
+how `--solve` is already read. A `--format json` run prints the document
+alone, so nothing is printed under it there.
 
 A maze is drawn with walls between cells, so a maze of `W` by `H` cells
 renders as `W * 2 + 1` characters wide and `H * 2 + 1` characters tall.
@@ -56,8 +64,8 @@ usage: py_maze [-h] [--width WIDTH] [--height HEIGHT]
                [--seed SEED] [--collectibles COUNT] [--mode {plain,chase}]
                [--chase-point PERCENT] [--chase-speed PRESET] [--save FILE]
                [--load FILE] [--wall-char CHAR] [--open-char CHAR]
-               [--format {text,json}] [--solve] [--animate] [--quiet]
-               [--version]
+               [--format {text,json}] [--solve] [--animate] [--stats]
+               [--quiet] [--version]
 py_maze: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
 

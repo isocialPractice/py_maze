@@ -242,6 +242,42 @@ and `maze_progress` answers `None`, which is also what it answers for a maze
 with no way through. Pass `path` when measuring cell after cell against the
 one maze and it is not solved again for each.
 
+**Measuring a maze** (`py_maze.analysis`)
+
+| Name | What it does |
+| --- | --- |
+| `maze_stats(grid, path)` | Every measurement below as one dictionary |
+| `dead_ends(grid)` | Yield each cell inside the maze with one way in and no way on |
+| `junctions(grid)` | Yield each cell where three or more ways meet |
+| `longest_corridor(grid)` | Cells in the longest straight run, across a row or down a column |
+
+Nothing here changes the maze: a measurement is taken from the grid as it
+stands, so a carved maze and one read out of a file are measured the same
+way. `maze_stats` is the whole of it in one call, and the keys are what
+`--stats` prints:
+
+```python
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> stats = py_maze.maze_stats(grid)
+>>> stats['cells'], stats['open']
+(169, 73)
+>>> stats['dead_ends'] == sum(1 for _ in py_maze.dead_ends(grid))
+True
+>>> sorted(stats)
+['cells', 'dead_ends', 'junctions', 'longest_corridor', 'open', 'solution']
+```
+
+`cells` counts every position of the grid and `open` the ones the player can
+stand on, so the second is a share of the first. `solution` is the steps the
+shortest route takes, measured as `solution_runs` measures them, and `None`
+for a maze with no way through. The solution is the one measurement that has
+to be searched for, so a caller holding a route already passes it as `path`
+rather than paying for a second search.
+
+`dead_ends` is the reader `braid_maze` opens a share of, so what a braid acts
+on and what `--stats` counts are the one reading. Both it and `junctions`
+yield in reading order, left to right and then down the rows.
+
 **Drawing** (`py_maze.rendering`)
 
 | Name | What it does |
@@ -252,6 +288,7 @@ one maze and it is not solved again for each.
 | `collectible_overlay(collectibles)` | The overlay that draws pickups over a maze |
 | `animate_search(grid, start, end, ...)` | Step the search across a terminal, frame by frame |
 | `status_line(...)`, `summary_lines(...)` | The tallies shown during play and at the end |
+| `stats_lines(stats)` | What `--stats` prints under a maze, in the status line's style |
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
 | `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |

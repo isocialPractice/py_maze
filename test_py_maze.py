@@ -29,12 +29,13 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # every module of the package, and the one that is allowed a terminal
 PACKAGE_MODULES = ('algorithms', 'algorithms.backtracker',
-                   'algorithms.division', 'algorithms.prim', 'chase', 'cli',
-                   'game', 'generation', 'grid', 'keys', 'modes', 'rendering',
-                   'saves', 'solving', 'version')
+                   'algorithms.division', 'algorithms.prim', 'analysis',
+                   'chase', 'cli', 'game', 'generation', 'grid', 'keys',
+                   'modes', 'rendering', 'saves', 'solving', 'version')
 TERMINAL_FREE_MODULES = ('algorithms', 'algorithms.backtracker',
-                         'algorithms.division', 'algorithms.prim', 'chase',
-                         'generation', 'grid', 'rendering', 'saves', 'solving')
+                         'algorithms.division', 'algorithms.prim', 'analysis',
+                         'chase', 'generation', 'grid', 'rendering', 'saves',
+                         'solving')
 
 # the platform machinery that used to sit at the top of the flat module
 TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
@@ -4109,6 +4110,323 @@ class TestMazeProgress(unittest.TestCase):
         self.assertEqual(solve.call_count, 0)
 
 
+class TestDeadEnds(unittest.TestCase):
+    # the reader braid_maze opens a share of, now reachable on its own
+
+    PICTURE = [
+        "* ***",
+        "*   *",
+        "*** *",
+        "*   *",
+        "*** *",
+    ]
+
+    def test_it_finds_the_cells_with_one_way_in_and_no_way_on(self):
+        grid = grid_from_strings(self.PICTURE)
+
+        self.assertEqual(list(py_maze.dead_ends(grid)), [(1, 3)])
+
+    def test_it_leaves_the_entrance_and_the_exit_out(self):
+        # both sit on the border with a single open neighbour apiece, and
+        # neither is a dead end to open: they are how the maze is entered
+        # and left
+        grid = grid_from_strings(self.PICTURE)
+        ends = list(py_maze.dead_ends(grid))
+
+        self.assertNotIn(py_maze.find_entrance(grid), ends)
+        self.assertNotIn(py_maze.find_exit(grid), ends)
+
+    def test_it_reads_them_in_reading_order(self):
+        # two in one row and a third in a later one, so both halves of
+        # reading order are read: across a row, then down the rows
+        grid = grid_from_strings([
+            "*****",
+            "* * *",
+            "*   *",
+            "* ***",
+            "*****",
+        ])
+
+        self.assertEqual(list(py_maze.dead_ends(grid)),
+                         [(1, 1), (3, 1), (1, 3)])
+
+    def test_it_yields_rather_than_building_a_list(self):
+        # a caller counting them pays for no list, and braid_maze asks
+        # for one by name
+        found = py_maze.dead_ends(grid_from_strings(self.PICTURE))
+
+        self.assertNotIsInstance(found, list)
+        self.assertEqual(next(iter(found)), (1, 3))
+
+    def test_a_carved_maze_has_some_and_a_braided_one_has_none(self):
+        grid = py_maze.MazeGenerator(10, 10, seed=5).generate()
+        self.assertGreater(sum(1 for _ in py_maze.dead_ends(grid)), 0)
+
+        py_maze.braid_maze(grid, 1.0, random.Random(7))
+
+        self.assertEqual(sum(1 for _ in py_maze.dead_ends(grid)), 0)
+
+    def test_it_agrees_with_the_count_this_suite_takes_itself(self):
+        # the braiding tests count dead ends their own way, so the two
+        # readings are worth holding against each other rather than
+        # letting the package grade its own homework
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                grid = py_maze.MazeGenerator(8, 8, seed=seed).generate()
+
+                self.assertEqual(sum(1 for _ in py_maze.dead_ends(grid)),
+                                 dead_end_count(grid))
+
+    def test_a_maze_with_no_open_cell_has_none(self):
+        self.assertEqual(list(py_maze.dead_ends(py_maze.walled_grid(3, 3))),
+                         [])
+
+
+class TestJunctions(unittest.TestCase):
+    # where more than one way on meets, which is what says how much
+    # branching a carver left
+
+    def test_it_finds_a_fork(self):
+        grid = grid_from_strings([
+            "*****",
+            "*   *",
+            "** **",
+            "*****",
+        ])
+        # (2, 1) has a way east, a way west and a way south; its two
+        # neighbours along the corridor have one way on apiece
+        self.assertEqual(list(py_maze.junctions(grid)), [(2, 1)])
+
+    def test_it_finds_a_crossroads(self):
+        grid = grid_from_strings([
+            "** **",
+            "*   *",
+            "** **",
+        ])
+
+        self.assertEqual(list(py_maze.junctions(grid)), [(2, 1)])
+
+    def test_a_corridor_is_no_junction(self):
+        grid = grid_from_strings([
+            "*****",
+            "*   *",
+            "*****",
+        ])
+
+        self.assertEqual(list(py_maze.junctions(grid)), [])
+
+    def test_a_dead_end_is_no_junction(self):
+        grid = grid_from_strings([
+            "* ***",
+            "*   *",
+            "*** *",
+            "*   *",
+            "*** *",
+        ])
+        junctions = list(py_maze.junctions(grid))
+
+        self.assertNotIn((1, 3), junctions)
+
+    def test_it_reads_them_in_reading_order(self):
+        grid = grid_from_strings([
+            "** **",
+            "*   *",
+            "** **",
+            "*   *",
+            "** **",
+        ])
+
+        self.assertEqual(list(py_maze.junctions(grid)), [(2, 1), (2, 3)])
+
+    def test_braiding_makes_more_of_them(self):
+        # every dead end opened joins a cell to the corridor behind it,
+        # which is a way on where there was not one
+        grid = py_maze.MazeGenerator(10, 10, seed=5).generate()
+        before = sum(1 for _ in py_maze.junctions(grid))
+
+        py_maze.braid_maze(grid, 1.0, random.Random(7))
+
+        self.assertGreater(sum(1 for _ in py_maze.junctions(grid)), before)
+
+    def test_a_maze_with_no_open_cell_has_none(self):
+        self.assertEqual(list(py_maze.junctions(py_maze.walled_grid(3, 3))),
+                         [])
+
+
+class TestLongestCorridor(unittest.TestCase):
+    # the longest straight line of cells a player can walk, which is the
+    # difference between a maze of corridors and a maze of corners
+
+    def test_it_measures_a_run_across_a_row(self):
+        grid = grid_from_strings([
+            "*****",
+            "*   *",
+            "*****",
+        ])
+
+        self.assertEqual(py_maze.longest_corridor(grid), 3)
+
+    def test_it_measures_a_run_down_a_column(self):
+        grid = grid_from_strings([
+            "***",
+            "* *",
+            "* *",
+            "* *",
+            "***",
+        ])
+
+        self.assertEqual(py_maze.longest_corridor(grid), 3)
+
+    def test_it_takes_the_longest_of_the_two_directions(self):
+        grid = grid_from_strings([
+            "******",
+            "*    *",
+            "**** *",
+            "**** *",
+            "******",
+        ])
+
+        self.assertEqual(py_maze.longest_corridor(grid), 4)
+
+    def test_a_wall_breaks_a_run_in_two(self):
+        grid = grid_from_strings([
+            "*******",
+            "*  *  *",
+            "*******",
+        ])
+
+        self.assertEqual(py_maze.longest_corridor(grid), 2)
+
+    def test_one_cell_on_its_own_is_a_corridor_of_one(self):
+        grid = grid_from_strings([
+            "***",
+            "* *",
+            "***",
+        ])
+
+        self.assertEqual(py_maze.longest_corridor(grid), 1)
+
+    def test_a_maze_with_no_open_cell_measures_nothing(self):
+        self.assertEqual(py_maze.longest_corridor(py_maze.walled_grid(3, 3)),
+                         0)
+
+    def test_an_empty_grid_measures_nothing(self):
+        # a grid with no rows has no row 0 to take a width from, which is
+        # the one shape that would raise rather than answer
+        self.assertEqual(py_maze.longest_corridor([]), 0)
+
+    def test_braiding_never_shortens_it(self):
+        # opening a wall joins two runs into one and breaks none, so the
+        # measurement only ever goes up. That is the one claim about a
+        # carver's corridors this can make without reading the maze: the
+        # comparison between the three algorithms is a number to be
+        # measured rather than one to be predicted here
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                grid = py_maze.MazeGenerator(12, 12, seed=seed).generate()
+                before = py_maze.longest_corridor(grid)
+
+                py_maze.braid_maze(grid, 1.0, random.Random(seed))
+
+                self.assertGreaterEqual(py_maze.longest_corridor(grid),
+                                        before)
+
+
+class TestMazeStats(unittest.TestCase):
+    # the measurements in one call, which is what --stats reports
+
+    PICTURE = [
+        "* ***",
+        "*   *",
+        "*** *",
+        "*   *",
+        "*** *",
+    ]
+
+    def setUp(self):
+        self.grid = grid_from_strings(self.PICTURE)
+        self.stats = py_maze.maze_stats(self.grid)
+
+    def test_it_counts_every_position_of_the_grid(self):
+        self.assertEqual(self.stats['cells'], 25)
+
+    def test_it_counts_the_positions_the_player_can_stand_on(self):
+        self.assertEqual(self.stats['open'],
+                         sum(1 for _ in py_maze.open_cells(self.grid)))
+
+    def test_the_open_count_is_never_more_than_the_cell_count(self):
+        # the two are measured over the same positions, so one is a share
+        # of the other rather than a number beside it
+        self.assertLessEqual(self.stats['open'], self.stats['cells'])
+
+    def test_it_reports_what_each_reader_finds(self):
+        self.assertEqual(self.stats['dead_ends'],
+                         sum(1 for _ in py_maze.dead_ends(self.grid)))
+        self.assertEqual(self.stats['junctions'],
+                         sum(1 for _ in py_maze.junctions(self.grid)))
+        self.assertEqual(self.stats['longest_corridor'],
+                         py_maze.longest_corridor(self.grid))
+
+    def test_the_solution_is_the_steps_the_route_takes(self):
+        path = py_maze.solve_maze(self.grid)
+
+        self.assertEqual(self.stats['solution'],
+                         sum(py_maze.solution_runs(path)))
+
+    def test_it_reports_every_key_and_no_others(self):
+        # the printed line and, later, a document read them by name, so
+        # the set of keys is what the measurements are
+        self.assertEqual(set(self.stats), {'cells', 'open', 'dead_ends',
+                                          'junctions', 'longest_corridor',
+                                          'solution'})
+
+    def test_a_maze_with_no_way_through_has_no_solution_to_measure(self):
+        blocked = grid_from_strings([
+            "* ***",
+            "*****",
+            "*** *",
+        ])
+
+        self.assertIsNone(py_maze.maze_stats(blocked)['solution'])
+
+    def test_the_rest_is_measured_for_a_maze_with_no_way_through(self):
+        # the walls are still there to count, so an unsolvable maze
+        # reports everything but the route
+        blocked = grid_from_strings([
+            "* ***",
+            "*****",
+            "*** *",
+        ])
+        stats = py_maze.maze_stats(blocked)
+
+        self.assertEqual(stats['cells'], 15)
+        self.assertEqual(stats['open'], 2)
+
+    def test_the_solution_can_be_handed_in_rather_than_solved_again(self):
+        # a run that solved the maze for --solve pays for one search
+        with mock.patch.object(py_maze.analysis, 'solve_maze') as solve:
+            stats = py_maze.maze_stats(self.grid,
+                                       py_maze.solve_maze(self.grid))
+
+        self.assertEqual(solve.call_count, 0)
+        self.assertEqual(stats['solution'], self.stats['solution'])
+
+    def test_it_leaves_the_maze_exactly_as_it_was(self):
+        expected = [row[:] for row in self.grid]
+
+        py_maze.maze_stats(self.grid)
+
+        self.assertEqual(self.grid, expected)
+
+    def test_a_generated_maze_is_measured_like_a_loaded_one(self):
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+        drawn = py_maze.maze_lines(grid)
+        loaded, _, _ = py_maze.parse_save(
+            "%s\n%s\n" % (py_maze.SAVE_HEADER, '\n'.join(drawn)))
+
+        self.assertEqual(py_maze.maze_stats(loaded), py_maze.maze_stats(grid))
+
+
 class TestMazeLines(unittest.TestCase):
     PICTURE = [
         "* ***",
@@ -4403,6 +4721,51 @@ class TestStatusAndSummaryLines(unittest.TestCase):
 
     def test_a_summary_without_collectibles_does_not_mention_them(self):
         self.assertEqual(len(py_maze.summary_lines(0, 4, 0, 0)), 2)
+
+
+class TestStatsLines(unittest.TestCase):
+    # the measurements as --stats prints them, written the way the status
+    # line writes its own tallies rather than as a table
+
+    MEASURED = {'cells': 169, 'open': 73, 'dead_ends': 3, 'junctions': 4,
+                'longest_corridor': 9, 'solution': 34}
+
+    def test_it_reports_every_measurement(self):
+        self.assertEqual(py_maze.stats_lines(self.MEASURED),
+                         ["cells 169   open 73   dead ends 3   junctions 4",
+                          "longest corridor 9   solution 34"])
+
+    def test_it_is_written_in_the_style_of_the_status_line(self):
+        # three spaces between one tally and the next, the label first,
+        # which is how a player already reads the line under a maze
+        for line in py_maze.stats_lines(self.MEASURED):
+            with self.subTest(line=line):
+                for tally in line.split('   '):
+                    self.assertRegex(tally, r'^[a-z ]+ \S+$')
+
+    def test_no_line_runs_past_a_narrow_terminal(self):
+        # one line of six tallies would, which is why there are two
+        for line in py_maze.stats_lines(self.MEASURED):
+            self.assertLessEqual(len(line), 80, line)
+
+    def test_a_maze_with_no_way_through_says_so_in_a_word(self):
+        # a route of no steps is a maze entered where it is left, which is
+        # not the same thing as a maze that cannot be crossed
+        measured = dict(self.MEASURED, solution=None)
+
+        self.assertIn("solution none", py_maze.stats_lines(measured)[-1])
+        self.assertNotIn("solution 0", py_maze.stats_lines(measured)[-1])
+
+    def test_it_reports_what_maze_stats_measures(self):
+        # the two are written against each other, so a key renamed in one
+        # fails here rather than printing a maze with a hole in the tally
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+        stats = py_maze.maze_stats(grid)
+        printed = ' '.join(py_maze.stats_lines(stats))
+
+        for key, measured in stats.items():
+            with self.subTest(key=key):
+                self.assertIn(str(measured), printed)
 
 
 class TestGameClock(unittest.TestCase):
@@ -6430,6 +6793,104 @@ class TestQuietOption(MainRunner, unittest.TestCase):
         self.assertIn(py_maze.SOLUTION_MARKER, self.maze_of(output))
 
 
+class TestStatsOption(MainRunner, unittest.TestCase):
+    # --stats reports what the maze measures under the maze itself, in the
+    # style of the status line, and changes nothing about the picture
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'maze.txt')
+
+    def write(self, text):
+        # Returns:
+        #     str: The path a file of that text was written to
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(text)
+        return self.path
+
+    def measured(self, output):
+        # the tally lines the run printed under the maze
+        #
+        # Returns:
+        #     list: The lines after the end marker that read as tallies
+
+        lines = output.splitlines()
+        after = lines[lines.index('end') + 1:]
+        return [line for line in after if line.startswith(('cells ',
+                                                           'longest '))]
+
+    def test_it_is_off_until_it_is_asked_for(self):
+        self.assertFalse(py_maze.build_parser().parse_args([]).stats)
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q'])
+
+        self.assertEqual(self.measured(output), [])
+
+    def test_it_prints_the_measurements_under_the_maze(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                   '--stats'])
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+        self.assertEqual(self.measured(output),
+                         py_maze.stats_lines(py_maze.maze_stats(grid)))
+
+    def test_the_maze_itself_is_the_one_a_run_without_it_prints(self):
+        plain, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q'])
+        measured, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                     '--stats'])
+
+        self.assertEqual(self.maze_of(measured), self.maze_of(plain))
+
+    def test_a_quiet_run_still_reports_them(self):
+        # --quiet drops what was never asked for, and this was asked for,
+        # which is how --solve is already read
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                   '--stats'])
+
+        self.assertEqual(len(self.measured(output)), 2)
+
+    def test_they_sit_above_the_seed_line_a_loud_run_prints(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '--stats'])
+        lines = output.splitlines()
+
+        self.assertLess(lines.index(self.measured(output)[0]),
+                        lines.index('seed: 2024'))
+
+    def test_a_document_run_prints_the_document_alone(self):
+        # the run's whole standard output is read by a program, so a tally
+        # printed into it would be a tally the program has to parse past
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '--stats',
+                                   '-f', 'json'])
+
+        self.assertNotIn('longest corridor', output)
+        json.loads(output)
+
+    def test_a_solved_run_does_not_search_a_second_time(self):
+        # the route --solve found is handed to the measurement rather than
+        # the maze being solved again for it
+        with mock.patch.object(py_maze.analysis, 'solve_maze') as solve:
+            output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                       '-S', '--stats'])
+
+        self.assertEqual(solve.call_count, 0)
+        self.assertEqual(len(self.measured(output)), 2)
+
+    def test_an_unsolved_run_searches_once_for_the_route_it_reports(self):
+        with mock.patch.object(py_maze.analysis, 'solve_maze') as solve:
+            solve.return_value = None
+            self.run_main(['-d', 'easy', '--seed', '2024', '-q', '--stats'])
+
+        self.assertEqual(solve.call_count, 1)
+
+    def test_a_maze_with_no_way_through_is_still_measured(self):
+        # nothing here asks for a solution, so an unsolvable maze is
+        # reported rather than refused
+        output, _ = self.run_main(['--load', self.write(UNSOLVABLE_SAVE),
+                                   '-q', '--stats'])
+
+        self.assertIn('solution none', self.measured(output)[-1])
+
+
 class TestFormatOption(MainRunner, unittest.TestCase):
     # --format json is the maze as a program reads it, beside the picture
     # a person does
@@ -7845,8 +8306,8 @@ class TestLibrarySection(unittest.TestCase):
     # the modules whose whole public surface the page tables, so a name
     # added to one of them is a name the page has to grow a row for
     TABLED_MODULES = ('algorithms', 'algorithms.backtracker',
-                      'algorithms.division', 'algorithms.prim', 'generation',
-                      'grid', 'saves', 'solving')
+                      'algorithms.division', 'algorithms.prim', 'analysis',
+                      'generation', 'grid', 'saves', 'solving')
 
     def section(self):
         # the library page, which is the whole of the file now that the
@@ -7877,16 +8338,17 @@ class TestLibrarySection(unittest.TestCase):
 
         return names
 
-    def grid_example(self):
-        # the >>> block showing the shape of a grid, taken out of the fence
-        # drawing it so the fence is not read as part of the output
+    def prompt_examples(self):
+        # every >>> block on the page, each taken out of the fence drawing
+        # it so the fence is not read as part of the output
         #
         # Returns:
-        #     str: The block, ready for doctest
+        #     list: The blocks, each ready for doctest
 
-        shown = re.search(r'```python\n(>>>.*?)```', self.section(), re.DOTALL)
-        self.assertIsNotNone(shown, 'the section shows no >>> example')
-        return shown.group(1)
+        shown = re.findall(r'```python\n(>>>.*?)```', self.section(),
+                           re.DOTALL)
+        self.assertTrue(shown, 'the section shows no >>> example')
+        return shown
 
     def worked_example(self):
         # the code under "A Worked Example", and the output it shows
@@ -7935,18 +8397,23 @@ class TestLibrarySection(unittest.TestCase):
                           '%s is not one of the names that leave the '
                           'terminal alone' % name)
 
-    def test_the_grid_example_holds(self):
-        # the >>> block showing the shape of a grid is run as it is written
-        parsed = doctest.DocTestParser().get_doctest(
-            self.grid_example(), {'py_maze': py_maze}, 'library',
-            LIBRARY_PATH, 0)
-        self.assertTrue(parsed.examples, 'the page shows no >>> example')
+    def test_every_prompt_example_holds(self):
+        # each >>> block is run as it is written, so prose that drifts from
+        # the package fails here rather than in a reader's terminal. Every
+        # block rather than the first: a page that checked only its opening
+        # example would let every later one rot unread
+        for number, block in enumerate(self.prompt_examples()):
+            with self.subTest(block=number):
+                parsed = doctest.DocTestParser().get_doctest(
+                    block, {'py_maze': py_maze}, 'library', LIBRARY_PATH, 0)
+                self.assertTrue(parsed.examples,
+                                'block %d shows no example' % number)
 
-        reported = io.StringIO()
-        result = doctest.DocTestRunner(verbose=False).run(
-            parsed, out=reported.write)
+                reported = io.StringIO()
+                result = doctest.DocTestRunner(verbose=False).run(
+                    parsed, out=reported.write)
 
-        self.assertEqual(result.failed, 0, reported.getvalue())
+                self.assertEqual(result.failed, 0, reported.getvalue())
 
     def test_every_name_it_tables_is_one_the_package_exports(self):
         tabled = self.tabled_names()

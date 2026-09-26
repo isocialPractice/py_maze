@@ -22,6 +22,8 @@ solvable mazes and navigate through them using your keyboard!
 - 🔀 **Braiding**: Open the dead ends and the maze gains a second way through
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
+- 📐 **Measurements**: `--stats` reports the cells, dead ends, junctions,
+  longest corridor and solution length under the maze it measured
 - 💡 **Hints**: Stuck mid-game? One key lights up the next step
 - ⏱️ **Timer and Move Counter**: Both run while you play and are summarized when you finish
 - 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
@@ -74,9 +76,10 @@ Note that the short flag for height is a capital `-H`. Lowercase `-h` is
 reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
 `-S` solves the maze, lowercase `-s` seeds it.
 
-`--braid`, `--animate`, `--quiet`, `--format`, `--wall-char`, `--open-char`,
-`--chase-point`, `--chase-speed` and `--version` are the rest, and all twenty
-are tabled in full under [Command-line options](docs/options.md).
+`--braid`, `--animate`, `--stats`, `--quiet`, `--format`, `--wall-char`,
+`--open-char`, `--chase-point`, `--chase-speed` and `--version` are the rest,
+and all twenty-one are tabled in full under
+[Command-line options](docs/options.md).
 
 ## [Generating a Maze](docs/generating.md)
 
