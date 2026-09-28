@@ -250,6 +250,7 @@ one maze and it is not solved again for each.
 | `dead_ends(grid)` | Yield each cell inside the maze with one way in and no way on |
 | `junctions(grid)` | Yield each cell where three or more ways meet |
 | `longest_corridor(grid)` | Cells in the longest straight run, across a row or down a column |
+| `UNSEARCHED` | The `path` of a caller that has not looked for a route |
 
 Nothing here changes the maze: a measurement is taken from the grid as it
 stands, so a carved maze and one read out of a file are measured the same
@@ -270,9 +271,23 @@ True
 `cells` counts every position of the grid and `open` the ones the player can
 stand on, so the second is a share of the first. `solution` is the steps the
 shortest route takes, measured as `solution_runs` measures them, and `None`
-for a maze with no way through. The solution is the one measurement that has
-to be searched for, so a caller holding a route already passes it as `path`
-rather than paying for a second search.
+for a maze with no way through.
+
+The solution is the one measurement that has to be searched for, so a caller
+that has already searched says so rather than paying for a second search.
+A route is passed as `path`, and a search that came back with no way through
+is passed as `None`: that is the answer it found, not the absence of one, and
+it is taken at its word rather than searched over again. Leaving `path` out
+asks for the search, and `UNSEARCHED` is that default written down, for a
+caller forwarding a route it may or may not be holding:
+
+```python
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> py_maze.maze_stats(grid, py_maze.UNSEARCHED)['solution']
+34
+>>> py_maze.maze_stats(grid, None)['solution'] is None
+True
+```
 
 `dead_ends` is the reader `braid_maze` opens a share of, so what a braid acts
 on and what `--stats` counts are the one reading. Both it and `junctions`

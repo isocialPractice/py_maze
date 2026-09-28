@@ -24,7 +24,7 @@ summary: >-
 | `--format` | `-f` | `text` | How the maze is written: `text`, the picture, or `json`, a document |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
 | `--animate` | `-a` | off | Step through the solver's search on screen |
-| `--stats` | | off | Print what the maze measures under it: cells, open cells, dead ends, junctions, longest corridor and solution |
+| `--stats` | | off | Print what the maze measures under it: the cells of the drawn picture, how many are open, dead ends, junctions, longest corridor and solution |
 | `--quiet` | `-q` | off | Print the maze and nothing else: no banner, no seed line, no prompt |
 | `--version` | `-V` | | Show the installed version and exit |
 | `--help` | `-h` | | Show usage and exit |
@@ -47,6 +47,13 @@ alone, so nothing is printed under it there.
 
 A maze is drawn with walls between cells, so a maze of `W` by `H` cells
 renders as `W * 2 + 1` characters wide and `H * 2 + 1` characters tall.
+
+`--stats` counts `cells` and `open` over that drawn picture rather than over
+the `W` by `H` that was asked for, so `python -m py_maze -d easy --stats`
+reports `cells 169` for a maze of 6 by 6 cells: 13 characters each way, walls
+counted alongside the positions the player can stand on. The other four
+tallies read the same picture, which is the maze the solver crosses and the
+player walks.
 
 Values below 2 cells cannot produce a maze with an interior path, so they
 are rejected:

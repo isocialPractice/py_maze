@@ -4411,6 +4411,35 @@ class TestMazeStats(unittest.TestCase):
         self.assertEqual(solve.call_count, 0)
         self.assertEqual(stats['solution'], self.stats['solution'])
 
+    def test_a_search_that_found_no_route_is_not_run_again(self):
+        # None is what a search came back with, not the absence of a
+        # search: a caller holding it has already paid, so taking it at
+        # its word is what keeps the second search from happening
+        blocked = grid_from_strings([
+            "* ***",
+            "*****",
+            "*** *",
+        ])
+
+        with mock.patch.object(py_maze.analysis, 'solve_maze') as solve:
+            solve.return_value = None
+            stats = py_maze.maze_stats(blocked, None)
+
+        self.assertEqual(solve.call_count, 0)
+        self.assertIsNone(stats['solution'])
+
+    def test_a_caller_holding_no_route_at_all_asks_for_the_search(self):
+        # UNSEARCHED is the default written down, which is what a caller
+        # forwarding a route it may not be holding passes in place of None
+        for path in ((), (py_maze.UNSEARCHED,)):
+            with self.subTest(path=path or 'left out'):
+                with mock.patch.object(py_maze.analysis,
+                                       'solve_maze') as solve:
+                    solve.return_value = None
+                    py_maze.maze_stats(self.grid, *path)
+
+                self.assertEqual(solve.call_count, 1)
+
     def test_it_leaves_the_maze_exactly_as_it_was(self):
         expected = [row[:] for row in self.grid]
 
@@ -4755,6 +4784,24 @@ class TestStatsLines(unittest.TestCase):
 
         self.assertIn("solution none", py_maze.stats_lines(measured)[-1])
         self.assertNotIn("solution 0", py_maze.stats_lines(measured)[-1])
+
+    def test_a_route_of_no_steps_prints_as_a_number(self):
+        # the other side of that reading, and the one nothing else here
+        # reaches. Three characters across is the narrowest grid has_ends
+        # admits, and it leaves a single column that is not a border, so
+        # find_entrance and find_exit both answer with the one open cell
+        # in it: the route between them takes no steps and prints as 0,
+        # where a maze that cannot be crossed prints the word instead
+        grid = grid_from_strings([
+            "***",
+            "* *",
+            "***",
+        ])
+        measured = py_maze.maze_stats(grid)
+
+        self.assertEqual(measured['solution'], 0)
+        self.assertEqual(py_maze.stats_lines(measured)[-1],
+                         "longest corridor 1   solution 0")
 
     def test_it_reports_what_maze_stats_measures(self):
         # the two are written against each other, so a key renamed in one
@@ -6890,6 +6937,21 @@ class TestStatsOption(MainRunner, unittest.TestCase):
 
         self.assertIn('solution none', self.measured(output)[-1])
 
+    def test_a_run_reporting_no_route_does_not_search_a_second_time(self):
+        # --solve searched and came back with nothing, which is an answer
+        # rather than a gap: the measurement takes it as one instead of
+        # crossing the same maze again on the way out of
+        # EXIT_NO_WAY_THROUGH
+        with mock.patch.object(py_maze.analysis, 'solve_maze') as solve:
+            solve.return_value = None
+            code, _, output = self.run_main_failing(
+                ['--load', self.write(UNSOLVABLE_SAVE), '-q', '-S',
+                 '--stats'])
+
+        self.assertEqual(code, py_maze.EXIT_NO_WAY_THROUGH)
+        self.assertEqual(solve.call_count, 0)
+        self.assertIn('solution none', self.measured(output)[-1])
+
 
 class TestFormatOption(MainRunner, unittest.TestCase):
     # --format json is the maze as a program reads it, beside the picture
@@ -8782,6 +8844,45 @@ class TestDocumentationSite(unittest.TestCase):
             with self.subTest(page=name):
                 self.assertIn('docs/%s' % name, readme,
                               'the README links no reader to docs/%s' % name)
+
+    def features(self, markdown):
+        # the bullets of a "## Features" list, one string apiece, with a
+        # wrapped bullet joined back into the line it reads as and the
+        # emoji taken off the front. The site's list carries none, so the
+        # emoji is the one difference between the two lists that is a
+        # choice rather than a drift
+        #
+        # Args:
+        #     markdown: The whole of a file carrying a Features list
+        #
+        # Returns:
+        #     list: The bullets, in the order they are written
+
+        section = re.search(r'^## Features\n(.*?)(?=^## )', markdown,
+                            re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(section, 'no Features list to read')
+
+        bullets = []
+        for line in section.group(1).splitlines():
+            if line.startswith('- '):
+                bullets.append(line[2:].strip())
+            elif line.strip() and bullets:
+                # a bullet wrapped onto a second line is one bullet
+                bullets[-1] += ' ' + line.strip()
+
+        self.assertTrue(bullets, 'the Features list is empty')
+        return [re.sub(r'^[^*]*(?=\*\*)', '', bullet) for bullet in bullets]
+
+    def test_the_site_lists_the_features_the_readme_does(self):
+        # the front page of the repository and the front page of the site
+        # are the one list written twice, so a feature added to only one
+        # of them leaves whoever reads the other never told about it.
+        # --stats shipped into the README alone, and nothing here caught it
+        self.assertEqual(
+            self.features(read_project_file(
+                os.path.join(DOCS_DIR, 'index.md'))),
+            self.features(read_project_file(README_PATH)),
+            'the two Features lists have drifted apart')
 
     def test_the_readme_links_the_site_itself(self):
         readme = read_project_file(README_PATH)

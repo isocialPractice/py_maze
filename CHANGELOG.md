@@ -5,6 +5,83 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-09-28
+
+A review of what 2.8.0 shipped, and of what it said about it. The
+measurements themselves were right: every tally `--stats` printed was the
+correct reading of the maze it was given. What had drifted was everything
+around them - the feature never reached the front page of the site, the two
+places a reader of the flag looks never said what `cells` counts, the one
+reading `stats_lines` was built to distinguish was only ever tested from one
+side, and two comments claimed a second search was avoided in a case where
+it was not.
+
+### Added
+
+- `UNSEARCHED`, the default for `maze_stats`' `path`, exported from
+  `py_maze.analysis` and from the package. It stands for a caller that has
+  not looked for a route, which is what separates it from `None` - the
+  answer a caller brings back from a search that found no way through. A run
+  forwarding a route it may or may not be holding passes one or the other
+  rather than collapsing both into `None`.
+- The **Measurements** bullet in the `## Features` list on `docs/index.md`.
+  The 2.8.0 run added it to `README.md` alone, so the page a reader of the
+  site lands on never mentioned `--stats` while the repository's own front
+  page did.
+- `test_the_site_lists_the_features_the_readme_does`, holding the two
+  `## Features` lists against each other bullet for bullet. The site's list
+  carries no emoji and wraps differently, so both are read as text and the
+  emoji is taken off the README's - which leaves the wording, and nothing
+  else, to agree. Nothing compared the two lists before, which is how one
+  could gain a bullet and the other not.
+- `test_a_route_of_no_steps_prints_as_a_number`, the other side of the
+  reading `stats_lines` exists to make. Three characters across is the
+  narrowest grid `has_ends` admits and it leaves one column that is not a
+  border, so `find_entrance` and `find_exit` both answer with the single
+  open cell in it: the route between them takes no steps and prints
+  `solution 0`. Only `solution none` was tested before, by a case asserting
+  `solution 0` was absent - the claim read backwards.
+- Three tests for the search that is no longer run twice:
+  `test_a_search_that_found_no_route_is_not_run_again` and
+  `test_a_caller_holding_no_route_at_all_asks_for_the_search` in
+  `TestMazeStats`, and
+  `test_a_run_reporting_no_route_does_not_search_a_second_time` in
+  `TestStatsOption`, which drives `--load <unsolvable> -q -S --stats` and
+  counts the searches.
+
+### Changed
+
+- `maze_stats(grid, None)` now reports `solution` as `None` rather than
+  solving the maze. `None` is the answer a caller brings back from a search
+  that found no way through, and it is taken at its word; asking for the
+  search is done by leaving `path` out, or by passing `UNSEARCHED`. This is
+  the one incompatibility in this release: a caller written against 2.8.0
+  that passes `None` explicitly to mean "solve it for me" gets `None` back
+  instead of a measured route, and wants `UNSEARCHED` or an omitted
+  argument.
+- The `--stats` help line and the `docs/options.md` table row now say that
+  `cells` and `open` are counted over the maze as it is drawn rather than
+  over the cells `--difficulty` and `--width` are given in, with a paragraph
+  on the options page working it through: `python -m py_maze -d easy
+  --stats` reports `cells 169` for a maze of 6 by 6 cells, which is 13
+  characters each way. The docstring and `docs/library.md` already said
+  "every position of the grid"; the two places a reader of the flag looks
+  said "how many cells it has" and "cells, open cells", and 169 is neither
+  6, nor 36, nor the 13 of the rendered width.
+
+### Fixed
+
+- A run that searched a maze and found no way through no longer searches it
+  again to measure it. `solution` was `None` both for a maze `--solve` could
+  not cross and for a run that never asked, so `maze_stats` could not tell
+  the two apart and solved the maze a second time; measured on `--load
+  <unsolvable> -q -S --stats`, that was two breadth-first searches, one in
+  `py_maze/cli.py` and one in `py_maze/analysis.py`. The tally printed was
+  right either way, and the waste only ever fell on a run about to exit
+  `EXIT_NO_WAY_THROUGH`, but the comments in both files said the second
+  search was avoided and it was not. `cli` now passes the route it holds
+  only when it searched for one, and both comments say what is true.
+
 ## [2.8.0] - 2026-09-26
 
 Reading a maze, beside carving one, solving one and drawing one. Every

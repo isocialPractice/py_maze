@@ -13,7 +13,7 @@ import random
 import sys
 
 from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
-from .analysis import maze_stats
+from .analysis import UNSEARCHED, maze_stats
 from .chase import (DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, MAX_CHASE_POINT,
                     MAX_CHASE_SPEED, MIN_CHASE_POINT, MIN_CHASE_SPEED,
                     chase_setting)
@@ -429,14 +429,17 @@ def build_parser():
                              "before showing the solved maze")
     parser.add_argument("--stats", action="store_true",
                         help="Print what the maze measures under it: how "
-                             "many cells it has, how many of them are open, "
-                             "its dead ends, its junctions, its longest "
-                             "straight corridor and the steps its shortest "
-                             "route takes. The maze itself is drawn exactly "
-                             "as it would be without this, and a quiet run "
-                             "still reports them, having been asked to. A "
-                             "--format json run prints the document alone, "
-                             "so nothing is printed under it there")
+                             "many positions the drawn maze has and how "
+                             "many of them are open, counted over the "
+                             "picture rather than over the cells of "
+                             "--difficulty, then its dead ends, its "
+                             "junctions, its longest straight corridor and "
+                             "the steps its shortest route takes. The maze "
+                             "itself is drawn exactly as it would be "
+                             "without this, and a quiet run still reports "
+                             "them, having been asked to. A --format json "
+                             "run prints the document alone, so nothing is "
+                             "printed under it there")
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="Print the maze and nothing else: no banner, no "
                              "seed line and no play prompt, so a run whose "
@@ -693,11 +696,15 @@ def main():
 
             # the measurements go under the maze rather than into it, and
             # a quiet run prints them too: --quiet drops what was never
-            # asked for, and this was asked for. A solved run hands over
-            # the route it already has rather than paying for a second
-            # search
+            # asked for, and this was asked for. A run that searched hands
+            # over what the search found rather than paying for a second
+            # one, and a search that found nothing is still a search: None
+            # is the answer, where UNSEARCHED is the run that never asked
             if args.stats:
-                for line in stats_lines(maze_stats(maze_grid, solution)):
+                measured = maze_stats(
+                    maze_grid,
+                    solution if args.solve or args.animate else UNSEARCHED)
+                for line in stats_lines(measured):
                     print(line)
 
         if not quiet:

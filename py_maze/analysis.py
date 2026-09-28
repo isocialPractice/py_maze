@@ -24,11 +24,32 @@ from .grid import open_cells, open_neighbors
 from .solving import solution_runs, solve_maze
 
 __all__ = [
+    'UNSEARCHED',
     'dead_ends',
     'junctions',
     'longest_corridor',
     'maze_stats',
 ]
+
+
+class _Unsearched:
+    """The stand-in for a route nobody has looked for yet.
+
+    None is a real answer to :func:`maze_stats`' ``path``, and the one a
+    caller hands over having searched a maze that cannot be crossed. So
+    the default cannot be None as well: the two readings would be the one
+    value, and the search nobody needed would be paid for again.
+    """
+
+    def __repr__(self):
+        return 'UNSEARCHED'
+
+
+# what maze_stats measures when no route was handed to it, which is the
+# case it searches for one. Passing this is the same as leaving path out,
+# and passing None instead says the search has already been run and the
+# maze has no way through
+UNSEARCHED = _Unsearched()
 
 
 def dead_ends(grid):
@@ -114,19 +135,22 @@ def longest_corridor(grid):
     return longest
 
 
-def maze_stats(grid, path=None):
+def maze_stats(grid, path=UNSEARCHED):
     """Measure a maze in one call, as ``--stats`` reports it.
 
     Every number is taken from the grid as it stands, so nothing here
     depends on how the maze was made. The solution is the one thing that
-    has to be searched for, and a caller holding one already says so rather
-    than paying for a second search.
+    has to be searched for, and a caller that has already searched says so
+    rather than paying for a second search - including the caller whose
+    search found no way through, which is what None says and
+    :data:`UNSEARCHED` does not.
 
     Args:
         grid: 2D list of booleans (True = wall, False = path)
-        path: The solution to measure, solved from the grid when it is not
-            given. A run that has already solved the maze for ``--solve``
-            or ``--animate`` passes the route it found
+        path: The solution to measure. A run that has already solved the
+            maze for ``--solve`` or ``--animate`` passes the route it
+            found, or None where the search found no way through. Left out
+            - or given as :data:`UNSEARCHED` - the maze is solved here
 
     Returns:
         dict: The measurements, under these keys:
@@ -140,7 +164,7 @@ def maze_stats(grid, path=None):
           maze with no way through
     """
 
-    if path is None:
+    if path is UNSEARCHED:
         path = solve_maze(grid)
 
     return {

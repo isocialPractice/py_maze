@@ -41,7 +41,8 @@ script with ``py_maze``.
 
 from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
                          carve_backtracker, carve_division, carve_prim, carver)
-from .analysis import dead_ends, junctions, longest_corridor, maze_stats
+from .analysis import (UNSEARCHED, dead_ends, junctions,
+                       longest_corridor, maze_stats)
 from .chase import (CHASE_SPEEDS, DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED,
                     MAX_CHASE_CATCH_UP, MAX_CHASE_POINT, MAX_CHASE_SPEED,
                     MIN_CHASE_POINT, MIN_CHASE_SPEED, Chaser, chase_setting)
@@ -122,6 +123,7 @@ __all__ = [
     'solution_runs',
     'solve_maze',
     # analysis
+    'UNSEARCHED',
     'dead_ends',
     'junctions',
     'longest_corridor',

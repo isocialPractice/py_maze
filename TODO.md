@@ -28,68 +28,6 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Code Review Override - The Measurements Nothing Published Mentions
-
-- [ ] Carry the measurement feature onto the site's front page
-  - **Issue**: `docs/index.md` is the published front door and its
-    `## Features` list mirrored `README.md` bullet for bullet, 16 apiece. The
-    2.8.0 run added the 17th, **Measurements**, to `README.md` alone, so the
-    page a reader of the site lands on never mentions `--stats` while the
-    repository's own front page does. Every other bullet still matches word
-    for word, which is what makes the one gap a drift rather than a choice
-  - **Goal**: Add the **Measurements** bullet to the `## Features` list in
-    `docs/index.md`, worded as the README words it and without the emoji the
-    site's list does not carry, and place it where the README places it,
-    after **Built-In Solver**. A test holding the two lists against each
-    other is worth more than the bullet: nothing in the suite compares them,
-    which is why one could move without the other
-  - From: Code Review Override - The Measurements Nothing Published Mentions
-- [ ] Say what `cells` counts where the flag is documented
-  - **Issue**: `cells` counts every position of the rendered grid, so
-    `py_maze -d easy --stats` prints `cells 169` for a maze the same page
-    calls 6 by 6. `maze_stats`' docstring and `docs/library.md` both say
-    "every position of the grid"; the two places a reader of the flag looks
-    do not. `--stats --help` says "how many cells it has" and the
-    `docs/options.md` table says "cells, open cells", and 169 is neither 6,
-    nor 36, nor the 13 of the rendered width
-  - **Goal**: Say in the `--stats` prose of `docs/options.md` that `cells`
-    and `open` are counted over the rendered positions rather than over the
-    `W` by `H` of `--difficulty`, which the same page already explains two
-    paragraphs down, and reword the flag's own help line to match. The
-    numbers are right and the reading of them is what is missing
-  - From: Code Review Override - The Measurements Nothing Published Mentions
-- [ ] Hold the route of nought steps apart from the route there is none of
-  - **Issue**: `stats_lines` is built on the distinction between
-    `solution 0`, a maze entered where it is left, and `solution none`, a
-    maze with no way through, and only the second is exercised.
-    `test_a_maze_with_no_way_through_says_so_in_a_word` asserts
-    `assertNotIn("solution 0", ...)`, which is the claim read backwards.
-    Nothing prints `solution 0`. It is reachable: a save file three
-    characters wide, the narrowest `has_ends` admits, has one column that is
-    not a border, so `find_entrance` and `find_exit` both answer with the one
-    open cell in it. A save of the header over the three rows `***`, `* *`,
-    `***` measures `solution` 0, and `stats_lines` prints `solution 0`
-  - **Goal**: Add a `TestStatsLines` case built on that three-wide grid,
-    asserting the printed tally is `solution 0` and not `solution none`, so
-    the pair of readings is pinned from both sides rather than from one
-  - From: Code Review Override - The Measurements Nothing Published Mentions
-- [ ] Stop the second search on the run that reports no route
-  - **Issue**: `py_maze/cli.py` says "A solved run hands over the route it
-    already has rather than paying for a second search", and `maze_stats`
-    says "a caller holding one already says so rather than paying for a
-    second search". Neither holds when the route is that there is none:
-    `solution` is `None` for a maze `--solve` could not cross and for a run
-    that never asked, and `maze_stats` cannot tell the two apart, so it
-    searches again. Measured on `--load <unsolvable> -q -S --stats`: two
-    breadth-first searches, one in `cli` and one in `analysis`. The tally
-    printed is right and only the work and the comments are wrong
-  - **Goal**: Let a caller say it holds no route as distinct from holding
-    nothing - a sentinel default, or a `solved` flag beside `path` - or else
-    narrow both comments to the solved case they are true of. The wasted
-    search only ever falls on a run about to exit
-    `EXIT_NO_WAY_THROUGH`, so the comments are the heavier half
-  - From: Code Review Override - The Measurements Nothing Published Mentions
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1718,5 +1656,64 @@ No items are currently queued in this section.
   the style of the status line rather than as a table, and leaving the maze
   itself unchanged
   - From: Maze Analysis and Statistics
+- [x] Carry the measurement feature onto the site's front page
+  - **Issue**: `docs/index.md` is the published front door and its
+    `## Features` list mirrored `README.md` bullet for bullet, 16 apiece. The
+    2.8.0 run added the 17th, **Measurements**, to `README.md` alone, so the
+    page a reader of the site lands on never mentions `--stats` while the
+    repository's own front page does. Every other bullet still matches word
+    for word, which is what makes the one gap a drift rather than a choice
+  - **Goal**: Add the **Measurements** bullet to the `## Features` list in
+    `docs/index.md`, worded as the README words it and without the emoji the
+    site's list does not carry, and place it where the README places it,
+    after **Built-In Solver**. A test holding the two lists against each
+    other is worth more than the bullet: nothing in the suite compares them,
+    which is why one could move without the other
+  - From: Code Review Override - The Measurements Nothing Published Mentions
+- [x] Say what `cells` counts where the flag is documented
+  - **Issue**: `cells` counts every position of the rendered grid, so
+    `py_maze -d easy --stats` prints `cells 169` for a maze the same page
+    calls 6 by 6. `maze_stats`' docstring and `docs/library.md` both say
+    "every position of the grid"; the two places a reader of the flag looks
+    do not. `--stats --help` says "how many cells it has" and the
+    `docs/options.md` table says "cells, open cells", and 169 is neither 6,
+    nor 36, nor the 13 of the rendered width
+  - **Goal**: Say in the `--stats` prose of `docs/options.md` that `cells`
+    and `open` are counted over the rendered positions rather than over the
+    `W` by `H` of `--difficulty`, which the same page already explains two
+    paragraphs down, and reword the flag's own help line to match. The
+    numbers are right and the reading of them is what is missing
+  - From: Code Review Override - The Measurements Nothing Published Mentions
+- [x] Hold the route of nought steps apart from the route there is none of
+  - **Issue**: `stats_lines` is built on the distinction between
+    `solution 0`, a maze entered where it is left, and `solution none`, a
+    maze with no way through, and only the second is exercised.
+    `test_a_maze_with_no_way_through_says_so_in_a_word` asserts
+    `assertNotIn("solution 0", ...)`, which is the claim read backwards.
+    Nothing prints `solution 0`. It is reachable: a save file three
+    characters wide, the narrowest `has_ends` admits, has one column that is
+    not a border, so `find_entrance` and `find_exit` both answer with the one
+    open cell in it. A save of the header over the three rows `***`, `* *`,
+    `***` measures `solution` 0, and `stats_lines` prints `solution 0`
+  - **Goal**: Add a `TestStatsLines` case built on that three-wide grid,
+    asserting the printed tally is `solution 0` and not `solution none`, so
+    the pair of readings is pinned from both sides rather than from one
+  - From: Code Review Override - The Measurements Nothing Published Mentions
+- [x] Stop the second search on the run that reports no route
+  - **Issue**: `py_maze/cli.py` says "A solved run hands over the route it
+    already has rather than paying for a second search", and `maze_stats`
+    says "a caller holding one already says so rather than paying for a
+    second search". Neither holds when the route is that there is none:
+    `solution` is `None` for a maze `--solve` could not cross and for a run
+    that never asked, and `maze_stats` cannot tell the two apart, so it
+    searches again. Measured on `--load <unsolvable> -q -S --stats`: two
+    breadth-first searches, one in `cli` and one in `analysis`. The tally
+    printed is right and only the work and the comments are wrong
+  - **Goal**: Let a caller say it holds no route as distinct from holding
+    nothing - a sentinel default, or a `solved` flag beside `path` - or else
+    narrow both comments to the solved case they are true of. The wasted
+    search only ever falls on a run about to exit
+    `EXIT_NO_WAY_THROUGH`, so the comments are the heavier half
+  - From: Code Review Override - The Measurements Nothing Published Mentions
 
 </details>

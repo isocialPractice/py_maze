@@ -58,6 +58,8 @@ py_maze
   generated again
 - **Built-In Solver**: Print the shortest way through, or watch the search
   find it
+- **Measurements**: `--stats` reports the cells, dead ends, junctions,
+  longest corridor and solution length under the maze it measured
 - **Hints**: Stuck mid-game? One key lights up the next step
 - **Timer and Move Counter**: Both run while you play and are summarized when
   you finish
