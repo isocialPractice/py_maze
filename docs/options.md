@@ -24,7 +24,7 @@ summary: >-
 | `--format` | `-f` | `text` | How the maze is written: `text`, the picture, or `json`, a document |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
 | `--animate` | `-a` | off | Step through the solver's search on screen |
-| `--stats` | | off | Print what the maze measures under it: the cells of the drawn picture, how many are open, dead ends, junctions, longest corridor and solution |
+| `--stats` | | off | Print what the maze measures under it: `cells` and `open` over the drawn picture, then dead ends, junctions, longest corridor and solution |
 | `--quiet` | `-q` | off | Print the maze and nothing else: no banner, no seed line, no prompt |
 | `--version` | `-V` | | Show the installed version and exit |
 | `--help` | `-h` | | Show usage and exit |

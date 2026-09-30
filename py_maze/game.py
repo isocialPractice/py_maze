@@ -196,7 +196,12 @@ class MazeGame:
 
         # the route the chase point is measured against, solved once
         # here rather than on every step: the maze does not change under
-        # a game, so neither does the way through it
+        # a game, so neither does the way through it. None is what that
+        # one search came back with for a maze there is no way through,
+        # and maze_progress takes it at its word rather than searching
+        # again on every tick of a chase nobody can start. The plain game
+        # never searched and never forwards this, having no chaser to
+        # measure a starting point for
         self.solution = solve_maze(self.maze) if chaser is not None else None
 
         # a maze saved with a collectible on the entrance hands it over

@@ -169,6 +169,7 @@ A maze is a **grid**: rows of booleans, `True` for a wall, addressed
 | Watch it solve | `search_frames(grid, start, end)` |
 | Measure a route | `solution_runs(path)`, `maze_progress(grid, cell, path)` |
 | Measure a maze | `maze_stats(grid, path)` |
+| Say a search found nothing | pass `None`; `UNSEARCHED` asks for the search |
 | Read its parts | `dead_ends(grid)`, `junctions(grid)`, `longest_corridor(grid)` |
 | Play a mode | `game_mode(name)`, `plain_game(...)`, `chase_game(...)` |
 | Draw | `maze_lines(grid, overlays)`, `print_maze(...)` |

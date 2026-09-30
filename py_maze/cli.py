@@ -428,18 +428,19 @@ def build_parser():
                         help="Step through the solver's search on screen "
                              "before showing the solved maze")
     parser.add_argument("--stats", action="store_true",
-                        help="Print what the maze measures under it: how "
-                             "many positions the drawn maze has and how "
-                             "many of them are open, counted over the "
-                             "picture rather than over the cells of "
-                             "--difficulty, then its dead ends, its "
-                             "junctions, its longest straight corridor and "
-                             "the steps its shortest route takes. The maze "
-                             "itself is drawn exactly as it would be "
-                             "without this, and a quiet run still reports "
-                             "them, having been asked to. A --format json "
-                             "run prints the document alone, so nothing is "
-                             "printed under it there")
+                        help="Print what the maze measures under it: cells "
+                             "and open, every position of the drawn picture "
+                             "and how many of them the player can stand on, "
+                             "both counted over that picture rather than "
+                             "over the cells --difficulty asks for, then "
+                             "its dead ends, its junctions, its longest "
+                             "straight corridor and the steps its shortest "
+                             "route takes. The maze itself is drawn "
+                             "exactly as it would be without this, and a "
+                             "quiet run still reports them, having been "
+                             "asked to. A --format json run prints the "
+                             "document alone, so nothing is printed under "
+                             "it there")
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="Print the maze and nothing else: no banner, no "
                              "seed line and no play prompt, so a run whose "

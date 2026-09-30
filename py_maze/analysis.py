@@ -14,6 +14,11 @@ three readers behind it are worth having on their own, and
 share of, so what a braid is measured against and what it acts on are the
 same reading.
 
+The solution is the one measurement that has to be searched for, and how
+a route handed in is read - a route, None for a search that found no way
+through, :data:`UNSEARCHED` for a caller that has not looked - is
+:mod:`py_maze.solving`'s, stated there and followed here.
+
 Nothing here touches a terminal, and nothing here draws: what the numbers
 look like on screen is :func:`py_maze.rendering.stats_lines`.
 
@@ -21,7 +26,12 @@ The maze being measured is the grid described in :mod:`py_maze.grid`.
 """
 
 from .grid import open_cells, open_neighbors
-from .solving import solution_runs, solve_maze
+# UNSEARCHED is imported rather than defined here: the reading of a path
+# belongs to the module that searches for one, and both of the readers
+# that take a path have to mean the same thing by it. It stays in __all__
+# below, so a caller importing it from py_maze.analysis - which is where
+# it first shipped - still reaches it
+from .solving import UNSEARCHED, solution_runs, solve_maze
 
 __all__ = [
     'UNSEARCHED',
@@ -30,26 +40,6 @@ __all__ = [
     'longest_corridor',
     'maze_stats',
 ]
-
-
-class _Unsearched:
-    """The stand-in for a route nobody has looked for yet.
-
-    None is a real answer to :func:`maze_stats`' ``path``, and the one a
-    caller hands over having searched a maze that cannot be crossed. So
-    the default cannot be None as well: the two readings would be the one
-    value, and the search nobody needed would be paid for again.
-    """
-
-    def __repr__(self):
-        return 'UNSEARCHED'
-
-
-# what maze_stats measures when no route was handed to it, which is the
-# case it searches for one. Passing this is the same as leaving path out,
-# and passing None instead says the search has already been run and the
-# maze has no way through
-UNSEARCHED = _Unsearched()
 
 
 def dead_ends(grid):

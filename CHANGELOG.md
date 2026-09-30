@@ -5,7 +5,88 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-30
+
+The version number the last release needed. 2.9.0 taught `maze_stats` to
+read `None` as "searched, no way through" and shipped that under a minor
+version, which a caller pinned to a compatible range could not have
+expected. This release carries the break under the major version Semantic
+Versioning asks for, and settles the half of it that was left behind:
+`maze_progress` had gone on reading the same value the old way, so one
+package said two opposite things with the one argument.
+
+### Added
+
+- `test_a_search_that_found_no_route_is_not_run_again` and
+  `test_a_caller_holding_no_route_at_all_asks_for_the_search` in
+  `TestMazeProgress`, the pair `TestMazeStats` already carried for the same
+  argument. Nothing held the two readers against each other before, which
+  is how they came to disagree.
+- `test_a_chase_over_an_unsolvable_maze_pays_for_one_search`, counting the
+  searches ten ticks of that chase buy. One, taken when the game was built.
+- `test_a_chaser_left_to_measure_the_maze_itself_still_starts`, which is
+  what a `path` default of `None` on `Chaser.chasing` would now fail: a
+  caller leaving the route out would have had its "not searched" read as
+  "no way through", and no chase would ever have begun.
+
+### Changed
+
+- **The major version.** 2.9.0's `maze_stats` change is a
+  backwards-incompatible change to a function in `py_maze.__all__` and
+  tabled on `docs/library.md`, which Semantic Versioning clause 8 makes a
+  major release: a consumer pinned to `py_maze>=2.8,<3` took it
+  automatically and read `solution` as `None` for a maze with a 34-step
+  route, with nothing raised. The tag and the GitHub release for 2.9.0 are
+  published, and clause 3 says a released version is not modified, so its
+  entry below keeps its number and this is the version the break belongs
+  to. Both halves of it are declared here.
+- `maze_progress(grid, cell, None)` now reports `None` rather than solving
+  the maze, which is the reading `maze_stats` took in 2.9.0. `None` is the
+  answer a caller brings back from a search that found no way through and
+  it is taken at its word; asking for the search is done by leaving `path`
+  out, or by passing `UNSEARCHED`. This is the second incompatibility the
+  major version covers: a caller that passed `None` explicitly to mean
+  "solve it for me" wants `UNSEARCHED` or an omitted argument.
+- `Chaser.chasing`'s `path` default moved to `UNSEARCHED` with it. It
+  forwards the argument to `maze_progress` untouched, so a default of
+  `None` would have been believed and a caller that left the route out
+  would have watched a chase never start.
+- `UNSEARCHED` now lives in `py_maze.solving`, the module that searches for
+  a route, and is re-exported from `py_maze.analysis` where it first
+  shipped. `py_maze.UNSEARCHED`, `py_maze.solving.UNSEARCHED` and
+  `from py_maze.analysis import UNSEARCHED` are all the one object, so
+  nothing written against 2.9.0's import path moves.
+- The `--stats` help line names `cells` and `open` as the keys it is
+  describing, the way the `docs/options.md` row and its paragraph do. 2.9.0
+  rewrote the line to say the count is taken over the drawn picture rather
+  than over the cells of `--difficulty` and stopped naming the tallies, so
+  the only "cells" left in it was the thing the tally is not: a reader who
+  saw `cells 169` and went to `--help` for what it counts was pointed at
+  `--difficulty`. The picture-rather-than-cells distinction 2.9.0 added is
+  kept, and the `docs/options.md` table row now names the two keys as its
+  own paragraph already did.
+
+### Fixed
+
+- A chase over a maze with no way through no longer solves it on every
+  tick. `MazeGame` searches once when it is built and forwards what that
+  search came back with, so a `None` travelled through `Chaser.chasing`
+  into `maze_progress`, which read it as "not searched" and searched again;
+  measured on a chase-mode game over a three-row unsolvable grid, ten ticks
+  ran ten breadth-first searches, each one answering `None`. The chase
+  cannot begin on such a maze either way, and paying to find that out again
+  every tick was the cost of the two readings disagreeing.
+- `docs/library.md` states the reading of `path` once, under **Solving**,
+  for both of the calls that take one. It taught the two readings within
+  fifteen lines of each other before, and the two paragraphs did not agree.
+
 ## [2.9.0] - 2026-09-28
+
+> The `maze_stats` change below is backwards-incompatible and shipped here
+> under a minor version. 3.0.0 is the version it belongs to, and declares
+> it; this entry keeps its number because the tag and the release for it
+> are published.
+
 
 A review of what 2.8.0 shipped, and of what it said about it. The
 measurements themselves were right: every tally `--stats` printed was the

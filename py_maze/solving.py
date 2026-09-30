@@ -5,16 +5,45 @@ The solver is a breadth-first search over the grid described in
 :mod:`py_maze.grid`, so the route it returns is always a shortest one. One
 search backs the printed solution, the animation and the in-game hints,
 which is why a solved maze and an animated one can never disagree.
+
+A route already found is handed back rather than searched for over again,
+and :data:`UNSEARCHED` is what keeps the two callers who hold no route
+apart: None is the answer a search brings back from a maze with no way
+through, and UNSEARCHED is a caller that has not looked. Every call that
+takes a ``path`` reads the pair that way, here and in
+:mod:`py_maze.analysis`, so a caller says which it is holding once and is
+believed by both.
 """
 
 from .grid import find_entrance, find_exit, open_neighbors
 
 __all__ = [
+    'UNSEARCHED',
     'maze_progress',
     'search_frames',
     'solution_runs',
     'solve_maze',
 ]
+
+
+class _Unsearched:
+    """The stand-in for a route nobody has looked for yet.
+
+    None is a real answer to a ``path``, and the one a caller hands over
+    having searched a maze that cannot be crossed. So the default cannot
+    be None as well: the two readings would be the one value, and the
+    search nobody needed would be paid for again.
+    """
+
+    def __repr__(self):
+        return 'UNSEARCHED'
+
+
+# the path of a caller that has not searched, which is the case a reader
+# searches for one itself. Passing this is the same as leaving path out,
+# and passing None instead says the search has already been run and the
+# maze has no way through
+UNSEARCHED = _Unsearched()
 
 
 def trace_path(came_from, end):
@@ -142,7 +171,7 @@ def solution_runs(path):
     return runs
 
 
-def maze_progress(grid, cell, path=None):
+def maze_progress(grid, cell, path=UNSEARCHED):
     """Report how far along the solution a cell stands, as a share of it.
 
     The share is the distance walked to the cell over the length of the
@@ -155,13 +184,18 @@ def maze_progress(grid, cell, path=None):
     standing in a dead end has walked nowhere along the route, and
     saying so is more use than a number invented for the occasion.
 
+    A caller that has already searched says so rather than paying for a
+    second search - including the caller whose search found no way
+    through, which is what None says and :data:`UNSEARCHED` does not.
+
     Args:
         grid: 2D list of booleans (True = wall, False = path)
         cell: The (x, y) to measure
-        path: The solution to measure against, solved from the grid when
-            it is not given. A caller measuring cell after cell against
-            the one maze passes the path it already has rather than
-            paying for a search each time
+        path: The solution to measure against. A caller measuring cell
+            after cell against the one maze passes the route it holds
+            rather than paying for a search each time, or None where its
+            search found no way through. Left out - or given as
+            :data:`UNSEARCHED` - the maze is solved here
 
     Returns:
         float: The share of the solution walked to reach the cell, from
@@ -169,7 +203,7 @@ def maze_progress(grid, cell, path=None):
         way through, or the cell is not on the way through it
     """
 
-    if path is None:
+    if path is UNSEARCHED:
         path = solve_maze(grid)
 
     if not path:

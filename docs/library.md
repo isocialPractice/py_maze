@@ -221,6 +221,7 @@ carved grid with its entrance and exit already opened:
 | `search_frames(grid, start, end)` | Yield `(visited, frontier, path)`, one wave at a time |
 | `solution_runs(path)` | The straight runs a solution is made of, as their lengths |
 | `maze_progress(grid, cell, path)` | How far along the solution a cell stands, from `0` to `1`, or `None` |
+| `UNSEARCHED` | The `path` of a caller that has not looked for a route |
 
 A solution is measured as the straight runs it is made of rather than as a
 count of cells, which is what lets a share of it be pointed at. A route of
@@ -239,8 +240,33 @@ True
 Every step belongs to exactly one run, so the lengths always sum to the steps
 the whole route takes. A cell that is not on the solution has no share of it
 and `maze_progress` answers `None`, which is also what it answers for a maze
-with no way through. Pass `path` when measuring cell after cell against the
-one maze and it is not solved again for each.
+with no way through.
+
+**How a `path` is read.** Every call that takes one - `maze_progress` here and
+`maze_stats` under **Measuring a maze** below - reads it the same three ways,
+so a caller says what it is holding once and is believed by both:
+
+- A route: the caller searched and found the way through, and it is measured
+  as it stands. Pass it when measuring cell after cell against the one maze
+  and it is not solved again for each.
+- `None`: the caller searched and there is no way through. That is the answer
+  the search came back with rather than the absence of a search, so it is
+  taken at its word rather than run again.
+- Left out, or `UNSEARCHED`: the caller has not looked, and the maze is solved
+  here.
+
+That third reading is why the default is not `None`: a run forwarding a route
+it may or may not be holding passes `UNSEARCHED` and pays for one search,
+while a run that already knows there is no way through pays for none.
+
+```python
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> path = py_maze.solve_maze(grid)
+>>> py_maze.maze_progress(grid, path[-1], py_maze.UNSEARCHED)
+1.0
+>>> py_maze.maze_progress(grid, path[-1], None) is None
+True
+```
 
 **Measuring a maze** (`py_maze.analysis`)
 
@@ -250,7 +276,6 @@ one maze and it is not solved again for each.
 | `dead_ends(grid)` | Yield each cell inside the maze with one way in and no way on |
 | `junctions(grid)` | Yield each cell where three or more ways meet |
 | `longest_corridor(grid)` | Cells in the longest straight run, across a row or down a column |
-| `UNSEARCHED` | The `path` of a caller that has not looked for a route |
 
 Nothing here changes the maze: a measurement is taken from the grid as it
 stands, so a carved maze and one read out of a file are measured the same
@@ -273,13 +298,10 @@ stand on, so the second is a share of the first. `solution` is the steps the
 shortest route takes, measured as `solution_runs` measures them, and `None`
 for a maze with no way through.
 
-The solution is the one measurement that has to be searched for, so a caller
-that has already searched says so rather than paying for a second search.
-A route is passed as `path`, and a search that came back with no way through
-is passed as `None`: that is the answer it found, not the absence of one, and
-it is taken at its word rather than searched over again. Leaving `path` out
-asks for the search, and `UNSEARCHED` is that default written down, for a
-caller forwarding a route it may or may not be holding:
+The solution is the one measurement that has to be searched for, and `path` is
+read here exactly as **Solving** above reads it - `UNSEARCHED` is re-exported
+from `py_maze.analysis` for the callers that import it there - so a caller that
+has already searched is believed by this reader too:
 
 ```python
 >>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()

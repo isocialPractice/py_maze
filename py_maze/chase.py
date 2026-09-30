@@ -16,7 +16,7 @@ moving at all.
 
 import math
 
-from .solving import maze_progress, solve_maze
+from .solving import UNSEARCHED, maze_progress, solve_maze
 
 __all__ = [
     'CHASE_SPEEDS',
@@ -276,7 +276,7 @@ class Chaser:
 
         return self.started and self.cell() == tuple(cell)
 
-    def chasing(self, now, grid, cell, path=None):
+    def chasing(self, now, grid, cell, path=UNSEARCHED):
         """Report whether a player that far in has the chase on them.
 
         This is the whole of the trigger: measure where the player is
@@ -288,8 +288,11 @@ class Chaser:
             now: The reading of the game's clock
             grid: 2D list of booleans (True = wall, False = path)
             cell: The player's (x, y)
-            path: The solution to measure against, solved from the grid
-                when it is not given
+            path: The solution to measure against, passed on to
+                :func:`py_maze.maze_progress` as it stands. A game
+                forwards the route it solved once, or None where that
+                search found no way through and there is no share of a
+                solution to reach. Left out, the maze is solved here
 
         Returns:
             bool: True once the chase has begun, whether this call began

@@ -4109,6 +4109,51 @@ class TestMazeProgress(unittest.TestCase):
         self.assertEqual(share, 0.5)
         self.assertEqual(solve.call_count, 0)
 
+    def test_a_search_that_found_no_route_is_not_run_again(self):
+        # None is what a search came back with, not the absence of a
+        # search: a caller holding it has already paid, so taking it at
+        # its word is what keeps the second search from happening. This
+        # is the reading maze_stats takes of the same argument
+        blocked = grid_from_strings([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+
+        with mock.patch.object(py_maze.solving, 'solve_maze') as solve:
+            solve.return_value = None
+            share = py_maze.maze_progress(blocked, (1, 1), None)
+
+        self.assertEqual(solve.call_count, 0)
+        self.assertIsNone(share)
+
+    def test_a_caller_holding_no_route_at_all_asks_for_the_search(self):
+        # UNSEARCHED is the default written down, which is what a caller
+        # forwarding a route it may or may not be holding passes in place
+        # of None
+        for path in ((), (py_maze.UNSEARCHED,)):
+            with self.subTest(path=path or 'left out'):
+                with mock.patch.object(py_maze.solving,
+                                       'solve_maze') as solve:
+                    solve.return_value = self.path
+                    share = py_maze.maze_progress(self.grid, self.path[3],
+                                                  *path)
+
+                self.assertEqual(solve.call_count, 1)
+                self.assertEqual(share, 0.5)
+
+    def test_a_chaser_left_to_measure_the_maze_itself_still_starts(self):
+        # Chaser.chasing forwards its own path straight through, so its
+        # default has to say "not searched" as well. A default of None
+        # would be believed and no chase would ever begin from a caller
+        # that left the route out
+        chaser = py_maze.Chaser(py_maze.find_entrance(self.grid),
+                               point=py_maze.MIN_CHASE_POINT)
+
+        self.assertTrue(chaser.chasing(0.0, self.grid, self.path[-1]))
+
 
 class TestDeadEnds(unittest.TestCase):
     # the reader braid_maze opens a share of, now reachable on its own
@@ -5651,6 +5696,34 @@ class TestChaseMode(unittest.TestCase):
 
     def test_the_solution_is_solved_once_rather_than_a_step_at_a_time(self):
         self.assertEqual(self.game.solution, self.path)
+
+    def test_a_chase_over_an_unsolvable_maze_pays_for_one_search(self):
+        # the game searched when it was built and came back with None,
+        # which is an answer rather than the absence of one. Every tick
+        # after that forwards the answer and is believed, so ten ticks
+        # buy no second search: the chase can never begin, and finding
+        # that out again on every tick is what the reading of None costs
+        blocked = grid_from_strings([
+            "* ***",
+            "*   *",
+            "*****",
+            "*   *",
+            "*** *",
+        ])
+
+        with mock.patch.object(py_maze.game, 'solve_maze') as built,                 mock.patch.object(py_maze.solving, 'solve_maze') as ticked:
+            built.return_value = None
+            ticked.return_value = None
+            game = py_maze.MazeGame(
+                blocked, clock=FakeClock(),
+                chaser=py_maze.Chaser(py_maze.find_entrance(blocked)))
+            game.start_clock()
+            for _ in range(10):
+                self.assertEqual(game.advance_chase(), 0)
+
+        self.assertIsNone(game.solution)
+        self.assertEqual(built.call_count, 1)
+        self.assertEqual(ticked.call_count, 0)
 
     def test_the_chaser_is_not_drawn_before_the_chase_begins(self):
         self.assertNotIn(py_maze.CHASER_MARKER, ''.join(self.game.frame()))

@@ -41,8 +41,7 @@ script with ``py_maze``.
 
 from .algorithms import (ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM,
                          carve_backtracker, carve_division, carve_prim, carver)
-from .analysis import (UNSEARCHED, dead_ends, junctions,
-                       longest_corridor, maze_stats)
+from .analysis import dead_ends, junctions, longest_corridor, maze_stats
 from .chase import (CHASE_SPEEDS, DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED,
                     MAX_CHASE_CATCH_UP, MAX_CHASE_POINT, MAX_CHASE_SPEED,
                     MIN_CHASE_POINT, MIN_CHASE_SPEED, Chaser, chase_setting)
@@ -87,7 +86,8 @@ from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
                     parse_save, picture_chars, read_save, save_json,
                     save_lines, write_save)
-from .solving import maze_progress, search_frames, solution_runs, solve_maze
+from .solving import (UNSEARCHED, maze_progress, search_frames,
+                      solution_runs, solve_maze)
 from .version import __version__
 
 __all__ = [
@@ -118,12 +118,12 @@ __all__ = [
     'maze_seed',
     'place_collectibles',
     # solving
+    'UNSEARCHED',
     'maze_progress',
     'search_frames',
     'solution_runs',
     'solve_maze',
     # analysis
-    'UNSEARCHED',
     'dead_ends',
     'junctions',
     'longest_corridor',

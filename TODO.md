@@ -28,75 +28,6 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Code Review Override - The New Reading of None
-
-- [ ] Name the `cells` tally in the help line that explains it
-  - **Issue**: the `--stats` help line now explains the count without ever
-    using the word the run prints beside it. `python -m py_maze --help` reads
-    "how many positions the drawn maze has and how many of them are open,
-    counted over the picture rather than over the cells of --difficulty", and
-    the run prints `cells 169   open 73`. The only occurrence of "cells" in
-    that help line is the thing the tally is not, so a reader who sees
-    `cells 169` and goes to `--help` for what it counts is pointed at
-    `--difficulty` instead. `docs/options.md` names both keys outright -
-    "counts `cells` and `open` over that drawn picture" - so the two places
-    the completed item set out to fix no longer say it the same way
-  - **Goal**: Reword the `--stats` help line so it names `cells` and `open`
-    as the keys it is describing, the way `docs/options.md` does, keeping
-    what the run added about the count being taken over the drawn picture
-    rather than over the cells of `--difficulty`
-
-#### Resolve Issues
-
-- [ ] Sentinel Semver 1
-  - **Issue**: 2.9.0 ships a backwards-incompatible change to a public
-    function as a minor version. `CHANGELOG.md` says the project "adheres to
-    Semantic Versioning" and 2.9.0's own `### Changed` entry says "This is
-    the one incompatibility in this release": `maze_stats(grid, None)`
-    returned the measured route in 2.8.0 and returns `solution: None` in
-    2.9.0. `maze_stats` is in `py_maze.__all__` and tabled on
-    `docs/library.md`, so it is public API, and forwarding a route that may
-    be `None` is the pattern `py_maze/cli.py` itself used until this run. A
-    consumer pinned to the compatible range `py_maze>=2.8,<3` takes 2.9.0
-    automatically and reads `solution` as `None` for a maze with a 34-step
-    route, with nothing raised. Under Semantic Versioning clause 8 that is a
-    major release
-  - **Goal**: Decide between the two, and make every place that records a
-    version say the same thing: release the break as 3.0.0, updating
-    `py_maze/version.py` and the `## [2.9.0]` heading in `CHANGELOG.md`; or
-    take the break back out by leaving `None` as the value that asks for the
-    search and having the run that searched say so in a second argument,
-    which is the `solved` flag the original finding offered beside the
-    sentinel. A reviewer may not bump a version, so this is queued rather
-    than fixed
-  - From: Code Review Override - The Measurements Nothing Published Mentions
-
-#### Found Issues
-
-- [ ] Give `maze_progress` the reading of `path` that `maze_stats` took
-  - **Issue**: `None` now means two opposite things in the one package.
-    `maze_stats(grid, path)` reads it as "searched, no way through" and takes
-    it at its word; `maze_progress(grid, cell, path)` at
-    `py_maze/solving.py:172` still reads it as "not searched" and solves the
-    maze again. `docs/library.md` teaches both within fifteen lines - the
-    `maze_progress` paragraph above the table says "Pass `path` ... and it is
-    not solved again for each", and the `maze_stats` paragraph below it says
-    a search that came back with no way through "is taken at its word rather
-    than searched over again". The cost is live rather than theoretical:
-    `py_maze/game.py:200` sets `self.solution` to `solve_maze(self.maze)`,
-    which is `None` for a maze with no way through, and `advance_chase`
-    forwards it to `maze_progress` on every tick. Measured on a chase-mode
-    game built over a three-row unsolvable grid, ten ticks ran ten
-    breadth-first searches, each one answering `None` again
-  - **Goal**: Give `maze_progress` the `UNSEARCHED` default `maze_stats` has,
-    so a caller holding no route says so once and is believed, and settle it
-    against **Sentinel Semver 1** above - the same break in the same release,
-    so both belong to whichever version number that item lands on. Say it
-    once on `docs/library.md` rather than twice differently, and add a test
-    counting the searches a chase over an unsolvable maze pays for, beside
-    `test_a_search_that_found_no_route_is_not_run_again`
-  - From: Code Review Override - The New Reading of None
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1785,5 +1716,66 @@ No items are currently queued in this section.
     search only ever falls on a run about to exit
     `EXIT_NO_WAY_THROUGH`, so the comments are the heavier half
   - From: Code Review Override - The Measurements Nothing Published Mentions
+- [x] Name the `cells` tally in the help line that explains it
+  - **Issue**: the `--stats` help line now explains the count without ever
+    using the word the run prints beside it. `python -m py_maze --help` reads
+    "how many positions the drawn maze has and how many of them are open,
+    counted over the picture rather than over the cells of --difficulty", and
+    the run prints `cells 169   open 73`. The only occurrence of "cells" in
+    that help line is the thing the tally is not, so a reader who sees
+    `cells 169` and goes to `--help` for what it counts is pointed at
+    `--difficulty` instead. `docs/options.md` names both keys outright -
+    "counts `cells` and `open` over that drawn picture" - so the two places
+    the completed item set out to fix no longer say it the same way
+  - **Goal**: Reword the `--stats` help line so it names `cells` and `open`
+    as the keys it is describing, the way `docs/options.md` does, keeping
+    what the run added about the count being taken over the drawn picture
+    rather than over the cells of `--difficulty`
+  - From: Code Review Override - The New Reading of None
+- [x] Sentinel Semver 1
+  - **Issue**: 2.9.0 ships a backwards-incompatible change to a public
+    function as a minor version. `CHANGELOG.md` says the project "adheres to
+    Semantic Versioning" and 2.9.0's own `### Changed` entry says "This is
+    the one incompatibility in this release": `maze_stats(grid, None)`
+    returned the measured route in 2.8.0 and returns `solution: None` in
+    2.9.0. `maze_stats` is in `py_maze.__all__` and tabled on
+    `docs/library.md`, so it is public API, and forwarding a route that may
+    be `None` is the pattern `py_maze/cli.py` itself used until this run. A
+    consumer pinned to the compatible range `py_maze>=2.8,<3` takes 2.9.0
+    automatically and reads `solution` as `None` for a maze with a 34-step
+    route, with nothing raised. Under Semantic Versioning clause 8 that is a
+    major release
+  - **Goal**: Decide between the two, and make every place that records a
+    version say the same thing: release the break as 3.0.0, updating
+    `py_maze/version.py` and the `## [2.9.0]` heading in `CHANGELOG.md`; or
+    take the break back out by leaving `None` as the value that asks for the
+    search and having the run that searched say so in a second argument,
+    which is the `solved` flag the original finding offered beside the
+    sentinel. A reviewer may not bump a version, so this is queued rather
+    than fixed
+  - From: Code Review Override - The Measurements Nothing Published Mentions
+- [x] Give `maze_progress` the reading of `path` that `maze_stats` took
+  - **Issue**: `None` now means two opposite things in the one package.
+    `maze_stats(grid, path)` reads it as "searched, no way through" and takes
+    it at its word; `maze_progress(grid, cell, path)` at
+    `py_maze/solving.py:172` still reads it as "not searched" and solves the
+    maze again. `docs/library.md` teaches both within fifteen lines - the
+    `maze_progress` paragraph above the table says "Pass `path` ... and it is
+    not solved again for each", and the `maze_stats` paragraph below it says
+    a search that came back with no way through "is taken at its word rather
+    than searched over again". The cost is live rather than theoretical:
+    `py_maze/game.py:200` sets `self.solution` to `solve_maze(self.maze)`,
+    which is `None` for a maze with no way through, and `advance_chase`
+    forwards it to `maze_progress` on every tick. Measured on a chase-mode
+    game built over a three-row unsolvable grid, ten ticks ran ten
+    breadth-first searches, each one answering `None` again
+  - **Goal**: Give `maze_progress` the `UNSEARCHED` default `maze_stats` has,
+    so a caller holding no route says so once and is believed, and settle it
+    against **Sentinel Semver 1** above - the same break in the same release,
+    so both belong to whichever version number that item lands on. Say it
+    once on `docs/library.md` rather than twice differently, and add a test
+    counting the searches a chase over an unsolvable maze pays for, beside
+    `test_a_search_that_found_no_route_is_not_run_again`
+  - From: Code Review Override - The New Reading of None
 
 </details>
