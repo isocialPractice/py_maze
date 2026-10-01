@@ -242,9 +242,11 @@ the whole route takes. A cell that is not on the solution has no share of it
 and `maze_progress` answers `None`, which is also what it answers for a maze
 with no way through.
 
-**How a `path` is read.** Every call that takes one - `maze_progress` here and
-`maze_stats` under **Measuring a maze** below - reads it the same three ways,
-so a caller says what it is holding once and is believed by both:
+**How a `path` is read.** The calls that search for one when they are not
+handed one - `maze_progress` here, `maze_stats` under **Measuring a maze**
+below and `Chaser.chasing` under **Playing, and the Modes** - read it the
+same three ways, so a caller says what it is holding once and is believed
+by all of them:
 
 - A route: the caller searched and found the way through, and it is measured
   as it stands. Pass it when measuring cell after cell against the one maze
@@ -257,7 +259,10 @@ so a caller says what it is holding once and is believed by both:
 
 That third reading is why the default is not `None`: a run forwarding a route
 it may or may not be holding passes `UNSEARCHED` and pays for one search,
-while a run that already knows there is no way through pays for none.
+while a run that already knows there is no way through pays for none. The
+calls that only measure or draw a route handed to them - `solution_runs`,
+`solution_overlay` and `MazeGenerator.to_string` - never search, so they read
+`None` as nothing to work on and the sentinel is not theirs to take.
 
 ```python
 >>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()

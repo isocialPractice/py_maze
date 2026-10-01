@@ -5,6 +5,23 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `docs/library.md` and `py_maze/solving.py`' module docstring name
+  `Chaser.chasing` among the calls that read a `path`. 3.0.0 moved its
+  default to `UNSEARCHED` because it reads one exactly as `maze_progress`
+  and `maze_stats` do, then stated that reading for those two alone -
+  "Every call that takes one ... believed by both" - so the page that
+  tables `Chaser.chasing(now, grid, cell, path)` said nothing about the
+  `None` it now takes at its word, and a caller handing one over waits on
+  a chase that never begins. Read the other way the same sentence
+  over-claimed: `solution_runs`, `solution_overlay` and
+  `MazeGenerator.to_string` take a `path`, never search, and raise
+  `TypeError` on `py_maze.UNSEARCHED`. Both places now name the three
+  calls that search and say the sentinel is not the others' to take.
+
 ## [3.0.0] - 2026-09-30
 
 The version number the last release needed. 2.9.0 taught `maze_stats` to

@@ -10,9 +10,12 @@ A route already found is handed back rather than searched for over again,
 and :data:`UNSEARCHED` is what keeps the two callers who hold no route
 apart: None is the answer a search brings back from a maze with no way
 through, and UNSEARCHED is a caller that has not looked. Every call that
-takes a ``path`` reads the pair that way, here and in
-:mod:`py_maze.analysis`, so a caller says which it is holding once and is
-believed by both.
+searches for a ``path`` it was not handed reads the pair that way -
+:func:`maze_progress` here, :func:`py_maze.analysis.maze_stats` and
+:meth:`py_maze.Chaser.chasing` - so a caller says which it is holding
+once and is believed by all three. :func:`solution_runs` and the drawing
+calls only measure the route they are handed, so they never search and
+the sentinel is not theirs to take.
 """
 
 from .grid import find_entrance, find_exit, open_neighbors
