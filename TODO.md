@@ -28,6 +28,67 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
+### Code Review Override - The Third Reader and What Pins It
+
+- [ ] Re-wrap the test line that lost its continuation
+  - **Issue**: `test_py_maze.py:5714` is one 144-character line:
+    `with mock.patch.object(py_maze.game, 'solve_maze') as built,` then
+    seventeen spaces then
+    `mock.patch.object(py_maze.solving, 'solve_maze') as ticked:`. The
+    backslash and the newline that belonged between the two contexts
+    arrived as whitespace instead. Every other line in the file is 85
+    characters or under, and the same two-context `with` at
+    `test_py_maze.py:676` is written with a trailing backslash and the
+    second context on its own line. The test passes either way, so nothing
+    reports this: the line simply does not look like the file it is in
+  - **Goal**: Split the line at the comma the way `test_py_maze.py:676`
+    splits its own, a trailing backslash on the first context and the
+    second `mock.patch.object` under it, leaving the test's behaviour and
+    its comment untouched
+  - From: Code Review Override - The Third Reader and What Pins It
+- [ ] Close the blank line that opened under the 2.9.0 blockquote
+  - **Issue**: `CHANGELOG.md:106-107` carries two blank lines between the
+    blockquote 3.0.0 added over `## [2.9.0]` and the paragraph under it. It
+    is the only pair of consecutive blank lines in `CHANGELOG.md`,
+    `README.md`, `TODO.md`, `CONTRIBUTING.md` or any page under `docs/`,
+    and it is what markdownlint MD012 names
+  - **Goal**: Drop one of the two, leaving the single blank line every
+    other block in the file is separated by
+  - From: Code Review Override - The Third Reader and What Pins It
+- [ ] Pin the `--stats` help line to the keys it undertakes to name
+  - **Issue**: this is the second time that help line drifted from
+    `docs/options.md` and the second time a reader caught it rather than a
+    test. 2.9.0 reworded it and stopped naming the tallies, the review
+    after it found that by reading, and 3.0.0 put `cells` and `open` back.
+    Nothing asserts either place names them: a run prints
+    `cells 169   open 73`, and a third rewording that drops `cells` from
+    `python -m py_maze --help` leaves all 857 tests passing.
+    `test_the_help_text_says_which_options_belong_to_which_mode` at
+    `test_py_maze.py:3124` already reads `--help` and asserts what is in
+    it, so the pattern to follow is in the file
+  - **Goal**: Assert that the `--stats` help line names `cells` and `open`,
+    the two keys it sets out to explain, and that the `--stats` row on
+    `docs/options.md` names them as well, so the two places a reader of the
+    flag looks stay in step without a third reader comparing them by hand
+  - From: Code Review Override - The Third Reader and What Pins It
+- [ ] Pin the re-export the major version promises
+  - **Issue**: the `## [3.0.0]` entry promises that `py_maze.UNSEARCHED`,
+    `py_maze.solving.UNSEARCHED` and `from py_maze.analysis import
+    UNSEARCHED` are all the one object, which is the whole of what keeps
+    code written against 2.9.0's import path working. No test says so. The
+    `__all__` comparison at `test_py_maze.py:7749` passes on sets of names,
+    so it would go on passing if `py_maze/analysis.py` built its own
+    `_Unsearched()` again: the two sentinels would then compare unequal
+    under `is`, and `maze_stats(grid, py_maze.analysis.UNSEARCHED)` would
+    take the other module's object for a real route and raise
+    `TypeError: object of type '_Unsearched' has no len()` out of
+    `solution_runs`. The only tests that name the sentinel,
+    `test_py_maze.py:4136` and `test_py_maze.py:4479`, reach it as
+    `py_maze.UNSEARCHED` and never touch the other two paths
+  - **Goal**: Assert the three import paths are one object, beside the test
+    that compares the modules' `__all__` against the package's
+  - From: Code Review Override - The Third Reader and What Pins It
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
