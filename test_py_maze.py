@@ -57,6 +57,7 @@ DOCS_DIR = os.path.join(PROJECT_ROOT, 'docs')
 DEVELOPMENT_PATH = os.path.join(DOCS_DIR, 'development.md')
 GENERATING_PATH = os.path.join(DOCS_DIR, 'generating.md')
 LIBRARY_PATH = os.path.join(DOCS_DIR, 'library.md')
+OPTIONS_PATH = os.path.join(DOCS_DIR, 'options.md')
 SAVE_FORMAT_PATH = os.path.join(DOCS_DIR, 'save-format.md')
 SCRIPTING_PATH = os.path.join(DOCS_DIR, 'scripting.md')
 
@@ -5711,7 +5712,8 @@ class TestChaseMode(unittest.TestCase):
             "*** *",
         ])
 
-        with mock.patch.object(py_maze.game, 'solve_maze') as built,                 mock.patch.object(py_maze.solving, 'solve_maze') as ticked:
+        with mock.patch.object(py_maze.game, 'solve_maze') as built, \
+                mock.patch.object(py_maze.solving, 'solve_maze') as ticked:
             built.return_value = None
             ticked.return_value = None
             game = py_maze.MazeGame(
@@ -6917,6 +6919,11 @@ class TestStatsOption(MainRunner, unittest.TestCase):
     # --stats reports what the maze measures under the maze itself, in the
     # style of the status line, and changes nothing about the picture
 
+    # the two tallies counted over the drawn picture rather than over the
+    # cells --difficulty asks for, which are the two the help line and the
+    # options page both undertake to name
+    PICTURE_KEYS = ('cells', 'open')
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -7024,6 +7031,60 @@ class TestStatsOption(MainRunner, unittest.TestCase):
         self.assertEqual(code, py_maze.EXIT_NO_WAY_THROUGH)
         self.assertEqual(solve.call_count, 0)
         self.assertIn('solution none', self.measured(output)[-1])
+
+    def help_block(self):
+        # what --help says about --stats, as one line rather than as
+        # argparse wrapped it across the width of a terminal
+        #
+        # Returns:
+        #     str: The option's help, with its line breaks closed up
+
+        block = re.search(r'^  --stats\s+(.*?)(?=^  -|\Z)',
+                          py_maze.build_parser().format_help(),
+                          re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(block, '--help says nothing about --stats')
+        return ' '.join(block.group(1).split())
+
+    def options_row(self):
+        # the --stats row of the options table the site publishes
+        #
+        # Returns:
+        #     str: The row, as docs/options.md writes it
+
+        for line in read_project_file(OPTIONS_PATH).splitlines():
+            if line.startswith('| `--stats`'):
+                return line
+
+        self.fail('docs/options.md tables no --stats row')
+
+    def test_the_help_line_names_the_keys_it_sets_out_to_explain(self):
+        # a run prints "cells 169   open 73", and this is the line a
+        # reader of those two words goes to. It drifted away from naming
+        # them once already and read perfectly well doing it, because
+        # "the cells --difficulty asks for" is still a "cells": the pair
+        # has to be named together to have been named at all
+        block = self.help_block()
+
+        for key in self.PICTURE_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, block,
+                              '--help does not name %s under --stats' % key)
+
+        self.assertRegex(block, r'\bcells\b[^.]{0,12}?\bopen\b',
+                         'the --stats help line names the two keys apart '
+                         'rather than as the pair it is introducing')
+
+    def test_the_options_page_names_them_in_the_row_it_tables(self):
+        # the other place that reader looks, and the one the help line
+        # drifted away from. A third reader comparing the two by hand is
+        # what caught the drift both times
+        row = self.options_row()
+
+        for key in self.PICTURE_KEYS:
+            with self.subTest(key=key):
+                self.assertIn('`%s`' % key, row,
+                              'the docs/options.md row does not name %s'
+                              % key)
 
 
 class TestFormatOption(MainRunner, unittest.TestCase):
@@ -7751,6 +7812,20 @@ class TestPackageSurface(unittest.TestCase):
             self.assertEqual(missing, set(),
                              "py_maze does not re-export %s from py_maze.%s"
                              % (sorted(missing), name))
+
+    def test_the_unsearched_sentinel_is_one_object_on_every_path(self):
+        # 3.0.0 moved UNSEARCHED into py_maze.solving and promised the
+        # import path it first shipped under still reaches the same
+        # object. The comparison above passes on names, so an analysis
+        # module that built its own _Unsearched() again would satisfy it
+        # while the two sentinels compared unequal under "is": the module
+        # that did not make the one it was handed would read it as a real
+        # route and raise TypeError out of solution_runs
+        from py_maze.analysis import UNSEARCHED
+
+        self.assertIs(UNSEARCHED, py_maze.UNSEARCHED)
+        self.assertIs(py_maze.solving.UNSEARCHED, py_maze.UNSEARCHED)
+        self.assertIs(py_maze.analysis.UNSEARCHED, py_maze.UNSEARCHED)
 
     def test_every_exported_name_is_reachable(self):
         for name in py_maze.__all__:

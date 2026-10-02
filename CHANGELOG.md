@@ -5,10 +5,61 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.0.1] - 2026-10-02
+
+A review of what 3.0.0 left behind in the places nothing but a person
+reads. Two of the four were lines that had lost their shape; the other two
+were promises the release made in prose with nothing behind them, both of
+them about what a reader is told. Every change here is in the suite, the
+changelog or the tests' own formatting: nothing a player does behaves
+differently and nothing is added to the public surface.
+
+### Added
+
+- `test_the_help_line_names_the_keys_it_sets_out_to_explain` and
+  `test_the_options_page_names_them_in_the_row_it_tables` in
+  `TestStatsOption`, holding the two places a reader of `--stats` looks
+  against the two keys they both undertake to name. This is the second
+  time the help line drifted from `docs/options.md` and the second time a
+  reader rather than a test caught it: 2.9.0 reworded the line and stopped
+  naming the tallies, the review after it found that by reading, and 3.0.0
+  put `cells` and `open` back. A run prints `cells 169   open 73`, and a
+  third rewording that dropped either word from `python -m py_maze --help`
+  left the whole suite passing. The help test asserts the pair is named
+  together rather than only present, because "the cells `--difficulty`
+  asks for" is still a "cells" and is exactly what 2.9.0's wording was
+  left holding.
+- `test_the_unsearched_sentinel_is_one_object_on_every_path` in
+  `TestPackageSurface`, asserting `py_maze.UNSEARCHED`,
+  `py_maze.solving.UNSEARCHED` and `from py_maze.analysis import
+  UNSEARCHED` are the one object. That identity is the whole of what keeps
+  code written against 2.9.0's import path working, and the major version
+  promised it in prose alone. The `__all__` comparison beside it passes on
+  sets of names, so an `analysis` module that built its own
+  `_Unsearched()` again would satisfy it while the two sentinels compared
+  unequal under `is`: `maze_stats(grid, py_maze.analysis.UNSEARCHED)`
+  would take the other module's object for a real route and raise
+  `TypeError: object of type '_Unsearched' has no len()` out of
+  `solution_runs`. The two tests that name the sentinel both reach it as
+  `py_maze.UNSEARCHED` and never touched the other two paths.
 
 ### Fixed
 
+- The two-context `with` in
+  `test_a_chase_over_an_unsolvable_maze_pays_for_one_search` is wrapped
+  the way the rest of the file wraps one. It was a single 144-character
+  line: the backslash and the newline that belonged between
+  `mock.patch.object(py_maze.game, 'solve_maze')` and
+  `mock.patch.object(py_maze.solving, 'solve_maze')` had arrived as
+  seventeen spaces. Every other line in the file is 85 characters or
+  under, and the same two-context `with` in `read_key` is written with a
+  trailing backslash and the second context on its own line. The test
+  passed either way, so nothing reported it.
+- `CHANGELOG.md` no longer carries two blank lines between the blockquote
+  3.0.0 added over `## [2.9.0]` and the paragraph under it. It was the
+  only pair of consecutive blank lines in this file, `README.md`,
+  `TODO.md`, `CONTRIBUTING.md` or any page under `docs/`, and it is what
+  markdownlint MD012 names.
 - `docs/library.md` and `py_maze/solving.py`' module docstring name
   `Chaser.chasing` among the calls that read a `path`. 3.0.0 moved its
   default to `UNSEARCHED` because it reads one exactly as `maze_progress`
@@ -103,7 +154,6 @@ package said two opposite things with the one argument.
 > under a minor version. 3.0.0 is the version it belongs to, and declares
 > it; this entry keeps its number because the tag and the release for it
 > are published.
-
 
 A review of what 2.8.0 shipped, and of what it said about it. The
 measurements themselves were right: every tally `--stats` printed was the
