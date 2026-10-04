@@ -5,7 +5,93 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-10-04
+
+A review of what 3.0.1 said about itself, and of what it repaired without
+leaving anything watching. Two of its entries send a reader to the wrong
+place in the repository; both are corrected in a blockquote over the entry
+rather than rewritten, since the tag and the release for it are published.
+The other two changes are the shapes it fixed by hand, which have tests
+now. Nothing a player does behaves differently and nothing is added to the
+public surface.
+
+### Added
+
+- `TestRepositoryTextShape`, holding the two shapes 3.0.1 found by reading.
+  `test_no_line_of_the_suite_runs_past_the_width_it_keeps_to` reads
+  `test_py_maze.py` against the 85 characters it is written to, which is
+  what the collapsed continuation broke: the backslash and the newline had
+  arrived as seventeen spaces, and the 144-character line they left was
+  valid Python that passed the whole suite.
+  `test_no_document_carries_two_blank_lines_in_a_row` reads `CHANGELOG.md`,
+  `README.md`, `TODO.md`, `CONTRIBUTING.md` and every page under `docs/`
+  for the pair markdownlint MD012 names. No markdownlint runs here -
+  `.github/workflows/tests.yml` is `python -m unittest discover -v` and is
+  the only check either workflow makes - so the suite is where that pair
+  can be caught. Both tests name the file and the line they fail on, and
+  both were run against the shape they guard: a 142-character comment, and
+  a doubled blank line in `CHANGELOG.md` and again in `docs/options.md`,
+  each failed the test written for it.
+- The paragraph on the suite's own width in `CONTRIBUTING.md`, and the
+  sentences on the shape of the documents in `CONTRIBUTING.md` and
+  `docs/development.md`, so the two checks are written down beside the rest
+  of what the suite reads of its own files.
+
+### Changed
+
+- The comment over
+  `test_the_unsearched_sentinel_is_one_object_on_every_path` says why the
+  `from py_maze.analysis import UNSEARCHED` under it is there. It is the
+  only function-level import in the suite, and the assert it feeds cannot
+  disagree with the `py_maze.analysis.UNSEARCHED` assert two lines down,
+  both being a `getattr` on the same module at the same moment. The form is
+  what 3.0.1 undertook to keep working and what code written against 2.9.0
+  carries, so it is asserted as a caller writes it rather than dropped as a
+  duplicate path.
+
+### Fixed
+
+- The blockquote over `## [3.0.1]` corrects the two entries that describe
+  the repository wrongly. The `maze_stats` call that would raise is the one
+  handed the package's sentinel, not the one handed the sentinel
+  `py_maze.analysis` holds: that second object is the one `maze_stats`
+  compares against, so it is the argument read as "not searched" rather
+  than as a route, and the direction is the whole point of the entry. The
+  precedent for the re-wrapped `with` is a three-context helper in the
+  suite rather than a two-context `with` in `read_key`: the public
+  `read_key` holds no `with` and no continuation, and no module under
+  `py_maze/` carries one at all.
+
 ## [3.0.1] - 2026-10-02
+
+> Corrected 2026-10-04 in 3.0.2: two of the entries below describe the
+> repository wrongly, and both are about where a reader is sent rather
+> than about what shipped.
+>
+> The `maze_stats` call named under **Added** is the one that would still
+> work. `maze_stats` tests `path is UNSEARCHED` against the sentinel
+> `py_maze.analysis` itself holds, so an `analysis` module that built its
+> own `_Unsearched()` again would match the argument written there and
+> take the solved-here branch. The call that raises the quoted
+> `TypeError` out of `solution_runs` is
+> `maze_stats(grid, py_maze.UNSEARCHED)`, the package path, which is
+> `py_maze.solving`'s object: it is the receiving module that misreads a
+> sentinel it did not make, so the caller named has to be the one holding
+> the other module's object. The exception text and the test are right;
+> only the argument is the wrong one of the two.
+>
+> The precedent cited under **Fixed** is neither where nor what it says.
+> The public `read_key` at `py_maze/keys.py:60` holds no `with` and no
+> line continuation, and no module under `py_maze/` carries one at all.
+> The two-context reading comes from the `TestPosixInput.read_key` helper
+> in `test_py_maze.py`, which wraps three contexts - `termios`, `tty` and
+> `standard_input`. What the re-wrap followed is the suite's convention
+> rather than any one instance of it: thirty-two `with` statements in
+> `test_py_maze.py` open with a trailing backslash and continue eight
+> characters further in.
+>
+> The tag and the release for 3.0.1 are published, so both entries keep
+> the text they shipped with and this says what to read instead.
 
 A review of what 3.0.0 left behind in the places nothing but a person
 reads. Two of the four were lines that had lost their shape; the other two

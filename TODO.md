@@ -28,93 +28,6 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Code Review Override - What 3.0.1 Said About Its Own Two Lines
-
-- [ ] Guard the two shapes 3.0.1 repaired by hand
-  - **Issue**: both `### Fixed` entries in `## [3.0.1]` repaired one
-    instance and left nothing watching for the next. The collapsed
-    continuation was a 144-character line in a file whose next longest is
-    85, and the entry records how it got there: the backslash and the
-    newline "had arrived as seventeen spaces", which is a tooling artefact
-    rather than a typo and will arrive that way again. The doubled blank
-    line is cited against markdownlint MD012, and no markdownlint runs
-    here: `.github/workflows/tests.yml:44` is `python -m unittest
-    discover -v` and is the only check in either workflow. The entry says
-    of the first "The test passed either way, so nothing reported it",
-    which is still true of the file as it stands. The other two items in
-    the same override each got a test; these two got none
-  - **Goal**: Assert the two shapes the way the suite already asserts the
-    documentation it reads - a check that no line of `test_py_maze.py`
-    runs past the 85 characters the file keeps to, and a check that none
-    of `CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md` or the
-    pages under `docs/` carries two blank lines in a row, which is the
-    pair MD012 names and which this review confirmed is absent from all
-    of them today. `TestDevelopmentFileTree` at `test_py_maze.py:8818` is
-    the pattern for a test that reads the repository's own files
-  - From: Code Review Override - What 3.0.1 Said About Its Own Two Lines
-- [ ] Drop the duplicate sentinel assertion and the import under it
-  - **Issue**: `test_py_maze.py:7824-7827` checks the same identity twice.
-    `from py_maze.analysis import UNSEARCHED` is a `getattr` on the
-    module, so `assertIs(UNSEARCHED, py_maze.UNSEARCHED)` at 7826 and
-    `assertIs(py_maze.analysis.UNSEARCHED, py_maze.UNSEARCHED)` at 7827
-    cannot disagree: no state exists in which one passes and the other
-    fails. The import that feeds the first is also the only
-    function-level import in the 9,300 lines of the suite, every other
-    test reaching the package through the module-level `import py_maze`
-  - **Goal**: Keep the three asserts if the `from ... import` form is
-    meant to be exercised as a form, and say so in the comment, since
-    nothing else in the file does it; otherwise drop the local import and
-    the assert it feeds and leave the two module-attribute asserts, which
-    are the two distinct paths
-  - From: Code Review Override - What 3.0.1 Said About Its Own Two Lines
-
-#### Resolve Issues
-
-- [ ] Sentinel Paths 1 - the entry names the one call the mismatch leaves
-  working
-  - **Issue**: `CHANGELOG.md:40-43` says that an `analysis` module which
-    built its own `_Unsearched()` again would make
-    `maze_stats(grid, py_maze.analysis.UNSEARCHED)` "take the other
-    module's object for a real route and raise `TypeError: object of type
-    '_Unsearched' has no len()` out of `solution_runs`". That call is the
-    one that would still work. `maze_stats` is defined in
-    `py_maze/analysis.py:128` and tests `path is UNSEARCHED` at
-    `analysis.py:157` against the sentinel `analysis` itself holds, so
-    handing it `py_maze.analysis.UNSEARCHED` matches and takes the
-    solved-here branch. Reproduced by making that mutation: the named
-    call returned `solution: 130` for an 11x11 maze, and it was
-    `maze_stats(grid, py_maze.UNSEARCHED)` - the package path, which is
-    `solving`'s object - that raised the quoted `TypeError`. The direction
-    is the point of the entry: it is the receiving module that misreads a
-    sentinel it did not make, so the caller named has to be the one
-    holding the other module's object
-  - **Goal**: Name the call that fails. The exception text and
-    `solution_runs` are right and the test at `test_py_maze.py:7816` is
-    right; only the argument in the entry is the wrong one of the two.
-    `## [3.0.1]` is tagged and published, so correct it the way `## [3.0.0]`
-    corrected `## [2.9.0]` - a dated blockquote over the entry saying what
-    the prose got backwards - rather than by rewriting the released text in
-    place
-  - From: Code Review Override - The Third Reader and What Pins It
-- [ ] Collapsed Continuation 1 - the precedent the entry cites is neither
-  where nor what it says
-  - **Issue**: `CHANGELOG.md:55-56` justifies the re-wrap by "the same
-    two-context `with` in `read_key`", and both halves of that are wrong.
-    There is a public `read_key` at `py_maze/keys.py:60`, which is where
-    the name sends a reader, and it contains no `with` statement and no
-    line continuation; no module under `py_maze/` carries a continuation
-    at all. The precedent is `TestPosixInput.read_key` at
-    `test_py_maze.py:669`, a test helper, and it wraps three contexts -
-    `termios`, `tty` and `standard_input` - not two. The archived item
-    this entry came from named `test_py_maze.py:676`, a file and a line,
-    and the entry kept the bare name
-  - **Goal**: Cite the helper by file, or cite the convention instead of
-    one instance, since thirty-two `with` statements in the file open with
-    a trailing backslash at the same `+8` continuation indent the fix
-    used. Correct it under a dated blockquote as above rather than in the
-    released text
-  - From: Code Review Override - The Third Reader and What Pins It
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -1922,6 +1835,94 @@ No items are currently queued in this section.
     `py_maze.UNSEARCHED` and never touch the other two paths
   - **Goal**: Assert the three import paths are one object, beside the test
     that compares the modules' `__all__` against the package's
+  - From: Code Review Override - The Third Reader and What Pins It
+- [x] Guard the two shapes 3.0.1 repaired by hand
+  - **Issue**: both `### Fixed` entries in `## [3.0.1]` repaired one
+    instance and left nothing watching for the next. The collapsed
+    continuation was a 144-character line in a file whose next longest is
+    85, and the entry records how it got there: the backslash and the
+    newline "had arrived as seventeen spaces", which is a tooling artefact
+    rather than a typo and will arrive that way again. The doubled blank
+    line is cited against markdownlint MD012, and no markdownlint runs
+    here: `.github/workflows/tests.yml:44` is `python -m unittest
+    discover -v` and is the only check in either workflow. The entry says
+    of the first "The test passed either way, so nothing reported it",
+    which is still true of the file as it stands. The other two items in
+    the same override each got a test; these two got none
+  - **Goal**: Assert the two shapes the way the suite already asserts the
+    documentation it reads - a check that no line of `test_py_maze.py`
+    runs past the 85 characters the file keeps to, and a check that none
+    of `CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md` or the
+    pages under `docs/` carries two blank lines in a row, which is the
+    pair MD012 names and which this review confirmed is absent from all
+    of them today. `TestDevelopmentFileTree` at `test_py_maze.py:8818` is
+    the pattern for a test that reads the repository's own files
+  - From: Code Review Override - What 3.0.1 Said About Its Own Two Lines
+- [x] Drop the duplicate sentinel assertion and the import under it
+  - **Issue**: `test_py_maze.py:7824-7827` checks the same identity twice.
+    `from py_maze.analysis import UNSEARCHED` is a `getattr` on the
+    module, so `assertIs(UNSEARCHED, py_maze.UNSEARCHED)` at 7826 and
+    `assertIs(py_maze.analysis.UNSEARCHED, py_maze.UNSEARCHED)` at 7827
+    cannot disagree: no state exists in which one passes and the other
+    fails. The import that feeds the first is also the only
+    function-level import in the 9,300 lines of the suite, every other
+    test reaching the package through the module-level `import py_maze`
+  - **Goal**: Keep the three asserts if the `from ... import` form is
+    meant to be exercised as a form, and say so in the comment, since
+    nothing else in the file does it; otherwise drop the local import and
+    the assert it feeds and leave the two module-attribute asserts, which
+    are the two distinct paths
+  - **Outcome**: the three asserts are kept and the comment now says why.
+    The `from py_maze.analysis import UNSEARCHED` form is the line a
+    caller written against 2.9.0 carries, and the form `## [3.0.1]` names
+    as one of the three things the test holds, so it is exercised as a
+    form; the comment records that it is a form rather than a third path,
+    and that the name it binds cannot disagree with the assert two lines
+    below it
+  - From: Code Review Override - What 3.0.1 Said About Its Own Two Lines
+- [x] Sentinel Paths 1 - the entry names the one call the mismatch leaves
+  working
+  - **Issue**: `CHANGELOG.md:40-43` says that an `analysis` module which
+    built its own `_Unsearched()` again would make
+    `maze_stats(grid, py_maze.analysis.UNSEARCHED)` "take the other
+    module's object for a real route and raise `TypeError: object of type
+    '_Unsearched' has no len()` out of `solution_runs`". That call is the
+    one that would still work. `maze_stats` is defined in
+    `py_maze/analysis.py:128` and tests `path is UNSEARCHED` at
+    `analysis.py:157` against the sentinel `analysis` itself holds, so
+    handing it `py_maze.analysis.UNSEARCHED` matches and takes the
+    solved-here branch. Reproduced by making that mutation: the named
+    call returned `solution: 130` for an 11x11 maze, and it was
+    `maze_stats(grid, py_maze.UNSEARCHED)` - the package path, which is
+    `solving`'s object - that raised the quoted `TypeError`. The direction
+    is the point of the entry: it is the receiving module that misreads a
+    sentinel it did not make, so the caller named has to be the one
+    holding the other module's object
+  - **Goal**: Name the call that fails. The exception text and
+    `solution_runs` are right and the test at `test_py_maze.py:7816` is
+    right; only the argument in the entry is the wrong one of the two.
+    `## [3.0.1]` is tagged and published, so correct it the way `## [3.0.0]`
+    corrected `## [2.9.0]` - a dated blockquote over the entry saying what
+    the prose got backwards - rather than by rewriting the released text in
+    place
+  - From: Code Review Override - The Third Reader and What Pins It
+- [x] Collapsed Continuation 1 - the precedent the entry cites is neither
+  where nor what it says
+  - **Issue**: `CHANGELOG.md:55-56` justifies the re-wrap by "the same
+    two-context `with` in `read_key`", and both halves of that are wrong.
+    There is a public `read_key` at `py_maze/keys.py:60`, which is where
+    the name sends a reader, and it contains no `with` statement and no
+    line continuation; no module under `py_maze/` carries a continuation
+    at all. The precedent is `TestPosixInput.read_key` at
+    `test_py_maze.py:669`, a test helper, and it wraps three contexts -
+    `termios`, `tty` and `standard_input` - not two. The archived item
+    this entry came from named `test_py_maze.py:676`, a file and a line,
+    and the entry kept the bare name
+  - **Goal**: Cite the helper by file, or cite the convention instead of
+    one instance, since thirty-two `with` statements in the file open with
+    a trailing backslash at the same `+8` continuation indent the fix
+    used. Correct it under a dated blockquote as above rather than in the
+    released text
   - From: Code Review Override - The Third Reader and What Pins It
 
 </details>

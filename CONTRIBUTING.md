@@ -130,6 +130,12 @@ Beyond that, follow the surrounding code: four-space indentation, lines
 under 80 characters, `%` string formatting as the package already uses, and
 no em dashes in prose or comments.
 
+`TestRepositoryTextShape` holds `test_py_maze.py` itself to 85 characters a
+line. That is a backstop rather than a second rule about width: a line
+continuation that arrives as whitespace leaves valid Python which still
+passes, so the shape of the file is the only thing it changes and the only
+thing left to read it by.
+
 ## Adding a Carving Algorithm
 
 Every way of carving a maze lives in its own module under
@@ -215,7 +221,10 @@ The suite reads the pages as well as the code: the worked example on
 command line the carving, braiding and scripting pages show is run, the name
 tables are checked against every `__all__` they cover, and the project tree
 on `docs/development.md` is resolved against the repository. Documentation
-that drifts from the package fails the suite rather than a reader.
+that drifts from the package fails the suite rather than a reader. It reads
+them for their shape as well: this file, `CHANGELOG.md`, `README.md`,
+`TODO.md` and every page carry no two blank lines in a row, which is the
+pair markdownlint MD012 names and which renders as one.
 
 ### What the suite cannot tell you about the site
 

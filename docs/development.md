@@ -148,3 +148,10 @@ for character, every command line the carving, braiding and scripting pages
 show is run, the name tables are checked against `__all__`, and the project
 tree above is resolved against the repository. Documentation that drifts from
 the package fails the suite rather than a reader's terminal.
+
+The shape of those files is read too. No two blank lines in a row stand in
+`CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md` or any page here -
+the pair markdownlint MD012 names, which renders as one - and no line of
+`test_py_maze.py` runs past the 85 characters it is written to. Both are
+things only a reader had been catching: a collapsed line continuation
+arrives as whitespace and leaves Python that still passes.

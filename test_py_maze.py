@@ -46,6 +46,7 @@ CONTRIBUTING_PATH = os.path.join(PROJECT_ROOT, 'CONTRIBUTING.md')
 LICENSE_PATH = os.path.join(PROJECT_ROOT, 'LICENSE')
 MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'pyproject.toml')
 README_PATH = os.path.join(PROJECT_ROOT, 'README.md')
+SUITE_PATH = os.path.join(PROJECT_ROOT, 'test_py_maze.py')
 WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                              'tests.yml')
 PAGES_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
@@ -74,6 +75,13 @@ SITE_NAV_PATH = os.path.join(DOCS_DIR, '_data', 'nav.yml')
 # page of its own
 README_MAX_LINES = 300
 README_MAX_CHARACTERS = 30000
+
+# the width this file is written to. 3.0.1 re-wrapped a line whose
+# backslash and newline had arrived as seventeen spaces, leaving a
+# 144-character line that was still valid Python and still passed: the
+# shape was the only thing about it that had changed, so the shape is
+# what is read here
+SUITE_MAX_LINE_LENGTH = 85
 
 
 def relative_luminance(color):
@@ -7821,6 +7829,13 @@ class TestPackageSurface(unittest.TestCase):
         # while the two sentinels compared unequal under "is": the module
         # that did not make the one it was handed would read it as a real
         # route and raise TypeError out of solution_runs
+        #
+        # the local import is the only one in this file, and it is a form
+        # rather than a third path: "from py_maze.analysis import
+        # UNSEARCHED" is the line code written against 2.9.0 carries, and
+        # the form 3.0.1 undertook to keep working, so it is asserted as
+        # it was written. The name it binds is the attribute the third
+        # assert reads, and the two cannot disagree
         from py_maze.analysis import UNSEARCHED
 
         self.assertIs(UNSEARCHED, py_maze.UNSEARCHED)
@@ -9546,6 +9561,68 @@ class TestDesignLanguage(unittest.TestCase):
                 self.assertIn(color, tabled,
                               '%s is in the stylesheet but was never '
                               'measured' % color)
+
+
+class TestRepositoryTextShape(unittest.TestCase):
+    # two shapes 3.0.1 repaired by hand, neither of which anything was
+    # watching for. A line continuation that arrives as whitespace leaves
+    # a line that is still valid Python, and a doubled blank line renders
+    # as one, so the only thing either of them changes is how the file
+    # reads - and a person was the only reader of that
+
+    # the files read as prose here, named rather than taken from the path
+    # constants above: a failure names the file it found, and the pages
+    # the next method adds have no constant of their own
+    DOCUMENTS = ('CHANGELOG.md', 'README.md', 'TODO.md', 'CONTRIBUTING.md')
+
+    def documents(self):
+        # every file whose blank lines are read
+        #
+        # Returns:
+        #     list: Their names relative to the repository root, written
+        #     with forward slashes whatever the platform
+
+        return list(self.DOCUMENTS) + sorted(
+            'docs/%s' % name for name in os.listdir(DOCS_DIR)
+            if name.endswith('.md'))
+
+    def document(self, name):
+        # one of those files, read as lines
+        #
+        # Args:
+        #     name: Its name, as documents() writes one
+        #
+        # Returns:
+        #     list: The lines, without their endings
+
+        return read_project_file(
+            os.path.join(PROJECT_ROOT, *name.split('/'))).splitlines()
+
+    def test_no_line_of_the_suite_runs_past_the_width_it_keeps_to(self):
+        past = ['test_py_maze.py:%d runs to %d characters'
+                % (number, len(line))
+                for number, line in enumerate(
+                    read_project_file(SUITE_PATH).splitlines(), start=1)
+                if len(line) > SUITE_MAX_LINE_LENGTH]
+
+        self.assertEqual(past, [],
+                         'this file is written %d characters to a line'
+                         % SUITE_MAX_LINE_LENGTH)
+
+    def test_no_document_carries_two_blank_lines_in_a_row(self):
+        # the pair markdownlint MD012 names, reading a line of nothing
+        # but whitespace as blank the way it does
+        doubled = []
+        for name in self.documents():
+            lines = self.document(name)
+            doubled += ['%s:%d' % (name, number)
+                        for number, (above, line)
+                        in enumerate(zip(lines, lines[1:]), start=2)
+                        if not above.strip() and not line.strip()]
+
+        self.assertEqual(doubled, [],
+                         'each of these is the second blank line of a '
+                         'pair, which is the shape MD012 names')
 
 
 if __name__ == '__main__':
