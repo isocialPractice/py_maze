@@ -28,6 +28,79 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
+### Code Review Override - What the Two Shape Checks Do Not Read
+
+- [ ] Read the shape of the two root documents the checks leave out
+  - **Issue**: `TestRepositoryTextShape.DOCUMENTS` at `test_py_maze.py:9576`
+    names `CHANGELOG.md`, `README.md`, `TODO.md` and `CONTRIBUTING.md`, and
+    `documents()` at 9578 adds every page under `docs/`. The repository root
+    carries six Markdown documents; the two left out are `DESIGN_LANGUAGE.md`
+    and `KNOWN_BUGS.md`, both tracked. Neither is a file nothing else reads:
+    `DESIGN_LANGUAGE_PATH` is a path constant at `test_py_maze.py:66` and
+    `TestDesignLanguage` recomputes the palette out of it, and
+    `CONTRIBUTING.md:214` names editing `DESIGN_LANGUAGE.md` as one half of
+    changing how the site looks, so the runs that edit the pages edit it as
+    well. `KNOWN_BUGS.md` is the file a code review appends to, which makes
+    it the one document written by the call that would otherwise be reading
+    it for this shape. Both are clean today, so nothing fails now; what
+    makes it worth queueing is that `CONTRIBUTING.md:225-226` and
+    `docs/development.md:152-153` now write the four-document list down as
+    what the suite reads, so the omission reads as settled rather than as
+    unfinished
+  - **Goal**: Add both names to `DOCUMENTS` and correct the two prose lists
+    that enumerate it. While there, `documents()` re-implements
+    `TestDocumentationSite.published_pages()` at `test_py_maze.py:8923`
+    exactly - `os.listdir(DOCS_DIR)` filtered on `.endswith('.md')` - so the
+    page enumeration now has two definitions; lift it to a module-level
+    helper beside `read_project_file` if the second reader stays
+  - From: Code Review Override - What the Two Shape Checks Do Not Read
+- [ ] Read the width of the package, or say why only the suite is read
+  - **Issue**: `test_no_line_of_the_suite_runs_past_the_width_it_keeps_to`
+    at `test_py_maze.py:9601` reads `SUITE_PATH` and nothing else. The
+    defect it guards is not a property of that one file: a line continuation
+    that arrives as whitespace leaves a long line of valid Python wherever
+    it is written, and the eighteen modules under `py_maze/` are edited by
+    the same runs - `## [3.0.0]` touched six of them - with nothing reading
+    their width. No module under `py_maze/` carries a continuation today, so
+    there is nothing there to collapse yet, which is why this is coverage
+    rather than a defect. It is worth settling now because the two numbers
+    already disagree: `CONTRIBUTING.md:129-130` asks for "lines under 80
+    characters" and `py_maze/game.py:132` is exactly 80, so a package-side
+    check has something to report the moment it is written
+  - **Goal**: Either read the package's width beside the suite's, under a
+    constant of its own since 80 and 85 are different numbers, and reconcile
+    `py_maze/game.py:132` with whichever number is chosen; or state in
+    `CONTRIBUTING.md` that the 85-character check is the suite's alone and
+    that the package's width is left to a reader, so the asymmetry is a
+    decision rather than a gap
+  - From: Code Review Override - What the Two Shape Checks Do Not Read
+
+#### Found Issues
+
+- [ ] The blank-line check reads inside fenced code blocks
+  - **Issue**: `test_no_document_carries_two_blank_lines_in_a_row` at
+    `test_py_maze.py:9612` reads every line of every document, fenced code
+    included, with no fence state at all. Two blank lines between top-level
+    definitions is what PEP 8 asks for and what every module under
+    `py_maze/` does, so a `python` example showing two functions cannot be
+    written in the repository's own style without failing the suite - and
+    that example is the one `CONTRIBUTING.md:155-156` tells a contributor to
+    write, a module with "the carving function in it, its own `__all__` and
+    a module docstring". `docs/library.md` carries 13 fenced blocks and
+    `docs/scripting.md` 8, and no page shows a top-level `def` yet, which is
+    the only reason this passes today
+  - **Goal**: Skip the lines inside a fenced block, tracking the fence the
+    way a Markdown reader does: a line opening with three or more backticks
+    or tildes toggles, and a closing fence matches the opening character and
+    is at least as long. Keep the message naming the file and the line.
+    Exercise both halves - a fenced `python` block with two blank lines
+    between two definitions passes, and a doubled blank in the prose around
+    it still fails. The comment at `test_py_maze.py:9613` names markdownlint
+    MD012 as the shape being read, so settle what MD012 does inside a fence
+    and make the comment say it, since that comment is where a later reader
+    takes the rule from
+  - From: Code Review Override - What the Two Shape Checks Do Not Read
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
