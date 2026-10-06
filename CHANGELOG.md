@@ -5,6 +5,82 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.3] - 2026-10-06
+
+What the two shape checks 3.0.2 added were not reading. All three gaps
+were clean at the time they were found, so nothing failed before this and
+nothing a player does behaves differently: what makes them worth closing
+is that `CONTRIBUTING.md` and `docs/development.md` had written the
+narrower reading down as settled. The blank-line check now reads a fenced
+code block the way markdownlint MD012 does, the package is held to its own
+width beside the suite, and both prose lists name every document the check
+covers.
+
+### Added
+
+- `test_no_line_of_the_package_runs_past_the_width_it_keeps_to`, reading
+  every module under `py_maze/` against `PACKAGE_MAX_LINE_LENGTH`. The
+  defect the suite's own width check guards is not a property of one file:
+  a line continuation that arrives as whitespace leaves a long line of
+  valid Python wherever it is written, and the eighteen modules under
+  `py_maze/` are edited by the same runs, `## [3.0.0]` having touched six
+  of them. The number is 79 rather than the suite's 85 because
+  `CONTRIBUTING.md` asks the package for lines under 80 and the suite is a
+  file whose test names are sentences; the two are separate constants
+  because they are separate numbers.
+- `test_the_width_is_read_for_every_module_the_package_carries`, holding
+  what the walk found against `PACKAGE_MODULES` plus `__init__.py` and
+  `__main__.py`. A walk that found nothing would pass the width check in
+  silence, which is the one way a check that reads a directory fails
+  without saying so.
+- `TestDoubledBlankLineReading`, twelve tests over `doubled_blank_lines()`
+  written against text in the test rather than against the repository's
+  own documents. Both halves of the change are exercised: a `python` block
+  showing two top-level definitions spaced the way PEP 8 asks reports
+  nothing, and a doubled blank in the prose on either side of that block
+  is still reported. The fence pairing is read too - a shorter run does
+  not close a longer fence, tildes are not closed by backticks, a line
+  carrying an info string is not a close, a fence indented to a list
+  item's content column is still a fence, and an unclosed fence runs to
+  the end of the document rather than being guessed at.
+- `DESIGN_LANGUAGE.md` and `KNOWN_BUGS.md` to `TestRepositoryTextShape`.
+  Both are tracked, both are written by the runs that edit the site -
+  `DESIGN_LANGUAGE.md` is the other half of changing how it looks, per
+  `CONTRIBUTING.md`, and `KNOWN_BUGS.md` is what a code review appends to -
+  and with these two the list is every Markdown document the repository
+  root carries. Both were clean when they were added.
+
+### Changed
+
+- `test_no_document_carries_two_blank_lines_in_a_row` reads through
+  `doubled_blank_lines()`, which skips what is inside a fenced code block.
+  MD012 exempts a fence, and the blank lines in there belong to the code:
+  two between top-level definitions is what PEP 8 asks and what every
+  module of the package does, so the module `CONTRIBUTING.md` tells a
+  contributor to write could not have been shown on a page without failing
+  the suite. `docs/library.md` carries 13 fenced blocks and
+  `docs/scripting.md` 8, and no page shows a top-level `def` yet, which is
+  the only reason this passed. A blank line on each side of a fence is
+  still not a pair, since reading the block away would leave two lines
+  looking adjacent that are not.
+- `published_pages()` is a module-level helper rather than a method of
+  `TestDocumentationSite`. `TestRepositoryTextShape.documents()` had
+  re-implemented it exactly, so the page enumeration had two definitions;
+  `package_modules()` is the equivalent for the package and sits beside it.
+- The width paragraph in `CONTRIBUTING.md` and the shape paragraph in
+  `docs/development.md` name both widths and all six documents, and both
+  say what is left out of the blank-line count and why. Each had written
+  the four-document list down as what the suite reads, which read as a
+  decision rather than as a gap.
+- `py_maze/game.py` describes `maze_grid` in the words the other thirty
+  docstrings and comments of the package use for the same argument, which
+  brings the one line that was at 80 characters to 70. It is the line the
+  new width check found.
+- `.gitignore` excludes `blog-posts/`, the folder this repository's
+  automation drafts into. A draft there is written for a person to read and
+  is not repository history, so it is kept out of commits the way
+  `test-results/` and `.tmp/` already are.
+
 ## [3.0.2] - 2026-10-04
 
 A review of what 3.0.1 said about itself, and of what it repaired without

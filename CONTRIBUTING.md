@@ -130,8 +130,13 @@ Beyond that, follow the surrounding code: four-space indentation, lines
 under 80 characters, `%` string formatting as the package already uses, and
 no em dashes in prose or comments.
 
-`TestRepositoryTextShape` holds `test_py_maze.py` itself to 85 characters a
-line. That is a backstop rather than a second rule about width: a line
+`TestRepositoryTextShape` reads that width back, on both sides of the
+repository: every module under `py_maze/` is held under 80 characters, which
+is the rule above, and `test_py_maze.py` itself to 85, which is a wider
+number for a file whose test names are sentences. The two are separate
+constants in the suite because they are separate numbers.
+
+Either one is a backstop rather than another rule about width: a line
 continuation that arrives as whitespace leaves valid Python which still
 passes, so the shape of the file is the only thing it changes and the only
 thing left to read it by.
@@ -223,8 +228,18 @@ tables are checked against every `__all__` they cover, and the project tree
 on `docs/development.md` is resolved against the repository. Documentation
 that drifts from the package fails the suite rather than a reader. It reads
 them for their shape as well: this file, `CHANGELOG.md`, `README.md`,
-`TODO.md` and every page carry no two blank lines in a row, which is the
-pair markdownlint MD012 names and which renders as one.
+`TODO.md`, `DESIGN_LANGUAGE.md`, `KNOWN_BUGS.md` and every page carry no two
+blank lines in a row, which is the pair markdownlint MD012 names and which
+renders as one. That is every Markdown document the repository root carries,
+so a document added there is the only thing left to add to the list.
+
+What is inside a fenced code block is left out of that count, as MD012
+leaves it out: the blank lines in there belong to the code rather than to
+the prose around it. Two of them between top-level definitions is what
+PEP 8 asks and what every module of the package already does, so a page
+showing a module - the `__all__` and the carving function of the new
+algorithm above, say - is written in the repository's own style rather than
+around the check.
 
 ### What the suite cannot tell you about the site
 

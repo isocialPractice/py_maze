@@ -150,8 +150,16 @@ tree above is resolved against the repository. Documentation that drifts from
 the package fails the suite rather than a reader's terminal.
 
 The shape of those files is read too. No two blank lines in a row stand in
-`CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md` or any page here -
-the pair markdownlint MD012 names, which renders as one - and no line of
-`test_py_maze.py` runs past the 85 characters it is written to. Both are
-things only a reader had been catching: a collapsed line continuation
-arrives as whitespace and leaves Python that still passes.
+`CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md`,
+`DESIGN_LANGUAGE.md`, `KNOWN_BUGS.md` or any page here - the pair
+markdownlint MD012 names, which renders as one. That is every Markdown
+document in the repository root, and what sits inside a fenced code block is
+left out of the count the way MD012 leaves it out, so an example can be
+spaced the way PEP 8 asks.
+
+Width is read on both sides of the repository: every line of every module
+under `py_maze/` stays under the 80 characters the package is written to,
+and no line of `test_py_maze.py` runs past the 85 that file keeps to, a
+wider number for a file whose test names are sentences. Both are things
+only a reader had been catching: a collapsed line continuation arrives as
+whitespace and leaves Python that still passes.

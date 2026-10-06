@@ -27,6 +27,10 @@ import py_maze
 # find the package without depending on the working directory
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+# the package itself, so the modules under it can be read as text as
+# well as imported
+PACKAGE_DIR = os.path.join(PROJECT_ROOT, 'py_maze')
+
 # every module of the package, and the one that is allowed a terminal
 PACKAGE_MODULES = ('algorithms', 'algorithms.backtracker',
                    'algorithms.division', 'algorithms.prim', 'analysis',
@@ -83,6 +87,14 @@ README_MAX_CHARACTERS = 30000
 # what is read here
 SUITE_MAX_LINE_LENGTH = 85
 
+# the width the package is written to, which is a different number from
+# the one above and deliberately so: CONTRIBUTING.md asks the package for
+# lines under 80 characters, and this file is a test suite whose names are
+# sentences. The same collapsed continuation leaves the same long line of
+# valid Python wherever it is written, so both sides are read, each
+# against its own number
+PACKAGE_MAX_LINE_LENGTH = 79
+
 
 def relative_luminance(color):
     # the relative luminance of a colour, as WCAG 2 defines it
@@ -137,6 +149,88 @@ def read_project_file(path):
 
     with open(path, encoding='utf-8') as handle:
         return handle.read()
+
+
+def published_pages():
+    # the Markdown files under docs/ that are pages, which is all of
+    # them: the layout, the menu and the assets sit in their own folders
+    #
+    # Two classes read this. TestDocumentationSite holds the set against
+    # the pages it knows by name, and TestRepositoryTextShape reads every
+    # one of them for its shape, so a page added to docs/ and nowhere
+    # else is caught by the first and measured by the second
+    #
+    # Returns:
+    #     set: The file names, without the folder in front of them
+
+    return {name for name in os.listdir(DOCS_DIR)
+            if name.endswith('.md')}
+
+
+def package_modules():
+    # every module of the package as a file to read, rather than as a
+    # name to import. The tree is walked rather than taken from
+    # PACKAGE_MODULES so that __init__.py and __main__.py are read too
+    #
+    # Returns:
+    #     list: Their names relative to the repository root, written with
+    #     forward slashes whatever the platform, in sorted order
+
+    found = []
+    for folder, _, names in os.walk(PACKAGE_DIR):
+        inside = os.path.relpath(folder, PROJECT_ROOT).replace(os.sep, '/')
+        found += ['%s/%s' % (inside, name) for name in names
+                  if name.endswith('.py')]
+
+    return sorted(found)
+
+
+def doubled_blank_lines(lines):
+    # the blank lines of a document that stand directly below another,
+    # reading a line of nothing but whitespace as blank the way
+    # markdownlint MD012 does
+    #
+    # What is inside a fenced code block is not read. MD012 exempts a
+    # fence because the blank lines in there belong to the code rather
+    # than to the prose around it, and two blank lines between top-level
+    # definitions is exactly what PEP 8 asks of a Python example - which
+    # is the example CONTRIBUTING.md tells a contributor to write
+    #
+    # A fence opens on three or more backticks or tildes and closes on a
+    # run of the same character that is at least as long and carries
+    # nothing after it, the way a Markdown reader pairs the two. Leading
+    # whitespace is allowed on either, because the repository writes
+    # fenced blocks inside list items
+    #
+    # Args:
+    #     lines: The document's lines, without their endings
+    #
+    # Returns:
+    #     list: The number of the second blank line of each pair,
+    #     counting from 1 as the file is read
+
+    doubled = []
+    opened = None
+    blank_above = False
+    for number, line in enumerate(lines, start=1):
+        fencing = re.match(r'\s*(`{3,}|~{3,})(.*)$', line)
+        if opened is not None:
+            if (fencing and fencing.group(1)[0] == opened[0]
+                    and len(fencing.group(1)) >= len(opened)
+                    and not fencing.group(2).strip()):
+                opened = None
+            blank_above = False
+        elif fencing:
+            opened = fencing.group(1)
+            blank_above = False
+        elif not line.strip():
+            if blank_above:
+                doubled.append(number)
+            blank_above = True
+        else:
+            blank_above = False
+
+    return doubled
 
 
 def version_pair(text):
@@ -8913,16 +9007,6 @@ class TestDocumentationSite(unittest.TestCase):
     def nav(self):
         return read_project_file(SITE_NAV_PATH)
 
-    def published_pages(self):
-        # the Markdown files under docs/ that are pages, which is all of
-        # them: the layout, the menu and the assets sit in their own folders
-        #
-        # Returns:
-        #     set: The file names, without the folder in front of them
-
-        return {name for name in os.listdir(DOCS_DIR)
-                if name.endswith('.md')}
-
     def test_every_page_the_site_publishes_is_there(self):
         for name in self.PAGES:
             self.assertTrue(os.path.isfile(os.path.join(DOCS_DIR, name)),
@@ -8931,7 +9015,7 @@ class TestDocumentationSite(unittest.TestCase):
     def test_no_page_is_published_without_being_listed_here(self):
         # a page added to docs/ and nowhere else is a page the rest of
         # this class never checks
-        self.assertEqual(self.published_pages(), set(self.PAGES))
+        self.assertEqual(published_pages(), set(self.PAGES))
 
     def test_every_page_carries_the_front_matter_the_layout_reads(self):
         # a Markdown file with no front matter is copied out verbatim
@@ -9572,8 +9656,14 @@ class TestRepositoryTextShape(unittest.TestCase):
 
     # the files read as prose here, named rather than taken from the path
     # constants above: a failure names the file it found, and the pages
-    # the next method adds have no constant of their own
-    DOCUMENTS = ('CHANGELOG.md', 'README.md', 'TODO.md', 'CONTRIBUTING.md')
+    # the next method adds have no constant of their own. Every Markdown
+    # document the repository root carries is on this list. The two that
+    # joined it last are read by the runs that edit the site -
+    # DESIGN_LANGUAGE.md is the other half of changing how it looks, and
+    # KNOWN_BUGS.md is what a code review appends to, which makes it the
+    # one document written by the call that reads it here
+    DOCUMENTS = ('CHANGELOG.md', 'README.md', 'TODO.md', 'CONTRIBUTING.md',
+                 'DESIGN_LANGUAGE.md', 'KNOWN_BUGS.md')
 
     def documents(self):
         # every file whose blank lines are read
@@ -9583,8 +9673,7 @@ class TestRepositoryTextShape(unittest.TestCase):
         #     with forward slashes whatever the platform
 
         return list(self.DOCUMENTS) + sorted(
-            'docs/%s' % name for name in os.listdir(DOCS_DIR)
-            if name.endswith('.md'))
+            'docs/%s' % name for name in published_pages())
 
     def document(self, name):
         # one of those files, read as lines
@@ -9598,32 +9687,204 @@ class TestRepositoryTextShape(unittest.TestCase):
         return read_project_file(
             os.path.join(PROJECT_ROOT, *name.split('/'))).splitlines()
 
+    def past_the_width(self, name, limit):
+        # the lines of one of the repository's own files that run past
+        # the width it is written to, named the way a failure reads
+        #
+        # Args:
+        #     name: The file's name relative to the repository root, as
+        #         documents() and package_modules() both write one
+        #     limit: The longest line the file is allowed
+        #
+        # Returns:
+        #     list: One entry naming the file, the line and how far it
+        #     ran, for each line past the limit
+
+        return ['%s:%d runs to %d characters' % (name, number, len(line))
+                for number, line in enumerate(self.document(name), start=1)
+                if len(line) > limit]
+
     def test_no_line_of_the_suite_runs_past_the_width_it_keeps_to(self):
-        past = ['test_py_maze.py:%d runs to %d characters'
-                % (number, len(line))
-                for number, line in enumerate(
-                    read_project_file(SUITE_PATH).splitlines(), start=1)
-                if len(line) > SUITE_MAX_LINE_LENGTH]
+        past = self.past_the_width('test_py_maze.py', SUITE_MAX_LINE_LENGTH)
 
         self.assertEqual(past, [],
                          'this file is written %d characters to a line'
                          % SUITE_MAX_LINE_LENGTH)
 
+    def test_no_line_of_the_package_runs_past_the_width_it_keeps_to(self):
+        # the suite is not the only file a collapsed continuation leaves
+        # a long line of valid Python in. The modules under py_maze/ are
+        # edited by the same runs - 3.0.0 touched six of them - and are
+        # held to the narrower width CONTRIBUTING.md asks of the package
+        past = []
+        for name in package_modules():
+            past += self.past_the_width(name, PACKAGE_MAX_LINE_LENGTH)
+
+        self.assertEqual(past, [],
+                         'the package is written under %d characters to a '
+                         'line' % (PACKAGE_MAX_LINE_LENGTH + 1))
+
+    def test_the_width_is_read_for_every_module_the_package_carries(self):
+        # a walk that found nothing would pass the check above in
+        # silence, so what it found is held against the modules the rest
+        # of the suite already imports by name
+        found = set(package_modules())
+
+        for name in PACKAGE_MODULES:
+            inside = 'py_maze/%s' % name.replace('.', '/')
+            with self.subTest(module=name):
+                self.assertTrue(inside + '.py' in found
+                                or inside + '/__init__.py' in found,
+                                'py_maze.%s was not found as a file' % name)
+
+        self.assertIn('py_maze/__init__.py', found)
+        self.assertIn('py_maze/__main__.py', found)
+
     def test_no_document_carries_two_blank_lines_in_a_row(self):
-        # the pair markdownlint MD012 names, reading a line of nothing
-        # but whitespace as blank the way it does
+        # the pair markdownlint MD012 names, read the way it reads one: a
+        # line of nothing but whitespace is blank, and what is inside a
+        # fenced code block is exempt. doubled_blank_lines() carries the
+        # fence rule and why the exemption is there
         doubled = []
         for name in self.documents():
-            lines = self.document(name)
-            doubled += ['%s:%d' % (name, number)
-                        for number, (above, line)
-                        in enumerate(zip(lines, lines[1:]), start=2)
-                        if not above.strip() and not line.strip()]
+            doubled += ['%s:%d' % (name, number) for number
+                        in doubled_blank_lines(self.document(name))]
 
         self.assertEqual(doubled, [],
                          'each of these is the second blank line of a '
                          'pair, which is the shape MD012 names')
 
+
+class TestDoubledBlankLineReading(unittest.TestCase):
+    # the fence state doubled_blank_lines() keeps, read against text
+    # written here rather than against the repository's own documents.
+    # The check it serves passes today on every one of them, so a fence
+    # read wrongly would show up in no failure until somebody wrote the
+    # Python example CONTRIBUTING.md asks a contributor for
+
+    def numbers(self, document):
+        # the doubled blank lines of a document written as one string
+        #
+        # Args:
+        #     document: The document, lines separated by newlines
+        #
+        # Returns:
+        #     list: What doubled_blank_lines() made of it
+
+        return doubled_blank_lines(document.split('\n'))
+
+    def test_it_names_the_second_blank_line_of_a_pair(self):
+        self.assertEqual(self.numbers('one\n\n\ntwo'), [3])
+
+    def test_it_names_every_blank_line_past_the_first(self):
+        # three blanks in a row are two pairs, which is how MD012 counts
+        self.assertEqual(self.numbers('one\n\n\n\ntwo'), [3, 4])
+
+    def test_it_reads_a_line_of_nothing_but_whitespace_as_blank(self):
+        self.assertEqual(self.numbers('one\n\n   \ntwo'), [3])
+
+    def test_one_blank_line_between_paragraphs_is_the_ordinary_shape(self):
+        self.assertEqual(self.numbers('one\n\ntwo\n\nthree'), [])
+
+    def test_two_blank_lines_in_a_fenced_block_belong_to_the_code(self):
+        # the example CONTRIBUTING.md asks a contributor to write: a
+        # module with two top-level definitions in it, spaced the way
+        # PEP 8 asks and every module of the package already is
+        page = ('A module of its own:\n'
+                '\n'
+                '```python\n'
+                "__all__ = ['carve']\n"
+                '\n'
+                '\n'
+                'def carve(width, height, rng):\n'
+                '    return []\n'
+                '\n'
+                '\n'
+                'def _helper():\n'
+                '    return None\n'
+                '```\n'
+                '\n'
+                'and that is the whole of it.')
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_a_doubled_blank_in_the_prose_around_a_fence_is_still_read(self):
+        page = ('one\n'
+                '\n'
+                '\n'
+                '```python\n'
+                'carve()\n'
+                '```\n'
+                '\n'
+                '\n'
+                'two')
+
+        self.assertEqual(self.numbers(page), [3, 8])
+
+    def test_a_blank_line_either_side_of_a_fence_is_not_a_pair(self):
+        # the two are not next to each other in the file, and reading
+        # the block away would leave them looking as though they were
+        page = 'one\n\n```\ncarve()\n```\n\ntwo'
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_a_shorter_run_does_not_close_a_longer_fence(self):
+        # four backticks are what a block showing a fence opens with,
+        # and the three inside it are that block's content
+        page = ('````markdown\n'
+                '```python\n'
+                'carve()\n'
+                '\n'
+                '\n'
+                '```\n'
+                '````\n'
+                '\n'
+                '\n'
+                'after')
+
+        self.assertEqual(self.numbers(page), [9])
+
+    def test_a_tilde_fence_is_not_closed_by_backticks(self):
+        page = ('~~~\n'
+                '```\n'
+                '\n'
+                '\n'
+                '```\n'
+                '~~~\n'
+                'after')
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_an_info_string_does_not_close_a_fence(self):
+        # a closing fence carries nothing after it, so the second line
+        # here is inside the block rather than a second opening
+        page = '```\n```python\n\n\ncarve()\n```'
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_a_fence_indented_under_a_list_item_is_still_a_fence(self):
+        # TODO.md and CONTRIBUTING.md both write blocks this way, with
+        # the fence at the list item's content column rather than at the
+        # left margin
+        page = ('- An item, with an example under it:\n'
+                '\n'
+                '    ```python\n'
+                '    __all__ = []\n'
+                '\n'
+                '\n'
+                '    def carve():\n'
+                '        return []\n'
+                '    ```\n')
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_an_unclosed_fence_reads_to_the_end_of_the_document(self):
+        # a document that opens a fence and never closes it is one to
+        # fix, and guessing where the code ended would report lines that
+        # may well be code
+        page = 'one\n\n```python\ncarve()\n\n\n'
+
+        self.assertEqual(self.numbers(page), [])
 
 if __name__ == '__main__':
     unittest.main()

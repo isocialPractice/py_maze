@@ -129,7 +129,7 @@ class MazeGame:
         """Initialize the game.
 
         Args:
-            maze_grid: 2D list representing the maze (True = wall, False = path)
+            maze_grid: 2D list of booleans (True = wall, False = path)
             collectibles: Cells holding a collectible to pick up
             clock: Callable returning a steadily rising number of
                 seconds, used to time the game. Defaults to a monotonic

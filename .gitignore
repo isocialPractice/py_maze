@@ -33,6 +33,11 @@ env/
 # Local scratch space
 .tmp/
 
+# Drafts left for the operator rather than for the project, written to the
+# folder the `## Blog Posts` rule in .claude/constants.md names. Each one is
+# a post waiting on a person to read it, not repository history.
+blog-posts/
+
 # GitHub's own folder, which the global ignore file's dot-file rule would
 # otherwise keep out of the repository along with everything under it
 !.github/
