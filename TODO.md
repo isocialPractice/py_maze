@@ -28,6 +28,86 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
+### Code Review Override - What 3.0.3 Left Unpinned
+
+- [ ] Read the repository root back, so the six-document list cannot drift
+  - **Issue**: `TestRepositoryTextShape.DOCUMENTS` at `test_py_maze.py:9665`
+    names six documents, and three places now state that this is every
+    Markdown document the repository root carries: the comment above it at
+    `test_py_maze.py:9657-9664`, `CONTRIBUTING.md:233` and
+    `docs/development.md:155-156`. Nothing reads the root to hold it there.
+    Both other halves of this same change got that guard - `docs/` has
+    `test_no_page_is_published_without_being_listed_here` at
+    `test_py_maze.py:9015`, holding `published_pages()` against `PAGES`, and
+    the package walk got a found-nothing guard at `test_py_maze.py:9727` -
+    so the root is the one enumeration left hand-written with a claim of
+    completeness written over it. The file that makes it concrete is named
+    in this repository's own code review instructions: a review writes
+    `KNOWN_RISKS.md` beside `KNOWN_BUGS.md`, and the turn that first does
+    leaves a root document the shape check never reads while three places
+    say it reads all of them. `TestDevelopmentFileTree.EXPECTED` at
+    `test_py_maze.py:8934` is not the backstop either: it omits
+    `DESIGN_LANGUAGE.md` and `KNOWN_BUGS.md`, and it only checks that what
+    the tree draws exists, never that what exists is drawn
+  - **Goal**: Read `*.md` out of `PROJECT_ROOT` and hold what is found
+    against `DOCUMENTS`, in the shape `published_pages()` at
+    `test_py_maze.py:154` already sets beside it. Decide while there whether
+    `TestDevelopmentFileTree.EXPECTED` should come from the same helper
+    rather than from a second hand-written tuple
+  - From: Code Review Override - What 3.0.3 Left Unpinned
+- [ ] Restore the blank line the suite lost where it says two belong
+  - **Issue**: `test_py_maze.py:9888` leaves one blank line between the end
+    of `TestDoubledBlankLineReading` and `if __name__ == '__main__':` at
+    9889. The file carried two there before this change, and every other
+    top-level construct in it is separated by two, or by two above the
+    comment attached to it. PEP 8 asks for two after a class or function
+    definition, which is `pycodestyle` E305, and the comment this same
+    change wrote at `test_py_maze.py:195-196` states that rule as the
+    reason the fence exemption exists at all. Nothing in the repository
+    lints Python, so the suite passes at 876 tests and no reader of the
+    rendered output is affected; what is wrong is that the one file arguing
+    the rule is the one file breaking it
+  - **Goal**: Add the second blank line back
+  - From: Code Review Override - What 3.0.3 Left Unpinned
+
+#### Found Issues
+
+- [ ] A fence inside a blockquote opens nothing
+  - **Issue**: the fence pattern at `test_py_maze.py:216` allows leading
+    whitespace and nothing else, so a fence written inside a blockquote
+    opens no block and the lines under it are read as prose. The exemption
+    `doubled_blank_lines()` exists to provide therefore stops at the quote
+    marker, which is the one construct this repository writes most of:
+    `CHANGELOG.md` records every correction as a dated blockquote, and
+    `TODO.md` and `.claude/user-note.md` carry long runs of them. Confirmed
+    against the repository as it stands - no document carries a blockquoted
+    fence today and all 20 the check reads have balanced fences, so nothing
+    fails now and this is coverage rather than a defect
+  - **Goal**: Either strip a leading run of quote markers before matching a
+    fence and keep the fence state per quote depth, or say in the helper's
+    comment that a blockquoted fence is deliberately not read and why, so a
+    later reader does not take the silence for coverage. The twelve cases
+    in `TestDoubledBlankLineReading` at `test_py_maze.py:9758` have no
+    blockquote among them either way
+  - From: Code Review Override - What 3.0.3 Left Unpinned
+- [ ] An unclosed fence turns the check off for the rest of its document
+  - **Issue**: `doubled_blank_lines()` at `test_py_maze.py:188` keeps a
+    fence open to the end of its input when no close arrives, and
+    `test_an_unclosed_fence_reads_to_the_end_of_the_document` at
+    `test_py_maze.py:9881` fixes that as the intended reading. What is not
+    tested is the consequence: one stray opening fence in `CHANGELOG.md`,
+    the document most likely to gain one now that its own newest entry is
+    prose about fences, and every doubled blank line below it goes
+    unreported with the suite still green. A check that stops reading is
+    worse than one that reports the wrong line, because the second kind is
+    noticed. Confirmed balanced in all 20 documents today, so this is a
+    silent failure waiting on a typo rather than a live one
+  - **Goal**: Hold each document to closing every fence it opens, either by
+    having `doubled_blank_lines()` report an unclosed fence or by a test of
+    its own over `documents()`. Keep the end-of-document reading exactly as
+    it is - what is missing is somebody noticing that it happened
+  - From: Code Review Override - What 3.0.3 Left Unpinned
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
