@@ -231,7 +231,8 @@ them for their shape as well: this file, `CHANGELOG.md`, `README.md`,
 `TODO.md`, `DESIGN_LANGUAGE.md`, `KNOWN_BUGS.md` and every page carry no two
 blank lines in a row, which is the pair markdownlint MD012 names and which
 renders as one. That is every Markdown document the repository root carries,
-so a document added there is the only thing left to add to the list.
+and the root is read back to hold it so: a document added there and to
+nothing else fails the suite rather than being quietly left unread.
 
 What is inside a fenced code block is left out of that count, as MD012
 leaves it out: the blank lines in there belong to the code rather than to
@@ -240,6 +241,14 @@ PEP 8 asks and what every module of the package already does, so a page
 showing a module - the `__all__` and the carving function of the new
 algorithm above, say - is written in the repository's own style rather than
 around the check.
+
+A fence is read inside a blockquote as well as outside one, which matters
+here because quoted prose is what this repository writes most of. The depth
+a fence opened at is the depth that closes it, and a block ends with the
+quote that held it. Every document is also held to closing every fence it
+opens: an opening fence with nothing to close it reads to the end of its
+document, and the blank lines below it would then be read as code and
+reported by nobody while the suite stayed green.
 
 ### What the suite cannot tell you about the site
 

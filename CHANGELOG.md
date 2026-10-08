@@ -5,6 +5,105 @@ All notable changes to py_maze are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.4] - 2026-10-08
+
+The three enumerations 3.0.3 left hand-written, and the two things its
+fence reader could not see. Every one of them was clean when it was found,
+so nothing failed before this and nothing a player does behaves
+differently - what makes them worth closing is that each one is a claim
+the repository had written down with nothing holding it. The repository
+root is now read back rather than listed, a fence is read inside a
+blockquote as well as outside one, and a document that opens a fence it
+never closes is reported rather than silently stopping the check.
+
+### Added
+
+- `root_documents()`, reading the Markdown documents out of the
+  repository root, and
+  `test_the_prose_read_here_is_every_document_the_root_carries`, holding
+  what it finds against `TestRepositoryTextShape.DOCUMENTS`. Three places
+  stated that those six names were every document the root carries - the
+  comment above the list, `CONTRIBUTING.md` and `docs/development.md` -
+  and nothing read the root to keep it true. Both other halves of the same
+  change in `## [3.0.3]` got that guard: `docs/` has
+  `test_no_page_is_published_without_being_listed_here` holding
+  `published_pages()` against `PAGES`, and the package walk got a
+  found-nothing guard, which left the root as the one enumeration kept by
+  hand under a claim of completeness. The case it guards is a new root
+  document arriving from a run rather than from a person, which is how
+  `KNOWN_BUGS.md` itself arrived.
+- `quoted_depth()`, counting the blockquote markers in front of a line and
+  returning what is left of it, and `TestBlockquoteMarkerReading`, seven
+  tests over the grammar CommonMark sets for one: up to three spaces of
+  indentation, the marker, one optional space after it, and a quote inside
+  a quote reading as two deep. Four spaces in front of the marker is an
+  indented code block rather than a quote, which is the boundary easiest
+  to write a line too loose.
+- `fenced_lines()`, which replaces the fence state `doubled_blank_lines()`
+  kept inline and answers two questions instead of one: which lines a
+  document's fenced blocks cover, and where a block the document never
+  closed was opened. `doubled_blank_lines()` reads the first answer and
+  reports exactly what it reported before; the second is what
+  `test_every_document_closes_every_fence_it_opens` reads.
+- `test_every_document_closes_every_fence_it_opens`, holding each of the
+  twenty documents to closing every fence it opens. An opening fence with
+  nothing to close it reads to the end of its document, which is the
+  reading `## [3.0.3]` pinned deliberately - guessing where the code ended
+  would report lines that may well be code. What was missing was anybody
+  noticing it had happened: one stray fence in `CHANGELOG.md`, the
+  document most likely to gain one, and every doubled blank line below it
+  goes unreported with the suite still green. A check that stops reading
+  is worse than one that reports the wrong line, because the second kind
+  gets noticed.
+- `TestFencedBlockReading`, ten tests over the two answers
+  `fenced_lines()` gives, and two more in `TestDoubledBlankLineReading`
+  for the blockquote cases its twelve had none of.
+
+### Changed
+
+- A fence is now read inside a blockquote. The pattern allowed leading
+  whitespace and nothing else, so a fence written in a quote opened no
+  block and the lines under it were read as prose - and quoted prose is
+  the construct this repository writes most of, `CHANGELOG.md` recording
+  every correction as a dated blockquote and `TODO.md` and the notes
+  beside it carrying long runs of them. The markers now come off before
+  the fence is matched, and the depth the fence opened at is kept with it:
+  only a fence at that same depth closes it, a line deeper than it is
+  content, and a line shallower than it has left the quote, which ends the
+  block the way a Markdown reader ends one whose container closed. That
+  last rule is what stops the new reading swallowing a document: a fence
+  left open inside a quote ends with the quote rather than running on.
+  Blankness is still read off the whole line rather than off what is left
+  after the markers, which is deliberate and is where this reading stops -
+  a quote writes its own blank line as a bare `>`, and that is a line with
+  something on it.
+- `TestDevelopmentFileTree.EXPECTED` no longer names the root's documents.
+  They come from `root_documents()` now, so the map on
+  `docs/development.md` and the documents read for their shape cannot
+  disagree about what the root holds. The tuple keeps what the helper says
+  nothing about - the three folders, the two launchers, the suite, the
+  manifest, the ignore file and the licence.
+- `KNOWN_BUGS.md` is on the project structure map on
+  `docs/development.md`, which drew the other five root documents and not
+  that one. The class reading that map promises an entry it draws exists
+  and a file the repository carries is on it, and sourcing the documents
+  from the root is what turned the second half of that promise into a
+  failure rather than a silence.
+- `CONTRIBUTING.md` and `docs/development.md` say that the root is read
+  back rather than that the list is the thing to keep up to date, and both
+  name the two fence rules.
+
+### Fixed
+
+- The second blank line between the end of `TestDoubledBlankLineReading`
+  and `if __name__ == '__main__':`, which `## [3.0.3]` left as one. Every
+  other top-level construct in the file is separated by two, PEP 8 asks
+  for two after a class definition, and the comment that same change wrote
+  states that rule as the reason the fence exemption exists at all.
+  Nothing lints Python here, so the suite passed either way: what was
+  wrong is that the one file arguing the rule was the one file breaking
+  it.
+
 ## [3.0.3] - 2026-10-06
 
 What the two shape checks 3.0.2 added were not reading. All three gaps

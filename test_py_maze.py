@@ -80,6 +80,15 @@ SITE_NAV_PATH = os.path.join(DOCS_DIR, '_data', 'nav.yml')
 README_MAX_LINES = 300
 README_MAX_CHARACTERS = 30000
 
+# the one Markdown document in the repository root that is written by a
+# tool rather than by a person: the archive the completed-items roll
+# creates beside TODO.md for a repository that asks for one. It holds
+# finished items verbatim, so its shape is the archiver's and not this
+# repository's to keep, and the checks that read the root for documents
+# leave it out rather than measuring generated text. It may not be on
+# disk at all, which is the ordinary state
+GENERATED_DOCUMENT = 'TODO-archive.md'
+
 # the width this file is written to. 3.0.1 re-wrapped a line whose
 # backslash and newline had arrived as seventeen spaces, leaving a
 # 144-character line that was still valid Python and still passed: the
@@ -167,6 +176,26 @@ def published_pages():
             if name.endswith('.md')}
 
 
+def root_documents():
+    # the Markdown documents the repository root carries, read from the
+    # folder rather than named, so that a document added to the root is
+    # found rather than waited on
+    #
+    # Two classes read this, the way the two beside published_pages()
+    # do. TestRepositoryTextShape holds the set against the documents it
+    # reads for their shape, and TestDevelopmentFileTree holds it
+    # against the project structure the site draws, so a new root
+    # document is caught by the first and has to be put on the map by
+    # the second
+    #
+    # Returns:
+    #     set: The file names, without the folder in front of them, and
+    #     without the one document GENERATED_DOCUMENT names
+
+    return {name for name in os.listdir(PROJECT_ROOT)
+            if name.endswith('.md') and name != GENERATED_DOCUMENT}
+
+
 def package_modules():
     # every module of the package as a file to read, rather than as a
     # name to import. The tree is walked rather than taken from
@@ -185,6 +214,97 @@ def package_modules():
     return sorted(found)
 
 
+def quoted_depth(line):
+    # how deep in blockquotes a line sits, and what is left of the line
+    # once the markers in front of it are taken off
+    #
+    # A blockquote marker is up to three spaces of indentation, a `>`,
+    # and one optional space after it, which is the marker CommonMark
+    # reads. They are counted one at a time rather than stripped in a
+    # single pass, so that a quote inside a quote reads as two deep
+    #
+    # Args:
+    #     line: The line, without its ending
+    #
+    # Returns:
+    #     tuple: How many markers stood in front of the line, and what
+    #     is left of it after them
+
+    depth = 0
+    rest = line
+    marker = re.match(r' {0,3}>[ \t]?', rest)
+    while marker:
+        depth += 1
+        rest = rest[marker.end():]
+        marker = re.match(r' {0,3}>[ \t]?', rest)
+
+    return depth, rest
+
+
+def fenced_lines(lines):
+    # which of a document's lines belong to a fenced code block, and
+    # where a block the document never closed was opened
+    #
+    # A fence opens on three or more backticks or tildes and closes on a
+    # run of the same character that is at least as long and carries
+    # nothing after it, the way a Markdown reader pairs the two. Leading
+    # whitespace is allowed on either, because the repository writes
+    # fenced blocks inside list items
+    #
+    # Blockquote markers come off before a fence is matched, so a fence
+    # written inside a quote opens a block rather than reading as prose.
+    # That is the construct this repository writes most of - CHANGELOG.md
+    # records every correction as a dated blockquote, and TODO.md and the
+    # notes beside it carry long runs of them - and a fence pattern that
+    # stopped at the quote marker left all of it unread. The depth the
+    # fence opened at is kept with it: only a fence at that same depth
+    # closes it, a line deeper than it is content, and a line shallower
+    # than it has left the quote, which ends the block the way a Markdown
+    # reader ends one whose container closed
+    #
+    # Blankness is read off the whole line rather than off what is left
+    # after the markers, which is deliberate and is the boundary of this
+    # reading: a blockquote writes its own blank line as a bare `>`, and
+    # that is a line with content on it here
+    #
+    # Args:
+    #     lines: The document's lines, without their endings
+    #
+    # Returns:
+    #     tuple: The numbers of the lines inside a fenced block, counting
+    #     from 1 and counting the two fences themselves, as a set; and
+    #     the number of the opening fence of a block the document ended
+    #     without closing, or None where every block it opened closed
+
+    inside = set()
+    opened = None
+    opened_at = None
+    opened_depth = 0
+    for number, line in enumerate(lines, start=1):
+        depth, rest = quoted_depth(line)
+        fencing = re.match(r'\s*(`{3,}|~{3,})(.*)$', rest)
+
+        if opened is not None and depth < opened_depth:
+            opened = None
+            opened_at = None
+
+        if opened is not None:
+            inside.add(number)
+            if (depth == opened_depth and fencing
+                    and fencing.group(1)[0] == opened[0]
+                    and len(fencing.group(1)) >= len(opened)
+                    and not fencing.group(2).strip()):
+                opened = None
+                opened_at = None
+        elif fencing:
+            inside.add(number)
+            opened = fencing.group(1)
+            opened_at = number
+            opened_depth = depth
+
+    return inside, opened_at
+
+
 def doubled_blank_lines(lines):
     # the blank lines of a document that stand directly below another,
     # reading a line of nothing but whitespace as blank the way
@@ -194,13 +314,8 @@ def doubled_blank_lines(lines):
     # fence because the blank lines in there belong to the code rather
     # than to the prose around it, and two blank lines between top-level
     # definitions is exactly what PEP 8 asks of a Python example - which
-    # is the example CONTRIBUTING.md tells a contributor to write
-    #
-    # A fence opens on three or more backticks or tildes and closes on a
-    # run of the same character that is at least as long and carries
-    # nothing after it, the way a Markdown reader pairs the two. Leading
-    # whitespace is allowed on either, because the repository writes
-    # fenced blocks inside list items
+    # is the example CONTRIBUTING.md tells a contributor to write.
+    # fenced_lines() carries the fence rule and which lines it covers
     #
     # Args:
     #     lines: The document's lines, without their endings
@@ -209,19 +324,11 @@ def doubled_blank_lines(lines):
     #     list: The number of the second blank line of each pair,
     #     counting from 1 as the file is read
 
+    inside, _ = fenced_lines(lines)
     doubled = []
-    opened = None
     blank_above = False
     for number, line in enumerate(lines, start=1):
-        fencing = re.match(r'\s*(`{3,}|~{3,})(.*)$', line)
-        if opened is not None:
-            if (fencing and fencing.group(1)[0] == opened[0]
-                    and len(fencing.group(1)) >= len(opened)
-                    and not fencing.group(2).strip()):
-                opened = None
-            blank_above = False
-        elif fencing:
-            opened = fencing.group(1)
+        if number in inside:
             blank_above = False
         elif not line.strip():
             if blank_above:
@@ -8930,11 +9037,24 @@ class TestDevelopmentFileTree(unittest.TestCase):
     # be on it
 
     # what a reader is expected to find on the map, whether or not the
-    # rest of the suite already reads it
+    # rest of the suite already reads it. The root's own documents are
+    # not among these: expected() reads them off the root instead, so a
+    # document added there has to go on the map rather than being left
+    # off it by a second hand-written list. What is named here is
+    # everything in the root that is not prose - the three folders, the
+    # two launchers, the suite, the manifest, the ignore file and the
+    # licence, none of which root_documents() says anything about
     EXPECTED = ('py_maze/', 'docs/', '.github/', 'py_maze.bat', 'py_maze.sh',
-                'test_py_maze.py', 'pyproject.toml', '.gitignore',
-                'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'TODO.md',
-                'README.md')
+                'test_py_maze.py', 'pyproject.toml', '.gitignore', 'LICENSE')
+
+    def expected(self):
+        # every entry the map has to draw
+        #
+        # Returns:
+        #     list: What EXPECTED names, and the Markdown documents the
+        #     repository root carries
+
+        return list(self.EXPECTED) + sorted(root_documents())
 
     def tree(self):
         # the fenced block drawing the project structure
@@ -8955,9 +9075,11 @@ class TestDevelopmentFileTree(unittest.TestCase):
     def test_it_lists_the_files_the_repository_carries(self):
         tree = self.tree()
 
-        for name in self.EXPECTED:
-            self.assertIn(name, tree,
-                          '%s is not on the project structure map' % name)
+        for name in self.expected():
+            with self.subTest(entry=name):
+                self.assertIn(name, tree,
+                              '%s is not on the project structure map'
+                              % name)
 
     def test_every_entry_it_draws_is_really_there(self):
         # each level is indented four characters, either the line running
@@ -9657,11 +9779,13 @@ class TestRepositoryTextShape(unittest.TestCase):
     # the files read as prose here, named rather than taken from the path
     # constants above: a failure names the file it found, and the pages
     # the next method adds have no constant of their own. Every Markdown
-    # document the repository root carries is on this list. The two that
-    # joined it last are read by the runs that edit the site -
-    # DESIGN_LANGUAGE.md is the other half of changing how it looks, and
-    # KNOWN_BUGS.md is what a code review appends to, which makes it the
-    # one document written by the call that reads it here
+    # document the repository root carries is on this list, which
+    # test_the_prose_read_here_is_every_document_the_root_carries is what
+    # holds rather than what says so. The two that joined it last are
+    # read by the runs that edit the site - DESIGN_LANGUAGE.md is the
+    # other half of changing how it looks, and KNOWN_BUGS.md is what a
+    # code review appends to, which makes it the one document written by
+    # the call that reads it here
     DOCUMENTS = ('CHANGELOG.md', 'README.md', 'TODO.md', 'CONTRIBUTING.md',
                  'DESIGN_LANGUAGE.md', 'KNOWN_BUGS.md')
 
@@ -9753,6 +9877,41 @@ class TestRepositoryTextShape(unittest.TestCase):
         self.assertEqual(doubled, [],
                          'each of these is the second blank line of a '
                          'pair, which is the shape MD012 names')
+
+    def test_the_prose_read_here_is_every_document_the_root_carries(self):
+        # DOCUMENTS is written out by hand, and three places say that
+        # what it names is every Markdown document the repository root
+        # carries: the comment above it, CONTRIBUTING.md and
+        # docs/development.md. This is the line that holds the claim
+        # there, in the shape test_no_page_is_published_without_being_
+        # listed_here already sets over docs/. Without it a new root
+        # document - the KNOWN_RISKS.md a code review is told to write
+        # beside KNOWN_BUGS.md, say - is read by nothing while three
+        # places go on saying everything is read
+        self.assertEqual(root_documents(), set(self.DOCUMENTS),
+                         'the root and this list have drifted apart, and '
+                         'a document on one and not the other is either '
+                         'unread or missing')
+
+    def test_every_document_closes_every_fence_it_opens(self):
+        # an opening fence with nothing closing it reads to the end of
+        # its document, which takes the check above with it: every
+        # doubled blank line below the stray fence is read as code and
+        # reported by nobody, and the suite stays green while the check
+        # has stopped working. A check that stops reading is worse than
+        # one that reads the wrong line, because the second kind gets
+        # noticed. So the end-of-document reading stays exactly as
+        # fenced_lines() has it, and this is the noticing
+        unclosed = []
+        for name in self.documents():
+            opened_at = fenced_lines(self.document(name))[1]
+            if opened_at is not None:
+                unclosed.append('%s:%d' % (name, opened_at))
+
+        self.assertEqual(unclosed, [],
+                         'each of these opens a fenced block its document '
+                         'never closes, which leaves every line below it '
+                         'read as code')
 
 
 class TestDoubledBlankLineReading(unittest.TestCase):
@@ -9881,10 +10040,163 @@ class TestDoubledBlankLineReading(unittest.TestCase):
     def test_an_unclosed_fence_reads_to_the_end_of_the_document(self):
         # a document that opens a fence and never closes it is one to
         # fix, and guessing where the code ended would report lines that
-        # may well be code
+        # may well be code. test_every_document_closes_every_fence_it_
+        # opens is what notices that it happened
         page = 'one\n\n```python\ncarve()\n\n\n'
 
         self.assertEqual(self.numbers(page), [])
+
+    def test_two_blank_lines_in_a_quoted_fenced_block_belong_to_the_code(
+            self):
+        # the same exemption as above, one blockquote deep. A quote
+        # writes its own blank line as a bare `>`, which is a line with
+        # something on it rather than a blank one, so neither reading
+        # reports these - what the fence buys is the two below it
+        page = ('> The module should have read:\n'
+                '>\n'
+                '> ```python\n'
+                ">__all__ = ['carve']\n"
+                '>\n'
+                '>\n'
+                '> def carve():\n'
+                '>     return []\n'
+                '> ```\n')
+
+        self.assertEqual(self.numbers(page), [])
+
+    def test_a_doubled_blank_after_a_quoted_fence_ends_is_still_read(self):
+        # a fence opened inside a quote and left open there does not
+        # swallow the document below it: the quote ends at the blank
+        # line, and a block ends with the container that held it. Read
+        # any other way, the pair on line 8 goes unreported
+        page = ('> An example:\n'
+                '>\n'
+                '> ```python\n'
+                '> carve()\n'
+                '\n'
+                'one\n'
+                '\n'
+                '\n'
+                'two')
+
+        self.assertEqual(self.numbers(page), [8])
+
+
+class TestBlockquoteMarkerReading(unittest.TestCase):
+    # the markers quoted_depth() counts, which decide which lines a
+    # fence inside a quote covers. The grammar is CommonMark's and is
+    # easy to write a line too loose: three spaces in front of the `>`
+    # is a quote and four is an indented code block
+
+    def test_a_line_outside_a_quote_is_no_deep_and_is_left_alone(self):
+        self.assertEqual(quoted_depth('plain'), (0, 'plain'))
+
+    def test_it_takes_the_marker_and_the_space_after_it_off(self):
+        self.assertEqual(quoted_depth('> one'), (1, 'one'))
+
+    def test_the_space_after_the_marker_is_optional(self):
+        self.assertEqual(quoted_depth('>one'), (1, 'one'))
+
+    def test_a_quote_inside_a_quote_is_two_deep(self):
+        self.assertEqual(quoted_depth('> > one'), (2, 'one'))
+
+    def test_three_spaces_in_front_of_the_marker_is_still_a_quote(self):
+        self.assertEqual(quoted_depth('   > one'), (1, 'one'))
+
+    def test_four_spaces_in_front_of_it_is_an_indented_block(self):
+        # four spaces opens a code block, so what follows them is code
+        # that happens to start with a `>` rather than a quote marker
+        self.assertEqual(quoted_depth('    > one'), (0, '    > one'))
+
+    def test_a_run_of_markers_with_no_spaces_counts_each_one(self):
+        # a Python prompt reads as three deep, which costs nothing: a
+        # line deeper than the fence it sits under is content either way
+        self.assertEqual(quoted_depth('>>> carve()'), (3, 'carve()'))
+
+
+class TestFencedBlockReading(unittest.TestCase):
+    # the two answers fenced_lines() gives - which lines a document's
+    # fenced blocks cover, and where a block it never closed was opened
+
+    def covered(self, document):
+        # the lines of a document that sit inside a fenced block
+        #
+        # Args:
+        #     document: The document, lines separated by newlines
+        #
+        # Returns:
+        #     list: Their numbers, in order
+
+        return sorted(fenced_lines(document.split('\n'))[0])
+
+    def unclosed(self, document):
+        # where a block the document never closed was opened
+        #
+        # Args:
+        #     document: The document, lines separated by newlines
+        #
+        # Returns:
+        #     int: The opening fence's line number, or None
+
+        return fenced_lines(document.split('\n'))[1]
+
+    def test_a_block_covers_its_content_and_both_of_its_fences(self):
+        self.assertEqual(self.covered('one\n```\ncarve()\n```\ntwo'),
+                         [2, 3, 4])
+
+    def test_a_fence_inside_a_blockquote_opens_a_block(self):
+        # the blind spot this reading closes: a fence pattern that
+        # stopped at the quote marker left every quoted block unread,
+        # and quoted prose is what this repository writes most of
+        self.assertEqual(self.covered('> one\n> ```\n> carve()\n> ```'),
+                         [2, 3, 4])
+
+    def test_an_indented_fence_inside_a_quote_is_still_a_fence(self):
+        # the shape a correction in CHANGELOG.md takes: the quote
+        # marker, then the block indented under the line introducing it
+        page = ('> It should have read:\n'
+                '>\n'
+                '>     ```python\n'
+                '>     carve()\n'
+                '>     ```\n')
+
+        self.assertEqual(self.covered(page), [3, 4, 5])
+
+    def test_a_fence_at_another_depth_does_not_close_a_block(self):
+        # inside a block that opened outside any quote, a line that
+        # reads as quoted is that block's content
+        page = '```\n> ```\ncarve()\n```\nafter'
+
+        self.assertEqual(self.covered(page), [1, 2, 3, 4])
+
+    def test_a_block_ends_with_the_blockquote_that_opened_it(self):
+        # the quote ends at the blank line, and a fenced block cannot
+        # outlive the container it was opened in
+        page = '> ```\n> carve()\n\none\n```\ntwo\n```'
+
+        self.assertEqual(self.covered(page), [1, 2, 5, 6, 7])
+
+    def test_it_names_nothing_where_every_block_closed(self):
+        self.assertIsNone(self.unclosed('one\n```\ncarve()\n```\ntwo'))
+
+    def test_it_names_the_opening_fence_of_a_block_never_closed(self):
+        self.assertEqual(self.unclosed('one\n\n```python\ncarve()\n'), 3)
+
+    def test_a_shorter_run_leaves_the_longer_block_open(self):
+        # three backticks do not close a block that opened on four, so
+        # this document ends inside the block it opened on line 1
+        self.assertEqual(self.unclosed('````\n```\ncarve()\n```\n'), 1)
+
+    def test_a_block_its_container_closed_is_not_left_open(self):
+        # the quote ended, so the block ended with it. There is nothing
+        # for a document to go and close
+        self.assertIsNone(self.unclosed('> ```\n> carve()\n\nafter'))
+
+    def test_it_names_a_quoted_block_the_quote_never_let_go_of(self):
+        # the quote runs to the end of the document and the fence in it
+        # is still open there, so the block is open at the end too
+        self.assertEqual(self.unclosed('> one\n> ```\n> carve()'), 2)
+
 
 if __name__ == '__main__':
     unittest.main()
