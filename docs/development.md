@@ -89,9 +89,14 @@ what installs it.
 
 ## The Version Number
 
-The version lives in one place, `__version__` in `py_maze/version.py`, which
+The version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
+counter, `1.0.0aN`, counting up to a first release that has not happened yet.
+py_maze is published to no registry, so the number says where it is going
+rather than where it has been.
+
+It lives in one place, `__version__` in `py_maze/version.py`, which
 `py_maze/__init__.py` re-exports as `py_maze.__version__`. The manifest reads
-it from there, so a release only ever changes that one string:
+it from there, so a version change only ever touches that one string:
 
 ```toml
 # pyproject.toml
@@ -103,6 +108,11 @@ version = { attr = "py_maze.__version__" }
 
 The same value backs the `--version` flag, and the test suite checks that the
 changelog has an entry for it.
+
+A pre-release segment holds exactly one number, so there is no patch, minor or
+major to move: the counter advances by one for any change that earns a version,
+whatever the size of it, and the size is recorded in that run's changelog entry
+instead. The `1.0.0` core stays where it is until the project releases.
 
 ## Running the Tests
 

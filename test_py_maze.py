@@ -46,6 +46,7 @@ TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
 
 # the files the repository carries beside the package, each of which
 # states something the package has to agree with
+CHANGELOG_PATH = os.path.join(PROJECT_ROOT, 'CHANGELOG.md')
 CONTRIBUTING_PATH = os.path.join(PROJECT_ROOT, 'CONTRIBUTING.md')
 LICENSE_PATH = os.path.join(PROJECT_ROOT, 'LICENSE')
 MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'pyproject.toml')
@@ -3094,15 +3095,36 @@ class TestPlayScreenReplayOnAGeneratedMaze(unittest.TestCase):
 
 
 class TestVersion(unittest.TestCase):
-    def test_version_is_a_release_number(self):
-        self.assertRegex(py_maze.__version__, r'^\d+\.\d+\.\d+')
+    # the documents that describe the version scheme, as against the
+    # entries that merely use it: all three told a reader the project
+    # was on semantic versioning while __version__ was a PEP 440
+    # pre-release counter
+    SCHEME_DOCUMENTS = (CHANGELOG_PATH, CONTRIBUTING_PATH, DEVELOPMENT_PATH)
+
+    def test_the_version_is_an_unreleased_pre_release(self):
+        # py_maze is published to no registry, so the version has to
+        # carry a pre-release marker rather than read as a release.
+        # The whole string is matched: an unanchored `^\d+\.\d+\.\d+`
+        # passes for a bare `1.0.0`, which is the one thing the version
+        # must not say. One number after the marker is all PEP 440
+        # allows, which is why no size is encoded here
+        self.assertRegex(py_maze.__version__, r'^\d+\.\d+\.\d+(?:a|b|rc)\d+$')
+
+    def test_the_documents_name_the_scheme_the_version_is_in(self):
+        # the version string and the prose describing it are the pair
+        # that has to agree, and the drift is a later edit reaching for
+        # "patch" or "minor" out of habit - advice a single counter
+        # cannot carry out
+        for path in self.SCHEME_DOCUMENTS:
+            with self.subTest(document=os.path.basename(path)):
+                self.assertIn('PEP 440', read_project_file(path))
 
     def test_the_changelog_documents_the_version(self):
         # the manifest reads __version__, so the changelog is the one
         # other place the number has to agree
-        with open('CHANGELOG.md', encoding='utf-8') as changelog:
-            released = re.findall(r'^## \[([^\]]+)\]', changelog.read(),
-                                  re.MULTILINE)
+        released = re.findall(r'^## \[([^\]]+)\]',
+                              read_project_file(CHANGELOG_PATH),
+                              re.MULTILINE)
 
         self.assertIn(py_maze.__version__, released)
 

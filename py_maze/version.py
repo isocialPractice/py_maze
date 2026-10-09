@@ -3,9 +3,18 @@
 
 `pyproject.toml` reads `py_maze.__version__`, the `--version` flag prints
 it and the test suite checks the changelog has an entry for it, so a
-release only ever changes the string below. It lives in a module of its
-own so both the package and the command line can read it without one
-importing the other.
+version change only ever touches the string below. It lives in a module
+of its own so both the package and the command line can read it without
+one importing the other.
+
+The string is a PEP 440 pre-release of the release being worked towards,
+not a release number: nothing is published to any registry and nothing
+depends on this package, so `1.0.0` is where it is going rather than
+where it has been. A pre-release segment holds exactly one number, which
+means the size of a change cannot be written into the version at all -
+the counter advances by one for any version-relevant run, whatever the
+size, and the size is recorded in that run's `CHANGELOG.md` entry. The
+core `1.0.0` does not move until the project actually releases.
 """
 
-__version__ = '3.0.4'
+__version__ = '1.0.0a1'

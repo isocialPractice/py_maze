@@ -28,46 +28,6 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Version Scheme Override - re-express the version under PEP 440
-
-- [ ] Move the version to a PEP 440 pre-release counter
-  - **The version claims three major releases of a package that has never been
-    published.** `py_maze/version.py` reads `__version__ = '3.0.4'` with no
-    pre-release marker at all, so the number says released and stable while
-    there is no registry record and nothing depending on it.
-  - **Write `1.0.0a1`**: a first pre-release of the release being worked
-    towards. The string lives in `py_maze/version.py`, which `pyproject.toml`
-    reads through `version = { attr = "py_maze.__version__" }`, so that module
-    is the one to edit and the manifest needs no change at all. Then this
-    run's `CHANGELOG.md` heading, and nowhere else.
-  - **The old numbers do not travel, because PEP 440 has nowhere to put
-    them.** A pre-release segment holds exactly one number:
-    `1.0.0-alpha.3.0.4` is not a version Python accepts, and it is rejected
-    rather than normalized. Record `3.0.4` in the entry as the version the
-    project is coming from, and let the counter be a counter.
-  - **Write the normalized form, `1.0.0a1`.** `1.0.0-alpha.1` is the same
-    version to the tooling and a different string to a reader, so the module
-    attribute and the changelog heading must both read `1.0.0a1` exactly or
-    they will look like they disagree.
-  - **Never reach for `.dev`, `.post` or a `+local` segment** to carry what
-    the counter cannot hold. Each already means something specific, and a
-    version carrying a local segment cannot be published at all.
-  - **This is not a release.** It re-expresses where the project is, so it
-    earns no step of its own. Items completed alongside it advance the counter
-    once, to `1.0.0a2`, whatever size they earned - the counter has nowhere to
-    record a size, and the size is already written in the entry.
-  - **Every other mention of `3.0.4` is history** - a past entry, a note, a
-    review file naming what shipped - and history is not corrected. Do not
-    rewrite a heading or a `- From:` line that names an old version: the two
-    have to match word for word, and editing one of the pair breaks the item
-    mid-run.
-  - **Say in the entry why the version looks smaller than yesterday's**, and
-    **leave the three existing tags alone.** The new version sorts below every
-    tag the repository carries, and a reader who meets that with no
-    explanation goes looking for a mistake. Name the old form and the new one.
-    Do not delete, move or re-tag anything.
-  - From: Version Scheme Override - re-express the version under PEP 440
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing
@@ -2105,5 +2065,42 @@ No items are currently queued in this section.
     its own over `documents()`. Keep the end-of-document reading exactly as
     it is - what is missing is somebody noticing that it happened
   - From: Code Review Override - What 3.0.3 Left Unpinned
+- [x] Move the version to a PEP 440 pre-release counter
+  - **The version claims three major releases of a package that has never been
+    published.** `py_maze/version.py` reads `__version__ = '3.0.4'` with no
+    pre-release marker at all, so the number says released and stable while
+    there is no registry record and nothing depending on it.
+  - **Write `1.0.0a1`**: a first pre-release of the release being worked
+    towards. The string lives in `py_maze/version.py`, which `pyproject.toml`
+    reads through `version = { attr = "py_maze.__version__" }`, so that module
+    is the one to edit and the manifest needs no change at all. Then this
+    run's `CHANGELOG.md` heading, and nowhere else.
+  - **The old numbers do not travel, because PEP 440 has nowhere to put
+    them.** A pre-release segment holds exactly one number:
+    `1.0.0-alpha.3.0.4` is not a version Python accepts, and it is rejected
+    rather than normalized. Record `3.0.4` in the entry as the version the
+    project is coming from, and let the counter be a counter.
+  - **Write the normalized form, `1.0.0a1`.** `1.0.0-alpha.1` is the same
+    version to the tooling and a different string to a reader, so the module
+    attribute and the changelog heading must both read `1.0.0a1` exactly or
+    they will look like they disagree.
+  - **Never reach for `.dev`, `.post` or a `+local` segment** to carry what
+    the counter cannot hold. Each already means something specific, and a
+    version carrying a local segment cannot be published at all.
+  - **This is not a release.** It re-expresses where the project is, so it
+    earns no step of its own. Items completed alongside it advance the counter
+    once, to `1.0.0a2`, whatever size they earned - the counter has nowhere to
+    record a size, and the size is already written in the entry.
+  - **Every other mention of `3.0.4` is history** - a past entry, a note, a
+    review file naming what shipped - and history is not corrected. Do not
+    rewrite a heading or a `- From:` line that names an old version: the two
+    have to match word for word, and editing one of the pair breaks the item
+    mid-run.
+  - **Say in the entry why the version looks smaller than yesterday's**, and
+    **leave the three existing tags alone.** The new version sorts below every
+    tag the repository carries, and a reader who meets that with no
+    explanation goes looking for a mistake. Name the old form and the new one.
+    Do not delete, move or re-tag anything.
+  - From: Version Scheme Override - re-express the version under PEP 440
 
 </details>

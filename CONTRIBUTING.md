@@ -277,8 +277,14 @@ did it and what you saw.
 
 ## The Version Number
 
-The version lives in exactly one place, `__version__` in
-`py_maze/version.py`. Everything else reads it from there:
+The version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
+counter, `1.0.0aN`, counting up to a first release that has not happened yet.
+py_maze is not published to any registry, so the number says where it is going
+rather than where it has been, and the `1.0.0` core does not move until it
+actually releases.
+
+It lives in exactly one place, `__version__` in `py_maze/version.py`.
+Everything else reads it from there:
 
 - `py_maze/__init__.py` re-exports it as `py_maze.__version__`
 - `pyproject.toml` reads that attribute, so the manifest carries no number
@@ -294,21 +300,33 @@ The version lives in exactly one place, `__version__` in
 - the `--version` flag prints the same value
 - the test suite checks `CHANGELOG.md` has an entry for it
 
-So a release changes that one string and adds the matching changelog entry.
-Do not add a version number anywhere else, and do not edit the version as
-part of a feature change: releasing is its own step.
+So a version change edits that one string and adds the matching changelog
+entry. Do not add a version number anywhere else, and do not edit the version
+as part of a feature change: versioning is its own step.
+
+**A pre-release segment holds exactly one number**, which is the thing to know
+before reaching for a bigger step. There is no patch, minor or major to move:
+the counter advances by one for any change that earns a version at all,
+whatever the size of it, so `1.0.0a7` becomes `1.0.0a8` whether the change was
+a typo fix or a new command-line option. Write the normalized spelling,
+`1.0.0a8` - `1.0.0-alpha.8` is the same version to the tooling and a different
+string to a reader. Never reach for a `.dev`, `.post` or `+local` segment to
+carry what the counter cannot hold: each already means something specific, and
+a version with a local segment cannot be published at all.
 
 ## Changes and Pull Requests
 
 - **`CHANGELOG.md`** follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-  and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-  A user-visible change gets an entry under `Added`, `Changed`, `Fixed` or
-  `Removed`, written for someone using py_maze rather than someone reading
-  the diff.
-- **Version weight.** A bug fix that changes no interface is a patch, a new
-  option with the current behaviour unchanged is a minor, and a change to
-  how py_maze is run or imported is a major. Documentation and repository
-  chores move no version at all.
+  and the version is the [PEP 440](https://peps.python.org/pep-0440/) counter
+  described above. A user-visible change gets an entry under `Added`,
+  `Changed`, `Fixed` or `Removed`, written for someone using py_maze rather
+  than someone reading the diff.
+- **Version weight goes in the entry, not in the number.** A bug fix that
+  changes no interface, a new option with the current behaviour unchanged, and
+  a change to how py_maze is run or imported are three different sizes of
+  change, and all three advance the counter by exactly one - so say which it
+  was in the entry, where a reader can see it. Documentation and repository
+  chores advance nothing at all and go under `Unreleased`.
 - **The documentation** is updated in the same change as the behaviour it
   describes, not afterwards. An option that is not on its page is an option
   nobody finds, and a name that is not in the tables on `docs/library.md`

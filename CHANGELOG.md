@@ -3,7 +3,70 @@
 All notable changes to py_maze are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and the version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
+counter: `1.0.0aN`, counting up to a first release that has not happened yet.
+Every entry from `## [3.0.4]` down is a
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) number, which is
+what the project numbered itself with until 2026-10-09, and those numbers are
+left as they were written.
+
+## [1.0.0a1] - 2026-10-09
+
+The version re-expressed, and nothing else. `__version__` read `3.0.4`, a
+number that says three major releases of a published package, while py_maze
+has never been published to any registry and nothing anywhere depends on it.
+It now reads `1.0.0a1`: the first pre-release of the `1.0.0` this is being
+built towards.
+
+**The number is smaller than yesterday's on purpose.** `1.0.0a1` sorts below
+`3.0.4` and below every tag in the repository, which is what a reader should
+expect of a version that has stopped claiming to be released. Nothing was
+released, nothing was withdrawn, and no behaviour changed: the same code that
+answered to `3.0.4` answers to `1.0.0a1`. The three tags the repository
+carries - `v3.0.2`, `v3.0.3` and `v3.0.4` - are untouched, and the entries
+they belong to still say what they said.
+
+**The old numbers do not travel into the new scheme**, because PEP 440 has
+nowhere to put them. A pre-release segment holds exactly one number, so
+`1.0.0-alpha.3.0.4` is not a version Python accepts - it is rejected rather
+than normalized. `3.0.4` is recorded here as the version the project is coming
+from and nowhere else.
+
+### Changed
+
+- `__version__` in `py_maze/version.py` is now `1.0.0a1`. `pyproject.toml`
+  reads that attribute through `version = { attr = "py_maze.__version__" }`,
+  so the manifest needed no edit - the one string is still the one place a
+  version lives. The normalized spelling is the one written: `1.0.0a1`, not
+  `1.0.0-alpha.1`, which is the same version to the tooling and a different
+  string to a reader.
+- The module docstring in `py_maze/version.py` says what the counter is and
+  what it cannot hold: one number after the marker, so the size of a change
+  has no room in the version and is carried by the changelog entry instead,
+  and the `1.0.0` core does not move until the project releases.
+- **`CHANGELOG.md`, `CONTRIBUTING.md` and `docs/development.md` describe the
+  scheme the version is actually in.** All three said Semantic Versioning,
+  and `CONTRIBUTING.md` told a contributor to weigh a change as a patch, a
+  minor or a major - advice that cannot be followed under a single counter,
+  because there is no number for it to move. Each now names PEP 440, says the
+  counter advances by one for any version-relevant change whatever its size,
+  and says the size goes in the changelog entry. The size itself is still
+  judged the same way; only where it is written down has changed.
+- `TestVersion.test_version_is_a_release_number` is now
+  `test_the_version_is_an_unreleased_pre_release`, and it holds the whole
+  shape rather than the first three numbers of it. The old assertion was
+  `^\d+\.\d+\.\d+` with nothing anchoring the end, so it passed for `1.0.0a1`
+  unchanged - and would have passed just as happily for a bare `1.0.0`, which
+  is the one thing the version must not say while nothing is published.
+
+### Added
+
+- `test_the_documents_name_the_scheme_the_version_is_in`, reading
+  `CHANGELOG.md`, `CONTRIBUTING.md` and `docs/development.md` and holding each
+  to naming PEP 440. The prose and the version string are the pair that has to
+  agree here, and the drift this guards is the easy one: a later run reaching
+  for "patch" or "minor" out of habit, writing it into the guide, and leaving a
+  contributor instructions the version cannot carry out.
 
 ## [3.0.4] - 2026-10-08
 
