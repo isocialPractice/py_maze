@@ -58,6 +58,11 @@ from and nowhere else.
   `^\d+\.\d+\.\d+` with nothing anchoring the end, so it passed for `1.0.0a1`
   unchanged - and would have passed just as happily for a bare `1.0.0`, which
   is the one thing the version must not say while nothing is published.
+- `TestVersion.test_the_manifest_reads_the_module_version` reads
+  `pyproject.toml` through `MANIFEST_PATH` rather than opening the name
+  relatively, so the suite no longer depends on the working directory it
+  is run from. Run from anywhere but the repository root, that one test
+  raised `FileNotFoundError` while the three beside it passed.
 
 ### Added
 

@@ -3130,8 +3130,7 @@ class TestVersion(unittest.TestCase):
 
     def test_the_manifest_reads_the_module_version(self):
         # pyproject.toml single-sources the version from py_maze
-        with open('pyproject.toml', encoding='utf-8') as manifest:
-            content = manifest.read()
+        content = read_project_file(MANIFEST_PATH)
 
         self.assertIn('dynamic = ["version"]', content)
         self.assertIn('version = { attr = "py_maze.__version__" }', content)
