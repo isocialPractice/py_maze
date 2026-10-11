@@ -51,7 +51,7 @@ CONTRIBUTING_PATH = os.path.join(PROJECT_ROOT, 'CONTRIBUTING.md')
 LICENSE_PATH = os.path.join(PROJECT_ROOT, 'LICENSE')
 MANIFEST_PATH = os.path.join(PROJECT_ROOT, 'pyproject.toml')
 README_PATH = os.path.join(PROJECT_ROOT, 'README.md')
-SUITE_PATH = os.path.join(PROJECT_ROOT, 'test_py_maze.py')
+TODO_PATH = os.path.join(PROJECT_ROOT, 'TODO.md')
 WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                              'tests.yml')
 PAGES_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
@@ -339,6 +339,192 @@ def doubled_blank_lines(lines):
             blank_above = False
 
     return doubled
+
+
+# how CHANGELOG.md heads an entry: the version in brackets and the date
+# it was written. The one other shape is the dateless `## [Unreleased]`
+# heading Keep a Changelog puts above the entries and CONTRIBUTING.md
+# sends documentation and chore work to, which carries neither a version
+# nor a date because neither is settled yet
+CHANGELOG_HEADING = re.compile(r'^## \[([^\]]+)\](?: - (\d{4}-\d{2}-\d{2}))?$')
+UNRELEASED_ENTRY = 'Unreleased'
+
+# one heading of CHANGELOG.md, read apart from the entry under it. The
+# version is None where the line is neither shape above, so a heading
+# written some third way is reported rather than skipped over
+ChangelogEntry = collections.namedtuple('ChangelogEntry',
+                                        'version date number')
+
+# the heading each of TestVersion.SCHEME_DOCUMENTS writes its scheme
+# under. CHANGELOG.md has none: what it says about the scheme is the
+# preamble above its first entry, and everything below that is history,
+# written under whatever scheme was current on the day
+SCHEME_HEADING = 'The Version Number'
+
+# the three words a single counter cannot carry out, and the one place
+# they are allowed: named together, as the group the version has not
+# got. "There is no patch, minor or major to move" is the sentence both
+# scheme documents are written around, so the triple comes off before
+# the words are looked for, and what is left is a weight named on its
+# own - prose telling a run to move a number 1.0.0aN has nowhere to put
+VERSION_WEIGHT_GROUP = re.compile(r'patch,\s+minor\s+or\s+major',
+                                  re.IGNORECASE)
+VERSION_WEIGHT = re.compile(r'\b(?:patch|minor|major)\b', re.IGNORECASE)
+
+
+def changelog_entries():
+    # every entry heading CHANGELOG.md carries, in the order the file
+    # writes them
+    #
+    # What is inside a fenced block is not read, so the `## [Unreleased]`
+    # CONTRIBUTING.md shows a contributor stays an example even when the
+    # same shape is shown here one day
+    #
+    # Returns:
+    #     list: One ChangelogEntry per `## ` heading, its version and
+    #     date None together where the heading is neither shape
+
+    lines = read_project_file(CHANGELOG_PATH).splitlines()
+    inside, _ = fenced_lines(lines)
+
+    entries = []
+    for number, line in enumerate(lines, start=1):
+        if number in inside or not line.startswith('## '):
+            continue
+
+        heading = CHANGELOG_HEADING.match(line)
+        entries.append(ChangelogEntry(
+            heading.group(1) if heading else None,
+            heading.group(2) if heading else None,
+            number))
+
+    return entries
+
+
+def scheme_prose(path):
+    # the part of a document that says how this project numbers itself
+    # now, as against the part that uses a number
+    #
+    # Reading a span rather than a whole file is the whole point of this.
+    # CHANGELOG.md names a major version three times inside the 3.0.0
+    # entry, and correctly, because that is what the project was
+    # numbering itself with in September. History stays as it was
+    # written; the standing instruction is what is held to the counter
+    #
+    # A heading nested inside the span is part of it, and only a heading
+    # at the span's own level or shallower closes it. That is what a
+    # reader of the section sees, and it is the stricter reading here: a
+    # subsection titled "Bumping the minor" is drift in the one place
+    # prose is read quickest
+    #
+    # What is inside a fenced block is content and never a heading. The
+    # toml example on docs/development.md opens with the comment
+    # `# pyproject.toml`, which reads as a level 1 heading to any pattern
+    # that does not know where the fences are - and a span that ended
+    # there stopped above the sentence this is read for, while the PEP 440
+    # link above it went on satisfying the check
+    #
+    # Args:
+    #     path: Absolute path to one of the scheme documents
+    #
+    # Returns:
+    #     str: The prose, its lines joined as the document writes them.
+    #     Empty where the document carries no such span, which the tests
+    #     reading this report rather than skip over
+
+    lines = read_project_file(path).splitlines()
+    inside, _ = fenced_lines(lines)
+
+    if path == CHANGELOG_PATH:
+        above = []
+        for number, line in enumerate(lines, start=1):
+            if number not in inside and line.startswith('## ['):
+                break
+            above.append(line)
+
+        return '\n'.join(above)
+
+    kept = []
+    depth = None
+    for number, line in enumerate(lines, start=1):
+        heading = (None if number in inside
+                   else re.match(r'(#{1,6})\s+(.*)$', line))
+        if heading:
+            level = len(heading.group(1))
+            if depth is not None and level <= depth:
+                break
+            if depth is None:
+                if heading.group(2).strip() == SCHEME_HEADING:
+                    depth = level
+                continue
+
+        if depth is not None:
+            kept.append(line)
+
+    return '\n'.join(kept)
+
+
+def version_weights_named(text):
+    # the version weights a piece of prose names on its own
+    #
+    # The allowance is deliberately narrow: the triple is recognized in
+    # the one order the repository writes it, so a reworded denial fails
+    # here rather than passing quietly. That is the right way round - a
+    # failure names the line and a person reads it, where a looser
+    # pattern would let the drift back in beside the denial
+    #
+    # Args:
+    #     text: The prose, as one string
+    #
+    # Returns:
+    #     list: The weight words it names on their own, as they are
+    #     written and in the order they are written
+
+    return VERSION_WEIGHT.findall(VERSION_WEIGHT_GROUP.sub('', text))
+
+
+def road_map_prose():
+    # the prose of TODO.md's road map: the paragraph that opens each
+    # section, and anything else written as prose beside the items
+    #
+    # A line is prose here when it starts at the left margin and is not a
+    # heading, a list item, a blockquote, a table row or inside a fenced
+    # block. Everything an item carries is indented under it, so that one
+    # rule leaves out the items and their nested properties - which is
+    # what makes this safe to run over a file whose `## Current` items
+    # quote the drift in order to describe it. `## Current` and
+    # `## Complete` are left out by name as well, the second because an
+    # archived item is never rewritten
+    #
+    # Returns:
+    #     list: One (line number, line) pair per prose line, counting
+    #     from 1 as the file is read
+
+    lines = read_project_file(TODO_PATH).splitlines()
+    inside, _ = fenced_lines(lines)
+
+    prose = []
+    section = None
+    for number, line in enumerate(lines, start=1):
+        if number in inside:
+            continue
+
+        heading = re.match(r'(#{1,6})\s+(.*)$', line)
+        if heading:
+            if len(heading.group(1)) == 2:
+                section = heading.group(2).strip()
+            continue
+
+        if section in (None, 'Current', 'Complete'):
+            continue
+        if not line.strip() or line[:1].isspace():
+            continue
+        if re.match(r'[-*+>|<]|\d+\.', line):
+            continue
+
+        prose.append((number, line))
+
+    return prose
 
 
 def version_pair(text):
@@ -3112,21 +3298,98 @@ class TestVersion(unittest.TestCase):
 
     def test_the_documents_name_the_scheme_the_version_is_in(self):
         # the version string and the prose describing it are the pair
-        # that has to agree, and the drift is a later edit reaching for
-        # "patch" or "minor" out of habit - advice a single counter
-        # cannot carry out
+        # that has to agree. The span is read rather than the file,
+        # which also makes a scheme section that has been renamed away
+        # or deleted a failure here: scheme_prose() comes back empty
         for path in self.SCHEME_DOCUMENTS:
             with self.subTest(document=os.path.basename(path)):
-                self.assertIn('PEP 440', read_project_file(path))
+                self.assertIn('PEP 440', scheme_prose(path))
+
+    def test_no_scheme_document_weighs_a_change_as_a_version_step(self):
+        # the drift the test above was written for and could not see:
+        # "PEP 440" stays in the file while a sentence beside it reaches
+        # for "patch" or "minor" out of habit, which is advice a single
+        # counter cannot carry out. Presence of a link is satisfied by a
+        # link, so the absence of the vocabulary is read as well, and
+        # only a weight named on its own counts - version_weights_named()
+        # carries why the three together are the one allowed shape
+        for path in self.SCHEME_DOCUMENTS:
+            with self.subTest(document=os.path.basename(path)):
+                self.assertEqual(
+                    version_weights_named(scheme_prose(path)), [],
+                    'the counter advances by one whatever the size of the '
+                    'change, and the size goes in the changelog entry')
+
+    def test_the_road_map_weighs_no_section_as_a_version_step(self):
+        # TODO.md is not one of SCHEME_DOCUMENTS and does not join them:
+        # it describes no scheme and carries no PEP 440 link to hold it
+        # to. It is read here instead, because its section intros are the
+        # prose a run acts on before it writes a version, which makes it
+        # the document where this drift costs most - thirteen of them
+        # told a run to move a number 1.0.0aN has nowhere to put. Only
+        # the road map's own prose is read, so the items under
+        # `## Current` that quote the drift in order to describe it, and
+        # the archived ones under `## Complete`, are left out
+        named = ['TODO.md:%d names a %s' % (number, weight)
+                 for number, line in road_map_prose()
+                 for weight in version_weights_named(line)]
+
+        self.assertEqual(named, [],
+                         'a section intro says what finishing its items '
+                         'does to the counter, and the size of the change '
+                         'is written in the changelog entry')
 
     def test_the_changelog_documents_the_version(self):
         # the manifest reads __version__, so the changelog is the one
-        # other place the number has to agree
-        released = re.findall(r'^## \[([^\]]+)\]',
-                              read_project_file(CHANGELOG_PATH),
-                              re.MULTILINE)
+        # other place the number has to agree - and it has to agree with
+        # the entry a run just wrote rather than with any heading in the
+        # file. Reading every heading stopped requiring that on the one
+        # release it matters most for: the counter climbs to a `1.0.0`
+        # the old scheme already spent, so the 2025 entry would have
+        # satisfied the check in the release's own place. An `Unreleased`
+        # heading is not a candidate either, which is why the dated
+        # entries alone are read
+        dated = [entry for entry in changelog_entries() if entry.date]
 
-        self.assertIn(py_maze.__version__, released)
+        self.assertTrue(dated, 'the changelog carries no dated entry at all')
+        self.assertEqual(dated[0].version, py_maze.__version__,
+                         'the newest dated entry is the version the '
+                         'package is on')
+
+    def test_the_changelog_heads_every_entry_one_of_the_two_shapes(self):
+        # a version with the date it was written, or the dateless
+        # `## [Unreleased]`. CONTRIBUTING.md sends documentation and
+        # chore work to the second, and the file had never carried one
+        # and nothing recognized one, so the first run to take that
+        # advice wrote a shape the repository had not seen
+        unread = ['CHANGELOG.md:%d' % entry.number
+                  for entry in changelog_entries() if entry.version is None]
+
+        self.assertEqual(unread, [],
+                         'an entry heading reads `## [x.y.z] - YYYY-MM-DD`, '
+                         'or `## [%s]` with neither' % UNRELEASED_ENTRY)
+
+    def test_an_unreleased_heading_stands_dateless_above_the_entries(self):
+        # one heading holds everything waiting for a number, it carries
+        # no date because there is no release day to give it, and it
+        # sits above the entries the way Keep a Changelog puts it. None
+        # at all is the ordinary state: it is there only while something
+        # is waiting
+        entries = changelog_entries()
+        waiting = [entry for entry in entries
+                   if entry.version == UNRELEASED_ENTRY]
+
+        self.assertLessEqual(len(waiting), 1,
+                             'one heading holds all of the work that has '
+                             'no number yet')
+
+        for entry in waiting:
+            self.assertIsNone(entry.date,
+                              'nothing under this heading has a release '
+                              'day to be dated by')
+            self.assertEqual(entry.number, entries[0].number,
+                             'the work with no number yet goes above the '
+                             'entries that have one')
 
     def test_the_manifest_reads_the_module_version(self):
         # pyproject.toml single-sources the version from py_maze

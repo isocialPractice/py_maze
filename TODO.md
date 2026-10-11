@@ -28,126 +28,28 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Code Review Override - what the new counter left behind
-
-#### Resolve Issues
-
-- [ ] Version Counter Drift 1: the roadmap sections still promise patch,
-  minor and major version updates
-  - **Issue**: Thirteen section intros in this file weigh a section's items
-    as a version step the counter no longer has. `## Fixes and Hardening`
-    and `## Project Infrastructure` call theirs "a patch version update",
-    `## Library Packaging and Public API` calls its own "a major version
-    update", and ten more sections say patch or minor the same way.
-    `py_maze/version.py` and `CONTRIBUTING.md` now say the opposite in
-    terms: a pre-release segment holds exactly one number, the counter
-    advances by one for any change that earns a version whatever its size,
-    and the size is recorded in that run's changelog entry. This is the file
-    a run reads first, so the next run finishing a `## Gameplay
-    Enhancements` item is told by that section's own intro to move a minor
-    `1.0.0aN` has nowhere to put. The completed item named `CHANGELOG.md`,
-    `CONTRIBUTING.md` and `docs/development.md` and left this file out, and
-    this prose is not history - it is standing instruction for work that has
-    not been done yet
-  - **Goal**: Rewrite each of the thirteen intros to say what finishing a
-    section's items does to the counter - advances it by one - and that the
-    size of the change is written in the changelog entry instead. Leave the
-    section headings and every `- From:` line exactly as they are: the items
-    that name them have to match word for word, and editing one of the pair
-    breaks the item mid-run. `## The Documentation Site` and
-    `## Documentation and Chores` say "None of these move the version",
-    which is still true and needs no edit
-  - From: Version Scheme Override - re-express the version under PEP 440
-
-#### Found Issues
-
-- [ ] The counter counts up to a version `CHANGELOG.md` already carries
-  - **Issue**: `py_maze/version.py`, `CONTRIBUTING.md`,
-    `docs/development.md` and the top of `CHANGELOG.md` all describe
-    `1.0.0aN` as counting up to a first release that has not happened yet,
-    and `CHANGELOG.md` carries `## [1.0.0] - 2025-12-25` around 2300 lines
-    below the sentence that says so. The destination string is already
-    taken. When a run eventually writes `__version__ = '1.0.0'`,
-    `test_the_changelog_documents_the_version` is satisfied by that 2025
-    heading, so the one guard tying the version to an entry stops requiring
-    the release's own entry, and the file then carries two `## [1.0.0]`
-    headings that neither a reader nor the heading regex can tell apart.
-    `packaging` confirms the ordering: `Version('1.0.0a1')` sorts below both
-    `Version('1.0.0')` and `Version('3.0.4')`
-  - **Goal**: Decide what the destination is and write it into the same
-    documents: either the core the counter climbs to is not `1.0.0` because
-    that number is spent, or the 2025-12-25 entry is marked as the old
-    scheme's `1.0.0` so that a reader and a regex can both tell the two
-    apart. Then tighten `test_the_changelog_documents_the_version` so it
-    holds the version against the entry a run just wrote rather than against
-    any heading in the file. Note while doing it that `CONTRIBUTING.md` now
-    sends documentation and chores to an `Unreleased` heading, so "the first
-    heading in the file" is not the test to write
-  - From: Code Review Override - what the new counter left behind
-- [ ] The scheme test passes on the string `PEP 440` alone
-  - **Issue**: `test_the_documents_name_the_scheme_the_version_is_in` asserts
-    only that `PEP 440` appears in each of three documents. Its own comment
-    names the drift it guards - "a later edit reaching for 'patch' or
-    'minor' out of habit" - and that drift passes it: write "bump the minor
-    for a new option" into `CONTRIBUTING.md` and the PEP 440 link is still
-    there, so the test stays green. It fails only if a whole scheme section
-    is deleted. `TODO.md` carries exactly that drift in thirteen places
-    today, and is not among the documents the test reads
-  - **Goal**: Hold the scheme documents to the absence of the version-weight
-    vocabulary as well as to the presence of the link, naming a "patch
-    version", "minor version" or "major version" in prose about how this
-    project numbers itself as the failure. Then decide whether `TODO.md`
-    joins `SCHEME_DOCUMENTS`: its intros are the prose a run acts on, which
-    makes it the document where the drift costs most, and reading it would
-    have caught the item above
-  - From: Code Review Override - what the new counter left behind
-- [ ] `SUITE_PATH` is defined and read nowhere
-  - **Issue**: `SUITE_PATH` in `test_py_maze.py` sits in the block of
-    root-file path constants, and no line of the suite reads it.
-    `test_no_line_of_the_suite_runs_past_the_width_it_keeps_to` orphaned it
-    by moving onto `past_the_width('test_py_maze.py', ...)`, which names the
-    file relatively and lets `document()` build the path. It is the block
-    this turn added `CHANGELOG_PATH` to, so a later run reaching for the
-    suite's own path finds a constant that looks current and is read by
-    nothing
-  - **Goal**: Delete `SUITE_PATH`, or say in a comment beside it that the
-    width checks name their files relatively through `document()` and the
-    constant is kept for readers rather than read. Deleting it is the smaller
-    answer, since `documents()` already writes the suite's name as a string
-  - From: Code Review Override - what the new counter left behind
-- [ ] Nothing exercises the `Unreleased` heading `CONTRIBUTING.md` now asks for
-  - **Issue**: `CONTRIBUTING.md` tells a contributor that documentation and
-    repository chores "advance nothing at all and go under `Unreleased`".
-    `CHANGELOG.md` has never carried an `Unreleased` heading, no test
-    recognizes one, and Keep a Changelog spells it `## [Unreleased]` with no
-    date where every other heading in the file reads
-    `## [x.y.z] - YYYY-MM-DD`. The first run to follow the advice writes a
-    heading shape nothing in the repository has seen
-  - **Goal**: Exercise the advice or drop it. Either show the shape in
-    `CONTRIBUTING.md` and have the suite accept a dateless `## [Unreleased]`
-    heading above the version entries while still requiring `__version__`
-    among the dated ones, or say instead that chore work is recorded in the
-    next version's entry, which is what every run has actually done
-  - From: Code Review Override - what the new counter left behind
-
 ## Fixes and Hardening
 
-Bug fixes and robustness improvements to the existing game. Completing
-items in this section is a patch version update.
+Bug fixes and robustness improvements to the existing game. Completing an
+item here advances the version counter by one, and the changelog entry says
+the change fixed a fault without touching an interface.
 
 No items are currently queued in this section.
 
 ## Project Infrastructure
 
-Tooling, packaging, and documentation groundwork. Completing items in
-this section is a patch version update.
+Tooling, packaging, and documentation groundwork. Completing an item here
+advances the version counter by one, and the changelog entry says the change
+was groundwork rather than anything a player sees.
 
 No items are currently queued in this section.
 
 ## Gameplay Enhancements
 
 New player-facing features from the README's future-enhancements list.
-Completing items in this section is a minor version update.
+Completing an item here advances the version counter by one, and the
+changelog entry says the change added a feature with the current behaviour
+unchanged.
 
 - [ ] Add more than one player character to choose between, so the marker
   walking the maze is not always `o`
@@ -159,8 +61,9 @@ Completing items in this section is a minor version update.
 Ways of playing a maze that are not the plain walk from the entrance to the
 exit. Each mode is the game that is already there played differently: the
 same grid, the same solver, the same renderer and the same key loop, with a
-bare run naming no mode playing exactly as it does today. Completing items
-in this section is a minor version update.
+bare run naming no mode playing exactly as it does today. Completing an item
+here advances the version counter by one, and the changelog entry says the
+change added a mode with the current behaviour unchanged.
 
 - [ ] Add a quest mode: an inventory the player fills from the maze, where
   what is carried is what opens the way on, so a maze is played for what is
@@ -189,8 +92,9 @@ Modes proposed but not yet specified, held apart from the two above so that
 Each is the game that is already there under a different rule, reachable
 through the same `--mode` option and playable with the same keys, and each
 names what it reuses so none of them is a second engine. An item here is
-worked up into its own items before it is built. Completing items in this
-section is a minor version update.
+worked up into its own items before it is built. Completing one advances the
+version counter by one, and the changelog entry says the change added a mode
+with the current behaviour unchanged.
 
 - [ ] Add a time attack mode: the run is against a clock rather than
   against the maze, and the clock running out ends it the way the exit does
@@ -249,8 +153,9 @@ section is a minor version update.
 
 ## Maze Solver and Visualization
 
-Algorithmic features around solving and displaying mazes. Completing
-items in this section is a minor version update.
+Algorithmic features around solving and displaying mazes. Completing an item
+here advances the version counter by one, and the changelog entry says the
+change added a feature with the current behaviour unchanged.
 
 No items are currently queued in this section.
 
@@ -258,15 +163,17 @@ No items are currently queued in this section.
 
 Turning the flat module into an importable package with a documented
 surface. `python py_maze.py` gives way to `python -m py_maze`, so completing
-items in this section is a major version update.
+an item here advances the version counter by one, and the changelog entry
+says the change breaks the way py_maze is run or imported.
 
 No items are currently queued in this section.
 
 ## Generation Algorithms
 
 More than one way to carve a maze, selectable from the command line. New
-options with the current behaviour unchanged, so completing items in this
-section is a minor version update.
+options with the current behaviour unchanged, so completing an item here
+advances the version counter by one and the changelog entry says the change
+added an option.
 
 No items are currently queued in this section.
 
@@ -274,7 +181,8 @@ No items are currently queued in this section.
 
 Letting another program call py_maze and read what comes back, with no
 dependencies and no network service. New options with the current output
-unchanged, so completing items in this section is a minor version update.
+unchanged, so completing an item here advances the version counter by one and
+the changelog entry says the change added an option.
 
 No items are currently queued in this section.
 
@@ -282,8 +190,9 @@ No items are currently queued in this section.
 
 How the game looks while it is being played: the redraw, the status line and
 everything a player watches move. Verifying an item here means watching the
-screen rather than reading a test, and completing one is a patch version
-update.
+screen rather than reading a test, and completing one advances the version
+counter by one, with the changelog entry saying the change fixed how the
+screen draws without touching an interface.
 
 - [ ] Pin the partial redraw against a real Windows console, not against the
   suite's own `TerminalScreen`, so the model and the thing it models are
@@ -368,7 +277,9 @@ update.
 ## Runtime and Portability Fixes
 
 Faults found while evaluating the finished project, none of which change an
-interface. Completing items in this section is a patch version update.
+interface. Completing an item here advances the version counter by one, and
+the changelog entry says the change fixed a fault without touching an
+interface.
 
 No items are currently queued in this section.
 
@@ -378,8 +289,8 @@ Reading a maze rather than carving or solving one: what shape it turned out
 to be, how hard it is likely to play, and how two mazes compare. Everything
 here is measured from a grid that already exists, so it works the same on a
 generated maze and on one read out of a file. New options with the current
-output unchanged, so completing items in this section is a minor version
-update.
+output unchanged, so completing an item here advances the version counter by
+one and the changelog entry says the change added an option.
 
 - [ ] Carry the same measurements in the JSON document under a `stats` key
   when `--stats` is given, so a script reads them rather than parsing the
@@ -406,7 +317,8 @@ What a maze is drawn with, as opposed to when the screen is redrawn. Today
 every maze is asterisks and spaces, and every marker is one ASCII character
 fixed in `py_maze/rendering.py`. This section makes the drawing a choice
 without changing what a bare run draws. New options with the current output
-unchanged, so completing items in this section is a minor version update.
+unchanged, so completing an item here advances the version counter by one and
+the changelog entry says the change added an option.
 
 - [ ] Gather the markers into one style object in `py_maze/rendering.py` -
   the wall, the open cell, the player, the solution, the frontier, the
@@ -2205,5 +2117,99 @@ No items are currently queued in this section.
     explanation goes looking for a mistake. Name the old form and the new one.
     Do not delete, move or re-tag anything.
   - From: Version Scheme Override - re-express the version under PEP 440
+- [x] Version Counter Drift 1: the roadmap sections still promise patch,
+  minor and major version updates
+  - **Issue**: Thirteen section intros in this file weigh a section's items
+    as a version step the counter no longer has. `## Fixes and Hardening`
+    and `## Project Infrastructure` call theirs "a patch version update",
+    `## Library Packaging and Public API` calls its own "a major version
+    update", and ten more sections say patch or minor the same way.
+    `py_maze/version.py` and `CONTRIBUTING.md` now say the opposite in
+    terms: a pre-release segment holds exactly one number, the counter
+    advances by one for any change that earns a version whatever its size,
+    and the size is recorded in that run's changelog entry. This is the file
+    a run reads first, so the next run finishing a `## Gameplay
+    Enhancements` item is told by that section's own intro to move a minor
+    `1.0.0aN` has nowhere to put. The completed item named `CHANGELOG.md`,
+    `CONTRIBUTING.md` and `docs/development.md` and left this file out, and
+    this prose is not history - it is standing instruction for work that has
+    not been done yet
+  - **Goal**: Rewrite each of the thirteen intros to say what finishing a
+    section's items does to the counter - advances it by one - and that the
+    size of the change is written in the changelog entry instead. Leave the
+    section headings and every `- From:` line exactly as they are: the items
+    that name them have to match word for word, and editing one of the pair
+    breaks the item mid-run. `## The Documentation Site` and
+    `## Documentation and Chores` say "None of these move the version",
+    which is still true and needs no edit
+  - From: Version Scheme Override - re-express the version under PEP 440
+- [x] The counter counts up to a version `CHANGELOG.md` already carries
+  - **Issue**: `py_maze/version.py`, `CONTRIBUTING.md`,
+    `docs/development.md` and the top of `CHANGELOG.md` all describe
+    `1.0.0aN` as counting up to a first release that has not happened yet,
+    and `CHANGELOG.md` carries `## [1.0.0] - 2025-12-25` around 2300 lines
+    below the sentence that says so. The destination string is already
+    taken. When a run eventually writes `__version__ = '1.0.0'`,
+    `test_the_changelog_documents_the_version` is satisfied by that 2025
+    heading, so the one guard tying the version to an entry stops requiring
+    the release's own entry, and the file then carries two `## [1.0.0]`
+    headings that neither a reader nor the heading regex can tell apart.
+    `packaging` confirms the ordering: `Version('1.0.0a1')` sorts below both
+    `Version('1.0.0')` and `Version('3.0.4')`
+  - **Goal**: Decide what the destination is and write it into the same
+    documents: either the core the counter climbs to is not `1.0.0` because
+    that number is spent, or the 2025-12-25 entry is marked as the old
+    scheme's `1.0.0` so that a reader and a regex can both tell the two
+    apart. Then tighten `test_the_changelog_documents_the_version` so it
+    holds the version against the entry a run just wrote rather than against
+    any heading in the file. Note while doing it that `CONTRIBUTING.md` now
+    sends documentation and chores to an `Unreleased` heading, so "the first
+    heading in the file" is not the test to write
+  - From: Code Review Override - what the new counter left behind
+- [x] The scheme test passes on the string `PEP 440` alone
+  - **Issue**: `test_the_documents_name_the_scheme_the_version_is_in` asserts
+    only that `PEP 440` appears in each of three documents. Its own comment
+    names the drift it guards - "a later edit reaching for 'patch' or
+    'minor' out of habit" - and that drift passes it: write "bump the minor
+    for a new option" into `CONTRIBUTING.md` and the PEP 440 link is still
+    there, so the test stays green. It fails only if a whole scheme section
+    is deleted. `TODO.md` carries exactly that drift in thirteen places
+    today, and is not among the documents the test reads
+  - **Goal**: Hold the scheme documents to the absence of the version-weight
+    vocabulary as well as to the presence of the link, naming a "patch
+    version", "minor version" or "major version" in prose about how this
+    project numbers itself as the failure. Then decide whether `TODO.md`
+    joins `SCHEME_DOCUMENTS`: its intros are the prose a run acts on, which
+    makes it the document where the drift costs most, and reading it would
+    have caught the item above
+  - From: Code Review Override - what the new counter left behind
+- [x] `SUITE_PATH` is defined and read nowhere
+  - **Issue**: `SUITE_PATH` in `test_py_maze.py` sits in the block of
+    root-file path constants, and no line of the suite reads it.
+    `test_no_line_of_the_suite_runs_past_the_width_it_keeps_to` orphaned it
+    by moving onto `past_the_width('test_py_maze.py', ...)`, which names the
+    file relatively and lets `document()` build the path. It is the block
+    this turn added `CHANGELOG_PATH` to, so a later run reaching for the
+    suite's own path finds a constant that looks current and is read by
+    nothing
+  - **Goal**: Delete `SUITE_PATH`, or say in a comment beside it that the
+    width checks name their files relatively through `document()` and the
+    constant is kept for readers rather than read. Deleting it is the smaller
+    answer, since `documents()` already writes the suite's name as a string
+  - From: Code Review Override - what the new counter left behind
+- [x] Nothing exercises the `Unreleased` heading `CONTRIBUTING.md` now asks for
+  - **Issue**: `CONTRIBUTING.md` tells a contributor that documentation and
+    repository chores "advance nothing at all and go under `Unreleased`".
+    `CHANGELOG.md` has never carried an `Unreleased` heading, no test
+    recognizes one, and Keep a Changelog spells it `## [Unreleased]` with no
+    date where every other heading in the file reads
+    `## [x.y.z] - YYYY-MM-DD`. The first run to follow the advice writes a
+    heading shape nothing in the repository has seen
+  - **Goal**: Exercise the advice or drop it. Either show the shape in
+    `CONTRIBUTING.md` and have the suite accept a dateless `## [Unreleased]`
+    heading above the version entries while still requiring `__version__`
+    among the dated ones, or say instead that chore work is recorded in the
+    next version's entry, which is what every run has actually done
+  - From: Code Review Override - what the new counter left behind
 
 </details>

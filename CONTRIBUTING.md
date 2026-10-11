@@ -278,10 +278,16 @@ did it and what you saw.
 ## The Version Number
 
 The version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
-counter, `1.0.0aN`, counting up to a first release that has not happened yet.
-py_maze is not published to any registry, so the number says where it is going
-rather than where it has been, and the `1.0.0` core does not move until it
-actually releases.
+counter, `1.0.0aN`, counting up to the first published release. py_maze is not
+published to any registry, so the number says where it is going rather than
+where it has been, and the `1.0.0` core does not move until it actually
+releases.
+
+**That destination was spent once already.** The semantic-versioning scheme
+this one replaced reached `1.0.0` on 2025-12-25, so the entry for it is headed
+`## [1.0.0 under semver]` in `CHANGELOG.md`, and the plain `## [1.0.0]` is
+left for the release the counter is climbing to. Nothing else takes that
+heading.
 
 It lives in exactly one place, `__version__` in `py_maze/version.py`.
 Everything else reads it from there:
@@ -298,7 +304,9 @@ Everything else reads it from there:
   ```
 
 - the `--version` flag prints the same value
-- the test suite checks `CHANGELOG.md` has an entry for it
+- the test suite checks that the newest **dated** entry in
+  `CHANGELOG.md` is that version, so a run that bumps the counter and
+  forgets the entry fails rather than matching some older heading
 
 So a version change edits that one string and adds the matching changelog
 entry. Do not add a version number anywhere else, and do not edit the version
@@ -325,14 +333,35 @@ a version with a local segment cannot be published at all.
   changes no interface, a new option with the current behaviour unchanged, and
   a change to how py_maze is run or imported are three different sizes of
   change, and all three advance the counter by exactly one - so say which it
-  was in the entry, where a reader can see it. Documentation and repository
-  chores advance nothing at all and go under `Unreleased`.
+  was in the entry, where a reader can see it.
+- **Documentation and repository chores advance nothing at all.** They go
+  above the version entries, under the dateless heading Keep a Changelog
+  reserves for work that has no number yet:
+
+  ```markdown
+  ## [Unreleased]
+
+  ### Changed
+
+  - What the chore changed, written for a reader rather than for the diff.
+  ```
+
+  That heading carries no version and no date, where every entry below it
+  reads `## [x.y.z] - YYYY-MM-DD`, and its content folds into the next
+  version's entry when one is written. The suite reads both shapes and holds
+  `__version__` against the newest **dated** entry, so an `Unreleased`
+  heading is never what satisfies that check.
 - **The documentation** is updated in the same change as the behaviour it
   describes, not afterwards. An option that is not on its page is an option
   nobody finds, and a name that is not in the tables on `docs/library.md`
   fails the suite outright.
 - **`TODO.md`** holds the road map. Planned work is grouped into themed
-  sections there, and the next few items are listed under `## Current`.
+  sections there, and the next few items are listed under `## Current`. Each
+  section's opening paragraph says what finishing one of its items does to the
+  counter - advances it by one - and what the entry should say the size of the
+  change was. The suite reads those paragraphs and fails on one that weighs a
+  section as a version step instead, because they are the standing instruction
+  a run reads before it writes a version.
 - Keep a pull request to one thing. A fix and a refactor in one diff is two
   reviews wearing one hat.
 

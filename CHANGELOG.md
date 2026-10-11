@@ -4,11 +4,114 @@ All notable changes to py_maze are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
-counter: `1.0.0aN`, counting up to a first release that has not happened yet.
-Every entry from `## [3.0.4]` down is a
+counter: `1.0.0aN`, counting up to the first published release. Every entry
+from `## [3.0.4]` down is a
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) number, which is
 what the project numbered itself with until 2026-10-09, and those numbers are
 left as they were written.
+
+**The old scheme reached `1.0.0` first**, on 2025-12-25, so that entry is
+headed `## [1.0.0 under semver]` rather than `## [1.0.0]`. The counter is
+climbing to a `1.0.0` of its own, and a reader and the pattern the suite
+reads these headings with both have to be able to tell the two apart. The
+entry below that heading is unchanged; only the heading says which scheme
+its number belongs to.
+
+Work that earns no version at all - documentation and repository chores - is
+recorded under a dateless `## [Unreleased]` heading above the entries, which
+is where Keep a Changelog puts it, and folds into the next version's entry
+when one is written.
+
+## [1.0.0a2] - 2026-10-11
+
+What the new counter left behind: the destination it climbs to was a string
+the changelog already carried, the road map still told a run to move numbers
+the counter has not got, and the one test guarding the scheme prose passed on
+the presence of a link. Nothing a player can see has changed, so this is a
+fix that touches no interface.
+
+**The counter's destination was spent.** `1.0.0a1` counts up to `1.0.0`, and
+the old scheme reached `1.0.0` on 2025-12-25. Two entries under one heading is
+confusing for a reader and invisible to a pattern, and it would have taken the
+version check with it: `assertIn` over every heading in the file was satisfied
+by the 2025 entry, so the run that finally wrote `__version__ = '1.0.0'` would
+have passed without writing the release's own entry. The 2025 entry is now
+headed `## [1.0.0 under semver]` and the check reads the newest dated entry.
+
+### Changed
+
+- **`CHANGELOG.md` heads the 2025-12-25 entry `## [1.0.0 under semver]`.**
+  It is the one entry of the old scheme that names its scheme, because it is
+  the one whose number the counter is climbing to. Nothing under the heading
+  changed; the preamble says why the heading does.
+- **`CHANGELOG.md`, `CONTRIBUTING.md`, `docs/development.md` and the
+  `py_maze/version.py` docstring say what the destination is.** All four said
+  the counter was counting up to "a first release that has not happened yet",
+  which was true and left out that the string it is counting up to was
+  already in the file. Each now says the counter climbs to the first published
+  release, and that the plain `## [1.0.0]` heading is left for it.
+- `TestVersion.test_the_changelog_documents_the_version` holds `__version__`
+  against the newest dated entry rather than against any heading in the file.
+  A run that advances the counter and forgets the entry now fails, where
+  before it matched an older heading and passed.
+- `TestVersion.test_the_documents_name_the_scheme_the_version_is_in` reads the
+  span of each document that describes the scheme - the preamble of
+  `CHANGELOG.md`, the `## The Version Number` section of the other two -
+  rather than the whole file. A scheme section renamed away or deleted is now
+  a failure, where reading the whole file meant a PEP 440 link anywhere in it
+  was enough.
+- **The thirteen road map section intros in `TODO.md` say what finishing a
+  section does to the counter.** Each one weighed its items as a patch, a
+  minor or a major version update, which is advice `1.0.0aN` has no number for
+  - and `TODO.md` is the file a run reads first, so a run finishing a gameplay
+  item was told by that section's own paragraph to move something that is not
+  there. Each now says the counter advances by one and the size of the change
+  goes in the changelog entry. The section headings and every `- From:` line
+  are untouched, so the items that name them still match word for word.
+- `CONTRIBUTING.md` shows the shape of the `## [Unreleased]` heading it sends
+  documentation and chore work to, as a fenced example, and says that it
+  carries no version and no date and folds into the next version's entry. The
+  advice was there with no shape beside it, and the file had never carried
+  such a heading, so the first run to take it would have written something the
+  repository had not seen.
+
+### Added
+
+- `test_no_scheme_document_weighs_a_change_as_a_version_step`, holding the
+  scheme prose to the absence of the version-weight vocabulary as well as to
+  the presence of the PEP 440 link. The drift the old test was written for -
+  "bump the minor for a new option", written into the guide out of habit -
+  passed it, because the link was still there. The three weights may be named
+  together, as the group the version has not got, which is the sentence both
+  guides are written around; one named on its own is the failure.
+- `test_the_road_map_weighs_no_section_as_a_version_step`, reading the prose
+  of `TODO.md`'s road map the same way. It is not one of the scheme documents
+  and does not join them - it describes no scheme and carries no link to hold
+  it to - but its intros are what a run acts on, which is where this drift
+  costs most. Only prose at the left margin is read, so the items under
+  `## Current` that quote the drift in order to describe it, and the archived
+  ones under `## Complete`, are left alone.
+- `test_the_changelog_heads_every_entry_one_of_the_two_shapes` and
+  `test_an_unreleased_heading_stands_dateless_above_the_entries`, which are
+  what make the `Unreleased` advice real: a heading written some third way is
+  reported, and an `Unreleased` heading has to be the first entry, carry no
+  date, and be the only one of its kind.
+- `changelog_entries()`, `scheme_prose()`, `version_weights_named()` and
+  `road_map_prose()` in the suite, each carrying the reading its checks depend
+  on and why it stops where it does. `scheme_prose()` reads a heading nested
+  inside a section as part of it, so a subsection titled "Bumping the minor"
+  is caught, and it skips fenced blocks: the toml example on
+  `docs/development.md` opens with the comment `# pyproject.toml`, which any
+  pattern that does not know where the fences are reads as a level 1 heading,
+  and a span ending there stopped directly above the sentence it is read for.
+
+### Removed
+
+- `SUITE_PATH` from `test_py_maze.py`. The width check moved onto
+  `past_the_width('test_py_maze.py', ...)`, which names the file relatively
+  and lets `document()` build the path, and nothing has read the constant
+  since. It sat in the block of root-file paths looking current, which is
+  where a later run reaching for the suite's own path would have found it.
 
 ## [1.0.0a1] - 2026-10-09
 
@@ -2332,7 +2435,7 @@ carves the maze py_maze has always carved, from the same seeds.
   now recognized. Previously only the `\xe0` prefix was handled, so on
   keyboards and consoles that send `\x00` the arrow keys did nothing.
 
-## [1.0.0] - 2025-12-25
+## [1.0.0 under semver] - 2025-12-25
 
 ### Added
 

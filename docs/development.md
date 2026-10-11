@@ -90,9 +90,14 @@ what installs it.
 ## The Version Number
 
 The version is a [PEP 440](https://peps.python.org/pep-0440/) pre-release
-counter, `1.0.0aN`, counting up to a first release that has not happened yet.
-py_maze is published to no registry, so the number says where it is going
-rather than where it has been.
+counter, `1.0.0aN`, counting up to the first published release. py_maze is
+published to no registry, so the number says where it is going rather than
+where it has been.
+
+The semantic-versioning scheme this one replaced reached `1.0.0` on
+2025-12-25, so the entry for it is headed `## [1.0.0 under semver]` in
+`CHANGELOG.md`, and the plain `## [1.0.0]` is left for the release the counter
+is climbing to.
 
 It lives in one place, `__version__` in `py_maze/version.py`, which
 `py_maze/__init__.py` re-exports as `py_maze.__version__`. The manifest reads
@@ -107,7 +112,10 @@ version = { attr = "py_maze.__version__" }
 ```
 
 The same value backs the `--version` flag, and the test suite checks that the
-changelog has an entry for it.
+newest dated entry in the changelog is that version. Work that earns no
+version at all - documentation, repository chores - is recorded above those
+entries under a dateless `## [Unreleased]` heading instead, which the suite
+reads and never accepts as the version's own entry.
 
 A pre-release segment holds exactly one number, so there is no patch, minor or
 major to move: the counter advances by one for any change that earns a version,
