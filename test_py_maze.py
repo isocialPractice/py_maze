@@ -483,6 +483,37 @@ def version_weights_named(text):
     return VERSION_WEIGHT.findall(VERSION_WEIGHT_GROUP.sub('', text))
 
 
+def version_weights_named_by_line(prose):
+    # the weights a block of prose names on its own, line by line, with
+    # the triple still read across the break the prose wraps it at
+    #
+    # version_weights_named() allows the triple inside one string, which
+    # is the denial sentence the scheme documents are written around.
+    # Reading a line at a time voids that allowance rather than
+    # narrowing it: this repository wraps prose near the eightieth
+    # column, so a denial written into a road map section arrives as
+    # "no patch, minor or" and "major to move", and neither line holds
+    # the run the pattern looks for. So the triple comes off the joined
+    # block first, a space to a character so that the line structure and
+    # the numbering both survive it, and each line is then read the way
+    # version_weights_named() reads one
+    #
+    # Args:
+    #     prose: The (line number, line) pairs road_map_prose() returns
+    #
+    # Returns:
+    #     list: One (line number, weight) pair per weight named on its
+    #     own, in the order the lines are given
+
+    blanked = VERSION_WEIGHT_GROUP.sub(
+        lambda found: re.sub(r'[^\n]', ' ', found.group(0)),
+        '\n'.join(line for _, line in prose))
+
+    return [(number, weight)
+            for (number, _), line in zip(prose, blanked.splitlines())
+            for weight in version_weights_named(line)]
+
+
 def road_map_prose():
     # the prose of TODO.md's road map: the paragraph that opens each
     # section, and anything else written as prose beside the items
@@ -3329,10 +3360,13 @@ class TestVersion(unittest.TestCase):
         # told a run to move a number 1.0.0aN has nowhere to put. Only
         # the road map's own prose is read, so the items under
         # `## Current` that quote the drift in order to describe it, and
-        # the archived ones under `## Complete`, are left out
+        # the archived ones under `## Complete`, are left out. The block
+        # is read through version_weights_named_by_line(), so a section
+        # that denies the three the way the scheme documents do is
+        # allowed it even where the wrap puts "major" on the next line
         named = ['TODO.md:%d names a %s' % (number, weight)
-                 for number, line in road_map_prose()
-                 for weight in version_weights_named(line)]
+                 for number, weight
+                 in version_weights_named_by_line(road_map_prose())]
 
         self.assertEqual(named, [],
                          'a section intro says what finishing its items '

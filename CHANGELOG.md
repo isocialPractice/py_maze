@@ -22,6 +22,21 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **A road map section may deny the three weights the way the two guides do.**
+  `test_the_road_map_weighs_no_section_as_a_version_step` read `TODO.md` a line
+  at a time, which voided the one allowance `version_weights_named()` exists to
+  make rather than narrowing it: the denial sentence both scheme documents are
+  written around wraps near the eightieth column, and neither half of a wrapped
+  `patch, minor or major` holds the run that allowance looks for. A section
+  intro saying the counter has no weight to move would have been reported as
+  naming all three. `version_weights_named_by_line()` now takes the triple off
+  the joined block first, a space to a character, so that the line structure
+  and the line number in the failure message both survive it.
+
 ## [1.0.0a2] - 2026-10-11
 
 What the new counter left behind: the destination it climbs to was a string
