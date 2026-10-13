@@ -117,6 +117,12 @@ version at all - documentation, repository chores - is recorded above those
 entries under a dateless `## [Unreleased]` heading instead, which the suite
 reads and never accepts as the version's own entry.
 
+Those two headings and the `## [1.0.0 under semver]` above are the whole
+vocabulary the suite accepts, so a label it does not know fails by line
+number rather than passing as a third shape. The dated entries descend by
+date, which is the order the version check reads the newest entry from and
+the order the suite holds the file to.
+
 A pre-release segment holds exactly one number, so there is no patch, minor or
 major to move: the counter advances by one for any change that earns a version,
 whatever the size of it, and the size is recorded in that run's changelog entry

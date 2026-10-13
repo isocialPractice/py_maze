@@ -346,8 +346,29 @@ def doubled_blank_lines(lines):
 # heading Keep a Changelog puts above the entries and CONTRIBUTING.md
 # sends documentation and chore work to, which carries neither a version
 # nor a date because neither is settled yet
-CHANGELOG_HEADING = re.compile(r'^## \[([^\]]+)\](?: - (\d{4}-\d{2}-\d{2}))?$')
+#
+# The label is held to that vocabulary rather than to being in brackets.
+# `([^\]]+)` read any bracketed text as a version, so `## [TBD]`,
+# `## [next]` and a real entry whose date was forgotten were all a third
+# shape that passed the check written to catch a third shape. A
+# forgotten date was caught only while its entry was the newest, by the
+# version check reading dated[0]; an older entry losing its date was
+# reported by nothing
+#
+# `## [1.0.0 under semver]` is the one label outside both shapes, and it
+# is named here rather than allowed by a loose pattern: the scheme this
+# counter replaced spent `1.0.0` on 2025-12-25, and the plain
+# `## [1.0.0]` is kept for the release the counter is climbing to.
+# Naming it is what makes it the only one - a fourth label coined later
+# is reported until somebody writes it down beside this one
 UNRELEASED_ENTRY = 'Unreleased'
+SEMVER_FINAL_ENTRY = '1.0.0 under semver'
+CHANGELOG_VERSION = r'\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?'
+CHANGELOG_HEADING = re.compile(
+    r'^## \[(?P<version>%s|%s)\] - (?P<date>\d{4}-\d{2}-\d{2})$'
+    r'|^## \[(?P<waiting>%s)\]$'
+    % (CHANGELOG_VERSION, re.escape(SEMVER_FINAL_ENTRY),
+       re.escape(UNRELEASED_ENTRY)))
 
 # one heading of CHANGELOG.md, read apart from the entry under it. The
 # version is None where the line is neither shape above, so a heading
@@ -361,6 +382,12 @@ ChangelogEntry = collections.namedtuple('ChangelogEntry',
 # written under whatever scheme was current on the day
 SCHEME_HEADING = 'The Version Number'
 
+# the two level 2 sections of TODO.md that are not road map: the queue a
+# run works from, and the archive of what it has worked. Neither opens
+# with a paragraph saying what it covers, because neither is an area of
+# work - one is this week's and the other is every week's before it
+WORKING_SECTIONS = ('Current', 'Complete')
+
 # the three words a single counter cannot carry out, and the one place
 # they are allowed: named together, as the group the version has not
 # got. "There is no patch, minor or major to move" is the sentence both
@@ -370,6 +397,31 @@ SCHEME_HEADING = 'The Version Number'
 VERSION_WEIGHT_GROUP = re.compile(r'patch,\s+minor\s+or\s+major',
                                   re.IGNORECASE)
 VERSION_WEIGHT = re.compile(r'\b(?:patch|minor|major)\b', re.IGNORECASE)
+
+
+def starts_a_changelog_entry(number, line, inside):
+    # whether this line of CHANGELOG.md starts an entry, which is the
+    # one question both readers of the file ask
+    #
+    # They used to ask it differently, and the two answers diverged on
+    # the likeliest spelling to meet: `## Unreleased`, which is
+    # `## [Unreleased]` written from memory. changelog_entries() took
+    # any `## ` line and reported it as a heading it could not read,
+    # while scheme_prose() ended the preamble on `## [` and so did not
+    # end it there at all - the preamble swallowed that section's body,
+    # and the weight check failed on whatever it said about a patch or a
+    # minor. Two checks failed for one mistake and the louder one
+    # described the wrong thing. One reader is what stops that
+    #
+    # Args:
+    #     number: The line's number, counting from 1
+    #     line: The line as the file writes it
+    #     inside: The fenced line numbers fenced_lines() reports
+    #
+    # Returns:
+    #     bool: True where the line opens an entry
+
+    return number not in inside and line.startswith('## ')
 
 
 def changelog_entries():
@@ -389,14 +441,17 @@ def changelog_entries():
 
     entries = []
     for number, line in enumerate(lines, start=1):
-        if number in inside or not line.startswith('## '):
+        if not starts_a_changelog_entry(number, line, inside):
             continue
 
         heading = CHANGELOG_HEADING.match(line)
-        entries.append(ChangelogEntry(
-            heading.group(1) if heading else None,
-            heading.group(2) if heading else None,
-            number))
+        if heading:
+            version = heading.group('version') or heading.group('waiting')
+            date = heading.group('date')
+        else:
+            version = date = None
+
+        entries.append(ChangelogEntry(version, date, number))
 
     return entries
 
@@ -438,7 +493,7 @@ def scheme_prose(path):
     if path == CHANGELOG_PATH:
         above = []
         for number, line in enumerate(lines, start=1):
-            if number not in inside and line.startswith('## ['):
+            if starts_a_changelog_entry(number, line, inside):
                 break
             above.append(line)
 
@@ -514,9 +569,9 @@ def version_weights_named_by_line(prose):
             for weight in version_weights_named(line)]
 
 
-def road_map_prose():
-    # the prose of TODO.md's road map: the paragraph that opens each
-    # section, and anything else written as prose beside the items
+def road_map_sections():
+    # TODO.md's road map, section by section: every level 2 section that
+    # is not the queue or the archive, with the prose written under it
     #
     # A line is prose here when it starts at the left margin and is not a
     # heading, a list item, a blockquote, a table row or inside a fenced
@@ -527,15 +582,22 @@ def road_map_prose():
     # `## Complete` are left out by name as well, the second because an
     # archived item is never rewritten
     #
+    # Reading the sections rather than the file is what lets a section
+    # whose intro went missing be named. A heading that carries no prose
+    # is reported as itself, where the joined block below says only that
+    # there is less of it than there was - and nothing at all is what it
+    # says once the last intro goes
+    #
     # Returns:
-    #     list: One (line number, line) pair per prose line, counting
-    #     from 1 as the file is read
+    #     list: One (title, prose) pair per road map section, in the
+    #     order TODO.md writes them, where prose is a list of (line
+    #     number, line) pairs and is empty for a section carrying none
 
     lines = read_project_file(TODO_PATH).splitlines()
     inside, _ = fenced_lines(lines)
 
-    prose = []
-    section = None
+    sections = []
+    prose = None
     for number, line in enumerate(lines, start=1):
         if number in inside:
             continue
@@ -543,10 +605,13 @@ def road_map_prose():
         heading = re.match(r'(#{1,6})\s+(.*)$', line)
         if heading:
             if len(heading.group(1)) == 2:
-                section = heading.group(2).strip()
+                title = heading.group(2).strip()
+                prose = None if title in WORKING_SECTIONS else []
+                if prose is not None:
+                    sections.append((title, prose))
             continue
 
-        if section in (None, 'Current', 'Complete'):
+        if prose is None:
             continue
         if not line.strip() or line[:1].isspace():
             continue
@@ -555,7 +620,19 @@ def road_map_prose():
 
         prose.append((number, line))
 
-    return prose
+    return sections
+
+
+def road_map_prose():
+    # the prose of TODO.md's road map: the paragraph that opens each
+    # section, and anything else written as prose beside the items, every
+    # section's run together as the weight check reads it
+    #
+    # Returns:
+    #     list: One (line number, line) pair per prose line, counting
+    #     from 1 as the file is read
+
+    return [pair for _, prose in road_map_sections() for pair in prose]
 
 
 def version_pair(text):
@@ -3373,6 +3450,32 @@ class TestVersion(unittest.TestCase):
                          'does to the counter, and the size of the change '
                          'is written in the changelog entry')
 
+    def test_every_road_map_section_opens_with_prose(self):
+        # the second reader the check above needs to mean anything.
+        # road_map_prose() was read by that one assertion and compared
+        # against `[]`, so an empty result passed it: rewrite the
+        # section intros as blockquotes, indent them under their
+        # headings, or rename `## Current` out of WORKING_SECTIONS, and
+        # the weight check reports zero weights and stays green. The
+        # scheme documents have had that reader all along - scheme_prose()
+        # coming back empty fails the PEP 440 check, because the two read
+        # the same span - and the road map had none. The prose this file
+        # is held to is the prose a run reads before it writes a version,
+        # so a guard that passes once that prose stops being read is the
+        # one way the check fails quietly
+        #
+        # Read section by section rather than over the file, so an intro
+        # that was deleted or reshaped fails by the name of its section
+        silent = [title for title, prose in road_map_sections() if not prose]
+
+        self.assertEqual(silent, [],
+                         'a road map section opens with a paragraph saying '
+                         'what it covers, and that paragraph is what the '
+                         'weight check above reads')
+        self.assertTrue(road_map_prose(),
+                        'the road map carries no prose for the weight check '
+                        'above to read')
+
     def test_the_changelog_documents_the_version(self):
         # the manifest reads __version__, so the changelog is the one
         # other place the number has to agree - and it has to agree with
@@ -3390,18 +3493,49 @@ class TestVersion(unittest.TestCase):
                          'the newest dated entry is the version the '
                          'package is on')
 
+    def test_the_changelog_writes_its_dated_entries_newest_first(self):
+        # the order the check above depends on and assumed: dated[0] is
+        # the first dated entry in file order, and the newest only
+        # because Keep a Changelog writes a file newest-first. Nothing
+        # held the file to it. A run appending its entry at the bottom
+        # failed that check with "the newest dated entry is the version
+        # the package is on", which sends a reader after an entry that
+        # is present and misplaced, and two entries swapped anywhere
+        # below the first were reported by nothing at all
+        #
+        # The dates are ISO, so they compare as they are written. Two
+        # entries may share a day - a version is not owed one of its own
+        dated = [entry for entry in changelog_entries() if entry.date]
+        out_of_order = ['CHANGELOG.md:%d is dated %s, below %s'
+                        % (entry.number, entry.date, above.date)
+                        for above, entry in zip(dated, dated[1:])
+                        if entry.date > above.date]
+
+        self.assertEqual(out_of_order, [],
+                         'the dated entries descend by date, which is the '
+                         'order the check above reads the newest entry from')
+
     def test_the_changelog_heads_every_entry_one_of_the_two_shapes(self):
         # a version with the date it was written, or the dateless
         # `## [Unreleased]`. CONTRIBUTING.md sends documentation and
         # chore work to the second, and the file had never carried one
         # and nothing recognized one, so the first run to take that
         # advice wrote a shape the repository had not seen
+        #
+        # This is the check written to catch a third shape, and the
+        # pattern it reads with used to accept any text in brackets as
+        # the version - so `## [TBD]`, `## [next]` and a heading whose
+        # date was forgotten were all the third shape, passing. The
+        # vocabulary is named at CHANGELOG_HEADING instead, the one
+        # label outside the two shapes with it, so a label coined later
+        # is reported here until it is written down there
         unread = ['CHANGELOG.md:%d' % entry.number
                   for entry in changelog_entries() if entry.version is None]
 
         self.assertEqual(unread, [],
                          'an entry heading reads `## [x.y.z] - YYYY-MM-DD`, '
-                         'or `## [%s]` with neither' % UNRELEASED_ENTRY)
+                         '`## [%s]` with neither, or the named `## [%s]`'
+                         % (UNRELEASED_ENTRY, SEMVER_FINAL_ENTRY))
 
     def test_an_unreleased_heading_stands_dateless_above_the_entries(self):
         # one heading holds everything waiting for a number, it carries

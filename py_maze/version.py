@@ -15,11 +15,11 @@ reached `1.0.0` on 2025-12-25, so that entry is headed
 `## [1.0.0 under semver]` in `CHANGELOG.md` and the plain `## [1.0.0]`
 is left for the release this counter is climbing to.
 
-A pre-release segment holds exactly one number, which
-means the size of a change cannot be written into the version at all -
-the counter advances by one for any version-relevant run, whatever the
-size, and the size is recorded in that run's `CHANGELOG.md` entry. The
-core `1.0.0` does not move until the project actually releases.
+A pre-release segment holds exactly one number, which means the size
+of a change cannot be written into the version at all - the counter
+advances by one for any version-relevant run, whatever the size, and
+the size is recorded in that run's `CHANGELOG.md` entry. The core
+`1.0.0` does not move until the project actually releases.
 """
 
-__version__ = '1.0.0a2'
+__version__ = '1.0.0a3'

@@ -28,93 +28,6 @@ into a `## Complete` section at the bottom of this file.
   documentation table
   - From: Maze Analysis and Statistics
 
-### Code Review Override - what the new checks do not hold
-
-- [ ] Re-wrap the docstring line `py_maze/version.py:18` left short
-  - **Issue**: Splitting the version docstring's second paragraph left
-    `A pre-release segment holds exactly one number, which` on a line of 53
-    characters where every other line of that paragraph fills to 70. The
-    sentence reads as though it were deliberately broken for emphasis, which
-    it was not - it is where the new paragraph above it was cut in
-  - **Goal**: Re-wrap the paragraph to the width the rest of the docstring
-    keeps to. No wording changes
-  - From: Code Review Override - what the new checks do not hold
-
-#### Resolve Issues
-
-- [ ] Version Counter Drift 2: nothing holds the road map prose to existing
-  - **Issue**: `road_map_prose()` is read by exactly one assertion,
-    `test_the_road_map_weighs_no_section_as_a_version_step`, which compares
-    its weights against `[]`. An empty result passes it. The same blind spot
-    on the scheme documents was closed on purpose - `scheme_prose()` coming
-    back empty fails `test_the_documents_name_the_scheme_the_version_is_in`,
-    because the PEP 440 presence test reads the same span - and `TODO.md` has
-    no second reader to do that. Rewrite the thirteen section intros as
-    blockquotes, indent them under their headings, or rename `## Current` to
-    `## Current Items`, and `road_map_prose()` returns nothing while the
-    check reports zero weights and stays green. The prose this file is held
-    to is the prose a run reads before it writes a version, so a guard that
-    passes once that prose stops being read is the one way this check fails
-    quietly
-  - **Goal**: Give the road map the second reader the scheme documents have.
-    Assert that `road_map_prose()` is non-empty, or better, that every themed
-    section between `## Current` and `## Complete` contributes prose of its
-    own, so a section whose intro was deleted or reshaped fails by name
-    rather than by silence
-  - From: Version Scheme Override - re-express the version under PEP 440
-- [ ] Unreleased Heading Shape 1: the shape check accepts any bracketed label
-  - **Issue**: `test_the_changelog_heads_every_entry_one_of_the_two_shapes`
-    reports only headings where `CHANGELOG_HEADING` did not match at all, and
-    its message names two shapes - `## [x.y.z] - YYYY-MM-DD` and the dateless
-    `## [Unreleased]`. The pattern's version group is `([^\]]+)`, so any text
-    in brackets is a third shape that passes: `## [TBD]`, `## [next]`, or a
-    real entry whose date was forgotten. A forgotten date is caught only
-    while that entry is the newest, because
-    `test_the_changelog_documents_the_version` reads the dated entries alone
-    and an older entry losing its date is reported by nothing. This is the
-    check written to catch a shape the repository had not seen, and it is the
-    one shape it does not catch
-  - **Goal**: Hold a heading to the vocabulary the message already names: the
-    `UNRELEASED_ENTRY` label with no date, or a version with a date. The
-    deliberate `## [1.0.0 under semver]` heading has to keep passing, so the
-    allowance for it is explicit and named rather than a side effect of the
-    pattern being loose - which also means it is the only one, and a fourth
-    label coined later fails until somebody writes it down
-  - From: Code Review Override - what the new counter left behind
-
-#### Found Issues
-
-- [ ] The changelog's newest-first order is assumed and never checked
-  - **Issue**: `test_the_changelog_documents_the_version` reads
-    `dated[0].version`, which is the first dated entry in file order and the
-    newest only because Keep a Changelog writes a file newest-first. Nothing
-    in the suite holds `CHANGELOG.md` to that order. A run that appends its
-    entry at the bottom instead of the top fails the check with "the newest
-    dated entry is the version the package is on", which sends a reader after
-    a missing entry that is present and misplaced; and two entries swapped
-    anywhere below the first are reported by nothing at all
-  - **Goal**: Assert that the dated entries descend by date, so the order the
-    version check depends on is the order something holds the file to, and so
-    the version check's own failure means what it says
-  - From: Code Review Override - what the new checks do not hold
-- [ ] Two readers of `CHANGELOG.md` disagree on what starts an entry
-  - **Issue**: `changelog_entries()` takes any line starting `## ` as an
-    entry heading, so it reports a bracketless `## Unreleased` as a heading
-    it could not read. `scheme_prose()` ends the preamble on the first line
-    starting `## [` instead, so the same heading does not end it: the
-    preamble swallows that section's body, and
-    `test_no_scheme_document_weighs_a_change_as_a_version_step` fails on
-    whatever the body says about a patch or a minor change, with a message
-    about where the size of a change is recorded. Two tests then fail for one
-    mistake and the louder one describes the wrong thing. `## Unreleased` is
-    the likely spelling to meet, because it is `## [Unreleased]` written from
-    memory
-  - **Goal**: Read a level 2 heading one way for both. Have `scheme_prose()`
-    end the CHANGELOG preamble on the same condition `changelog_entries()`
-    recognizes, so an unreadable heading is reported by the check that is
-    about heading shape and by that check alone
-  - From: Code Review Override - what the new checks do not hold
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2299,5 +2212,83 @@ No items are currently queued in this section.
     among the dated ones, or say instead that chore work is recorded in the
     next version's entry, which is what every run has actually done
   - From: Code Review Override - what the new counter left behind
+- [x] Re-wrap the docstring line `py_maze/version.py:18` left short
+  - **Issue**: Splitting the version docstring's second paragraph left
+    `A pre-release segment holds exactly one number, which` on a line of 53
+    characters where every other line of that paragraph fills to 70. The
+    sentence reads as though it were deliberately broken for emphasis, which
+    it was not - it is where the new paragraph above it was cut in
+  - **Goal**: Re-wrap the paragraph to the width the rest of the docstring
+    keeps to. No wording changes
+  - From: Code Review Override - what the new checks do not hold
+- [x] Version Counter Drift 2: nothing holds the road map prose to existing
+  - **Issue**: `road_map_prose()` is read by exactly one assertion,
+    `test_the_road_map_weighs_no_section_as_a_version_step`, which compares
+    its weights against `[]`. An empty result passes it. The same blind spot
+    on the scheme documents was closed on purpose - `scheme_prose()` coming
+    back empty fails `test_the_documents_name_the_scheme_the_version_is_in`,
+    because the PEP 440 presence test reads the same span - and `TODO.md` has
+    no second reader to do that. Rewrite the thirteen section intros as
+    blockquotes, indent them under their headings, or rename `## Current` to
+    `## Current Items`, and `road_map_prose()` returns nothing while the
+    check reports zero weights and stays green. The prose this file is held
+    to is the prose a run reads before it writes a version, so a guard that
+    passes once that prose stops being read is the one way this check fails
+    quietly
+  - **Goal**: Give the road map the second reader the scheme documents have.
+    Assert that `road_map_prose()` is non-empty, or better, that every themed
+    section between `## Current` and `## Complete` contributes prose of its
+    own, so a section whose intro was deleted or reshaped fails by name
+    rather than by silence
+  - From: Version Scheme Override - re-express the version under PEP 440
+- [x] Unreleased Heading Shape 1: the shape check accepts any bracketed label
+  - **Issue**: `test_the_changelog_heads_every_entry_one_of_the_two_shapes`
+    reports only headings where `CHANGELOG_HEADING` did not match at all, and
+    its message names two shapes - `## [x.y.z] - YYYY-MM-DD` and the dateless
+    `## [Unreleased]`. The pattern's version group is `([^\]]+)`, so any text
+    in brackets is a third shape that passes: `## [TBD]`, `## [next]`, or a
+    real entry whose date was forgotten. A forgotten date is caught only
+    while that entry is the newest, because
+    `test_the_changelog_documents_the_version` reads the dated entries alone
+    and an older entry losing its date is reported by nothing. This is the
+    check written to catch a shape the repository had not seen, and it is the
+    one shape it does not catch
+  - **Goal**: Hold a heading to the vocabulary the message already names: the
+    `UNRELEASED_ENTRY` label with no date, or a version with a date. The
+    deliberate `## [1.0.0 under semver]` heading has to keep passing, so the
+    allowance for it is explicit and named rather than a side effect of the
+    pattern being loose - which also means it is the only one, and a fourth
+    label coined later fails until somebody writes it down
+  - From: Code Review Override - what the new counter left behind
+- [x] The changelog's newest-first order is assumed and never checked
+  - **Issue**: `test_the_changelog_documents_the_version` reads
+    `dated[0].version`, which is the first dated entry in file order and the
+    newest only because Keep a Changelog writes a file newest-first. Nothing
+    in the suite holds `CHANGELOG.md` to that order. A run that appends its
+    entry at the bottom instead of the top fails the check with "the newest
+    dated entry is the version the package is on", which sends a reader after
+    a missing entry that is present and misplaced; and two entries swapped
+    anywhere below the first are reported by nothing at all
+  - **Goal**: Assert that the dated entries descend by date, so the order the
+    version check depends on is the order something holds the file to, and so
+    the version check's own failure means what it says
+  - From: Code Review Override - what the new checks do not hold
+- [x] Two readers of `CHANGELOG.md` disagree on what starts an entry
+  - **Issue**: `changelog_entries()` takes any line starting `## ` as an
+    entry heading, so it reports a bracketless `## Unreleased` as a heading
+    it could not read. `scheme_prose()` ends the preamble on the first line
+    starting `## [` instead, so the same heading does not end it: the
+    preamble swallows that section's body, and
+    `test_no_scheme_document_weighs_a_change_as_a_version_step` fails on
+    whatever the body says about a patch or a minor change, with a message
+    about where the size of a change is recorded. Two tests then fail for one
+    mistake and the louder one describes the wrong thing. `## Unreleased` is
+    the likely spelling to meet, because it is `## [Unreleased]` written from
+    memory
+  - **Goal**: Read a level 2 heading one way for both. Have `scheme_prose()`
+    end the CHANGELOG preamble on the same condition `changelog_entries()`
+    recognizes, so an unreadable heading is reported by the check that is
+    about heading shape and by that check alone
+  - From: Code Review Override - what the new checks do not hold
 
 </details>

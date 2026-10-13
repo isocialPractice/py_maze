@@ -351,6 +351,16 @@ a version with a local segment cannot be published at all.
   version's entry when one is written. The suite reads both shapes and holds
   `__version__` against the newest **dated** entry, so an `Unreleased`
   heading is never what satisfies that check.
+- **Those two shapes and `## [1.0.0 under semver]` are the whole vocabulary.**
+  The suite holds a heading to that list rather than to being in brackets, so
+  `## [TBD]`, `## [next]` and a version entry whose date was forgotten all
+  fail it by line number. A label beyond the three is written down in the
+  suite first, which is the step that keeps there being only three.
+- **The dated entries are written newest first**, which is where the version
+  check reads the newest entry from, and the suite holds the file to that
+  order. An entry appended at the bottom, or two swapped anywhere down the
+  file, is reported by the line it is on rather than by a version check
+  failing somewhere else.
 - **The documentation** is updated in the same change as the behaviour it
   describes, not afterwards. An option that is not on its page is an option
   nobody finds, and a name that is not in the tables on `docs/library.md`
@@ -361,7 +371,10 @@ a version with a local segment cannot be published at all.
   counter - advances it by one - and what the entry should say the size of the
   change was. The suite reads those paragraphs and fails on one that weighs a
   section as a version step instead, because they are the standing instruction
-  a run reads before it writes a version.
+  a run reads before it writes a version. Every themed section is held to
+  carrying one: a section whose paragraph went missing, or was rewritten as a
+  blockquote or indented under its heading, fails by its own title rather than
+  leaving the weight check nothing to read and passing.
 - Keep a pull request to one thing. A fix and a refactor in one diff is two
   reviews wearing one hat.
 

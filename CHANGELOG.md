@@ -22,7 +22,58 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a3] - 2026-10-13
+
+What the new checks do not hold. Every item here is about the suite's own
+reading of the repository's documents rather than about the maze: an order the
+version check depended on and nothing enforced, two readers of `CHANGELOG.md`
+answering one question differently, a guard that passed on an empty result,
+and a heading pattern that accepted any text in brackets. Nothing a player can
+see has changed.
+
+**A check with one reader is a check that can be satisfied by nothing.**
+`road_map_prose()` was compared against `[]` by a single assertion, so an
+empty result passed it - and rewriting the thirteen road map intros as
+blockquotes, or indenting them under their headings, would have emptied it
+while the check reported zero weights and stayed green. The scheme documents
+had a second reader all along, because `scheme_prose()` coming back empty
+fails the PEP 440 check that reads the same span. The road map has one now.
+
+### Added
+
+- **The dated changelog entries are held to descending by date.** The version
+  check reads the newest entry as the first dated one in file order, which it
+  is only because Keep a Changelog writes a file newest-first, and nothing
+  held `CHANGELOG.md` to that. An entry appended at the bottom instead of the
+  top failed the version check with a message about the newest entry not being
+  the version, sending a reader after an entry that was present and misplaced;
+  two entries swapped anywhere below the first were reported by nothing at
+  all. Both are now reported by the line they are on.
+- **Every themed road map section is held to opening with a paragraph.** That
+  paragraph is the standing instruction a run reads before it writes a
+  version, and it is what the weight check reads, so a section whose intro was
+  deleted or reshaped now fails by its own title rather than by leaving the
+  weight check nothing to disagree with.
+
+### Changed
+
+- **A changelog entry heading is held to a vocabulary, not to brackets.** The
+  pattern read any bracketed text as a version, so `## [TBD]`, `## [next]` and
+  a real entry whose date was forgotten were all a third shape passing the
+  check written to catch a third shape - and a forgotten date was caught only
+  while its entry was the newest, because the version check reads the dated
+  entries alone. The shapes are named now: a version with its date, the
+  dateless `## [Unreleased]`, and `## [1.0.0 under semver]`, which is written
+  down rather than allowed by a loose pattern. A fourth label fails until
+  somebody adds it beside the three.
+- **`CHANGELOG.md` has one reader of what starts an entry.** Two disagreed on
+  `## Unreleased`, which is `## [Unreleased]` written from memory: the entry
+  reader took any `## ` line and reported it as a heading it could not read,
+  while the scheme-prose reader ended the preamble on `## [` and so did not
+  end it there - the preamble swallowed that section's body, and the weight
+  check failed on whatever the body said about a change. Two checks failed for
+  one mistake and the louder one described the wrong thing. Both now ask
+  `starts_a_changelog_entry()`.
 
 ### Fixed
 
@@ -36,6 +87,10 @@ when one is written.
   naming all three. `version_weights_named_by_line()` now takes the triple off
   the joined block first, a space to a character, so that the line structure
   and the line number in the failure message both survive it.
+- **The version docstring's third paragraph is wrapped to its own width.**
+  Splitting it left one line at 53 characters where the rest of the paragraph
+  fills to 70, which read as a break for emphasis that was never meant. The
+  wording is unchanged.
 
 ## [1.0.0a2] - 2026-10-11
 
