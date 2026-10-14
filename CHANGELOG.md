@@ -22,6 +22,23 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **A road map section could borrow the paragraph of a subsection it keeps.**
+  `road_map_sections()` grouped prose by level 2 heading alone, so every prose
+  line down to the next level 2 heading counted toward the section that
+  opened the span - the intro of a `###` subsection under it included. The
+  section `Gameplay Enhancements` keeps `New Game Modes`, so deleting the
+  paragraph that opens the section left the subsection's intro answering for
+  both, and the check added in 1.0.0a3 stayed green on exactly the edit it is
+  named for. A subsection is now read as a section of its own and owes a
+  paragraph of its own, which is what each one was already written to carry,
+  so either intro going missing is reported by its own title. Headings nested
+  under `## Current` and `## Complete` stay excluded, which keeps an override
+  header written into the queue from being read as a road map section.
+
 ## [1.0.0a3] - 2026-10-13
 
 What the new checks do not hold. Every item here is about the suite's own

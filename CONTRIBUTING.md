@@ -372,9 +372,10 @@ a version with a local segment cannot be published at all.
   change was. The suite reads those paragraphs and fails on one that weighs a
   section as a version step instead, because they are the standing instruction
   a run reads before it writes a version. Every themed section is held to
-  carrying one: a section whose paragraph went missing, or was rewritten as a
-  blockquote or indented under its heading, fails by its own title rather than
-  leaving the weight check nothing to read and passing.
+  carrying one, and so is every subsection under one: a paragraph that went
+  missing, or was rewritten as a blockquote or indented under its heading,
+  fails by its own title rather than leaving the weight check nothing to read
+  and passing. A section cannot borrow the paragraph of a subsection it keeps.
 - Keep a pull request to one thing. A fix and a refactor in one diff is two
   reviews wearing one hat.
 

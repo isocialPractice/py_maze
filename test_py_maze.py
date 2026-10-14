@@ -570,8 +570,19 @@ def version_weights_named_by_line(prose):
 
 
 def road_map_sections():
-    # TODO.md's road map, section by section: every level 2 section that
-    # is not the queue or the archive, with the prose written under it
+    # TODO.md's road map, section by section: every heading below the
+    # file title that is not the queue or the archive, with the prose
+    # written under it
+    #
+    # A subsection is a section here, and counted apart from the one
+    # above it. Holding only the level 2 headings to carrying prose let
+    # a section borrow its subsection's: `## Gameplay Enhancements`
+    # keeps `### New Game Modes` under it, so deleting the paragraph
+    # that opens the section left the subsection's intro answering for
+    # both and the check below stayed green on exactly the edit it is
+    # named for. A subsection heads a group of work and says what
+    # finishing one of its items does to the counter, the same as a
+    # section does, so it owes the same paragraph
     #
     # A line is prose here when it starts at the left margin and is not a
     # heading, a list item, a blockquote, a table row or inside a fenced
@@ -580,7 +591,9 @@ def road_map_sections():
     # what makes this safe to run over a file whose `## Current` items
     # quote the drift in order to describe it. `## Current` and
     # `## Complete` are left out by name as well, the second because an
-    # archived item is never rewritten
+    # archived item is never rewritten, and so is everything nested
+    # under either - an override header the automation writes inside
+    # `## Current` is not a road map section and owes no paragraph
     #
     # Reading the sections rather than the file is what lets a section
     # whose intro went missing be named. A heading that carries no prose
@@ -598,17 +611,24 @@ def road_map_sections():
 
     sections = []
     prose = None
+    working = False
     for number, line in enumerate(lines, start=1):
         if number in inside:
             continue
 
         heading = re.match(r'(#{1,6})\s+(.*)$', line)
         if heading:
-            if len(heading.group(1)) == 2:
-                title = heading.group(2).strip()
-                prose = None if title in WORKING_SECTIONS else []
-                if prose is not None:
-                    sections.append((title, prose))
+            level = len(heading.group(1))
+            title = heading.group(2).strip()
+            if level == 2:
+                working = title in WORKING_SECTIONS
+            elif level < 2:
+                working = False
+
+            prose = None
+            if level >= 2 and not working:
+                prose = []
+                sections.append((title, prose))
             continue
 
         if prose is None:
@@ -3465,7 +3485,11 @@ class TestVersion(unittest.TestCase):
         # one way the check fails quietly
         #
         # Read section by section rather than over the file, so an intro
-        # that was deleted or reshaped fails by the name of its section
+        # that was deleted or reshaped fails by the name of its section,
+        # and subsection by subsection as well - a section holding one
+        # answered for both otherwise, and `## Gameplay Enhancements`
+        # losing its paragraph was green while `### New Game Modes` kept
+        # the one under it
         silent = [title for title, prose in road_map_sections() if not prose]
 
         self.assertEqual(silent, [],
