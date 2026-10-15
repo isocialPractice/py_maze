@@ -9,8 +9,9 @@ thing: the maze.
 
 A maze can also be written as a JSON document, which says outright what a
 picture leaves to be worked out: where the entrance and the exit are, which
-cells hold a collectible and the solution, when one was asked for. The two
-are the values :data:`FORMATS` offers, and the reader takes either.
+cells hold a collectible, the solution when one was asked for, and what the
+maze measures when that was asked for too. The two are the values
+:data:`FORMATS` offers, and the reader takes either.
 
 A picture carrying no header at all is read too, with the characters it is
 drawn with named by :func:`picture_chars`, so a maze drawn by another tool
@@ -168,7 +169,7 @@ def save_lines(grid, collectibles=(), seed=None):
     return lines
 
 
-def save_json(grid, collectibles=(), seed=None, solution=None):
+def save_json(grid, collectibles=(), seed=None, solution=None, stats=None):
     """Write a maze out as a JSON document, for a program to read.
 
     The picture a save file draws says where the walls are and nothing
@@ -183,13 +184,19 @@ def save_json(grid, collectibles=(), seed=None, solution=None):
             document every run
         seed: Seed the maze was generated from, or None when unknown
         solution: Cells of the solution, or None when none was asked for
+        stats: The measurements, as
+            :func:`py_maze.analysis.maze_stats` returns them, for a run
+            that was asked for them. Left out, the document carries no
+            ``stats`` key at all: every key but ``grid`` is optional, and
+            an absent one says the run never measured the maze rather
+            than measuring nothing in it
 
     Returns:
         str: The document on a single line, so it pipes into a reader as
         it stands
     """
 
-    return json.dumps({
+    document = {
         JSON_FORMAT_KEY: SAVE_FORMAT,
         'seed': seed,
         'entrance': list(find_entrance(grid)),
@@ -197,12 +204,20 @@ def save_json(grid, collectibles=(), seed=None, solution=None):
         'collectibles': [list(cell) for cell in reading_order(collectibles)],
         'solution': (None if solution is None
                      else [list(cell) for cell in solution]),
-        'grid': grid,
-    })
+    }
+
+    # the measurements go in above the grid, so the keys a reader wants
+    # are all before the bulk of the document rather than behind it
+    if stats is not None:
+        document['stats'] = stats
+
+    document['grid'] = grid
+
+    return json.dumps(document)
 
 
 def write_save(path, grid, collectibles=(), seed=None, solution=None,
-               form=DEFAULT_FORMAT, stream=None):
+               form=DEFAULT_FORMAT, stream=None, stats=None):
     """Save a maze so it can be replayed with --load.
 
     Args:
@@ -215,6 +230,10 @@ def write_save(path, grid, collectibles=(), seed=None, solution=None,
         form: One of FORMATS: the picture under its header, or the JSON
             document
         stream: Where STDIO_PATH writes to, defaulting to standard output
+        stats: The measurements to record, as
+            :func:`py_maze.analysis.maze_stats` returns them. Only the
+            JSON form records them, for the same reason it is the only
+            form that records a solution
 
     Raises:
         OSError: If the file cannot be written
@@ -225,7 +244,7 @@ def write_save(path, grid, collectibles=(), seed=None, solution=None,
         raise ValueError("no such format: %s" % form)
 
     if form == JSON_FORMAT:
-        text = save_json(grid, collectibles, seed, solution)
+        text = save_json(grid, collectibles, seed, solution, stats)
     else:
         text = '\n'.join(save_lines(grid, collectibles, seed))
 

@@ -37,7 +37,9 @@ has no short flag, both `s` letters being taken.
 
 `--stats` prints under the maze and leaves the picture alone. A quiet run
 reports the measurements, having been asked for them; a `--format json` run
-prints the document alone.
+prints the document alone and carries the same numbers under its `stats` key.
+A braided run tallies how many dead ends were opened as well. [Reading a
+maze](analysis.md) explains each of them.
 
 Both chase options round a decimal to the nearest whole number, resolve a
 number outside their range to the nearer end of it, and answer anything that
@@ -168,9 +170,11 @@ A maze is a **grid**: rows of booleans, `True` for a wall, addressed
 | Solve | `solve_maze(grid, start, end)` |
 | Watch it solve | `search_frames(grid, start, end)` |
 | Measure a route | `solution_runs(path)`, `maze_progress(grid, cell, path)` |
-| Measure a maze | `maze_stats(grid, path)` |
+| Measure a maze | `maze_stats(grid, path, dead_ends_before)` |
+| Read how hard it is | `difficulty_score(open_count, junctions_count, path)` |
 | Say a search found nothing | pass `None`; `UNSEARCHED` asks for the search |
 | Read its parts | `dead_ends(grid)`, `junctions(grid)`, `longest_corridor(grid)` |
+| Read a route's share | `solution_share(path, open_count)` |
 | Play a mode | `game_mode(name)`, `plain_game(...)`, `chase_game(...)` |
 | Draw | `maze_lines(grid, overlays)`, `print_maze(...)` |
 | Write, read | `write_save(...)`, `read_save(...)`, `save_json(...)` |

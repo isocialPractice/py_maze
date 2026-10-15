@@ -277,10 +277,14 @@ True
 
 | Name | What it does |
 | --- | --- |
-| `maze_stats(grid, path)` | Every measurement below as one dictionary |
+| `maze_stats(grid, path, dead_ends_before)` | Every measurement below as one dictionary |
 | `dead_ends(grid)` | Yield each cell inside the maze with one way in and no way on |
 | `junctions(grid)` | Yield each cell where three or more ways meet |
 | `longest_corridor(grid)` | Cells in the longest straight run, across a row or down a column |
+| `solution_share(path, open_count)` | The share of the open cells a route stands on, from 0 to 1 |
+| `difficulty_score(open_count, junctions_count, path)` | How hard the maze reads, out of 100 |
+| `DIFFICULTY_PARTS` | The three shares that score adds up, by name |
+| `JUNCTION_CEILING` | The junctions per open cell at which its decisions part is full |
 
 Nothing here changes the maze: a measurement is taken from the grid as it
 stands, so a carved maze and one read out of a file are measured the same
@@ -295,13 +299,58 @@ way. `maze_stats` is the whole of it in one call, and the keys are what
 >>> stats['dead_ends'] == sum(1 for _ in py_maze.dead_ends(grid))
 True
 >>> sorted(stats)
-['cells', 'dead_ends', 'junctions', 'longest_corridor', 'open', 'solution']
+['cells', 'dead_ends', 'dead_ends_opened', 'difficulty', 'junctions', 'longest_corridor', 'open', 'solution', 'solution_share']
 ```
 
 `cells` counts every position of the grid and `open` the ones the player can
 stand on, so the second is a share of the first. `solution` is the steps the
 shortest route takes, measured as `solution_runs` measures them, and `None`
 for a maze with no way through.
+
+`solution_share` is how much of the maze that route stands on, counted in
+cells because the maze it is a share *of* is counted in cells. It is the one
+measurement held as a fraction rather than a tally, and the printed line
+rounds it to a whole percent:
+
+```python
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> path = py_maze.solve_maze(grid)
+>>> py_maze.solution_share(path, 73) == len(path) / 73
+True
+>>> round(py_maze.maze_stats(grid)['solution_share'], 3)
+0.479
+```
+
+`difficulty` reads a score out of the measurements around it, and it is
+published as what it is made of rather than as a number to trust.
+`DIFFICULTY_PARTS` names the three shares it averages, each worth the same as
+the other two, and [Reading a maze](analysis.html) sets out what each one is:
+
+```python
+>>> py_maze.DIFFICULTY_PARTS
+('wrong turns', 'decisions', 'corners')
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> py_maze.difficulty_score(73, 3, py_maze.solve_maze(grid))
+36
+>>> py_maze.difficulty_score(73, 3, None) is None
+True
+```
+
+`dead_ends_opened` is the one measurement a grid cannot be asked for. A
+braided maze looks exactly like a maze that was carved that way, so only the
+caller that braided knows what it opened, and it hands over the count it took
+beforehand:
+
+```python
+>>> import random
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> before = sum(1 for _ in py_maze.dead_ends(grid))
+>>> _ = py_maze.braid_maze(grid, 1.0, random.Random(1))
+>>> py_maze.maze_stats(grid, dead_ends_before=before)['dead_ends_opened']
+3
+>>> py_maze.maze_stats(grid)['dead_ends_opened'] is None
+True
+```
 
 The solution is the one measurement that has to be searched for, and `path` is
 read here exactly as **Solving** above reads it - `UNSEARCHED` is re-exported
@@ -463,5 +512,8 @@ waits however long it takes when the moment it is given is `None` itself, and
 `build_parser`, `build_maze`, `build_game` and `main` are the command line
 itself, along
 with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
-`EXIT_NO_WAY_THROUGH` codes it exits with. Those are the names that want a
+`EXIT_NO_WAY_THROUGH` codes it exits with. `build_maze` hands back
+`(grid, collectibles, seed, dead_ends_before)`, that last being what
+`maze_stats` needs to report a braid and `None` for a run that braided
+nothing. Those are the names that want a
 terminal. Everything above runs without one.

@@ -22,7 +22,96 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a4] - 2026-10-15
+
+Reading a maze rather than carving one. `--stats` already said what a maze was
+made of and how long the way through it was; it now also says how much of the
+maze that way misses, how many dead ends a braid opened, and how hard the
+whole thing reads. The same numbers go into the JSON document under a `stats`
+key, so a script reads them instead of parsing printed lines, and
+`docs/analysis.md` is the page that explains each one.
+
+**The share is the number that separates two mazes the others call equal.** A
+maze that is one long winding corridor and a maze of the same size that is
+mostly branches can carry the same dead ends, the same junctions and the same
+route length: nothing py_maze measured could tell them apart. The share of the
+open cells the solution stands on can, and it is the measurement the
+difficulty score leans on hardest.
+
+**The difficulty score is published as what it is made of rather than as a
+number to trust.** Three shares, each worth exactly as much as the other two,
+because nothing here knows which of them a given player finds hard. The three
+carvers land between roughly 20 and 65, so a score is read against another
+maze rather than against the whole of 0 to 100, and `docs/analysis.md` tables
+each part beside where it reaches full marks.
+
+### Added
+
+- **`--stats` reports the share of the maze the solution walks through.**
+  `solution_share` is the cells the route stands on over every cell the player
+  could stand on, counted in cells because the maze it is a share of is
+  counted in cells. It is held as the exact share a script can compare, from 0
+  to 1 - the vocabulary `--braid` already reads a share in - and printed as a
+  whole percent for a player, so `0.4794520547945205` prints as `48%`. A maze
+  with no way through reports the word `none`, as its solution already does.
+  `py_maze.solution_share(path, open_count)` is the reader on its own.
+- **`--stats` reports a difficulty score out of 100.** `difficulty` averages
+  three shares named by `py_maze.DIFFICULTY_PARTS`: **wrong turns**, how much
+  of the maze is off the shortest route; **decisions**, junctions per open
+  cell over the `JUNCTION_CEILING` of `0.2` and capped there; and **corners**,
+  the turns the route makes over the steps it takes, a turn being where one
+  straight run meets the next. A maze of one long corridor scores nothing on
+  wrong turns and nothing on corners however long it is. The ceiling is above
+  anything the three carvers reach - about `0.14` at their busiest, which the
+  suite now reads back rather than asserting in prose - so the cap is there
+  for a braided maze turned into a network. `py_maze.difficulty_score()` is
+  the reader on its own, and a maze with no way through scores `none` rather
+  than nought, two of the three parts being read off the route.
+- **A braided run says how many dead ends were opened, beside how many are
+  left.** `--braid 0.25 --stats` now prints an `opened` tally next to its
+  `dead ends` tally, and the two add back up to what the carver made, so
+  either can be recovered from the other. This is the one measurement a grid
+  cannot be asked for: a braided maze looks exactly like a maze carved that
+  way, so the count is taken before the braid and handed to `maze_stats` as
+  `dead_ends_before`. A run that braided nothing prints no tally at all,
+  rather than a nought that would read as a braid that opened none, and
+  neither does a loaded maze, `--braid` not applying to one.
+- **`--format json` carries the measurements under a `stats` key.** A document
+  run prints no tally lines, a document with text in front of it being no
+  longer a document, so `--stats --format json` puts the same numbers in the
+  document instead and a script reads them rather than parsing the printed
+  lines. `--save FILE --format json` records the key the same way; the picture
+  a text save draws has no room for it, which is the reason it has no room for
+  a solution either. The key is absent rather than `null` until `--stats` asks
+  for it: every key but `grid` is optional, and an absent one says the run
+  never measured the maze, which is a different claim from a maze that
+  measured nothing.
+- **`docs/analysis.md` is the page a reader of the measurements lands on.** It
+  sets out what each number says about the maze, tables the three parts of the
+  difficulty score beside where each reaches full marks, and shows the `stats`
+  key a script reads. It is on the site menu under **Using py_maze** and in
+  the README's documentation table, and the suite reads every number it prints
+  back against the run that prints it.
+
+### Changed
+
+- **`--stats` prints three tallies it did not print before.** The second line
+  carries `solution share` and `difficulty` after `solution`, and the first
+  carries `opened` between `dead ends` and `junctions` on a run that braided.
+  Both lines still stay inside eighty columns, which the suite now reads for
+  the braided run as well as the plain one. Anything parsing those lines by
+  position will see more than it did; the `stats` key is there so that nothing
+  has to.
+- **`py_maze.build_maze()` hands back four values rather than three.**
+  `(grid, collectibles, seed, dead_ends_before)`, the last being the count
+  `maze_stats` needs to report a braid, and `None` for every loaded maze and
+  every run that asked for no braid. The dead-end count has to be taken while
+  the maze still has it, and `build_maze` is where the braid happens, so it is
+  the only place that can carry the number out.
+- **`py_maze.save_json()` and `py_maze.write_save()` take a `stats`
+  argument.** Last in both signatures, defaulting to `None`, so every
+  positional call that worked before still works. Only the JSON form records
+  it.
 
 ### Fixed
 

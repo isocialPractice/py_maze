@@ -7,26 +7,32 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Carry the same measurements in the JSON document under a `stats` key
-  when `--stats` is given, so a script reads them rather than parsing the
-  printed lines
+- [ ] Compare the three carving algorithms in the documentation with the
+  measurements rather than with prose, so "Prim's dead ends are short" is a
+  number a reader can check
   - From: Maze Analysis and Statistics
-- [ ] Report the share of the maze the solution walks through, which is what
-  separates a maze that is mostly one long corridor from one that is mostly
-  wrong turns
-  - From: Maze Analysis and Statistics
-- [ ] Measure a braided maze before and after braiding in the same run, so
-  `--braid 0.25 --stats` says how many dead ends were opened rather than how
-  many are left
-  - From: Maze Analysis and Statistics
-- [ ] Add a difficulty score built from the measurements above, documented
-  as what it is made of rather than as a number to trust, so `--stats` says
-  something a player understands
-  - From: Maze Analysis and Statistics
-- [ ] Write `docs/analysis.md` covering the measurements and what each one
-  means for a maze, and add it to `docs/_data/nav.yml` and the README's
-  documentation table
-  - From: Maze Analysis and Statistics
+- [ ] Add a quest mode: an inventory the player fills from the maze, where
+  what is carried is what opens the way on, so a maze is played for what is
+  in it rather than only for the way out
+  - **Door**: closed until the matching item is carried, and opening one
+    reaches the next stage or the next part of the maze
+  - **Box**: holds an item, so one pickup leads to another
+  - Each is drawn with its own marker, refused by the save format the way
+    an unknown character already is, and carried through the JSON document
+    so a document round trips a quest maze as it does a plain one
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Add a non-playable character to quest mode that hands out a hint on
+  the task in front of the player, shown on its own key the way the hint
+  along the solution already is
+  - It says what the next step of the quest is rather than where the exit
+    is, so it is a second kind of hint rather than a second way to ask for
+    the first
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Write `docs/modes.md` covering each mode, its options and its markers,
+  add it to `docs/_data/nav.yml` and the README's documentation table, and
+  add the new names to `py_maze/__init__.py` and the tables in
+  `docs/library.md`
+  - From: Gameplay Enhancements `->` New Game Modes
 
 ## Fixes and Hardening
 
@@ -292,24 +298,9 @@ generated maze and on one read out of a file. New options with the current
 output unchanged, so completing an item here advances the version counter by
 one and the changelog entry says the change added an option.
 
-- [ ] Carry the same measurements in the JSON document under a `stats` key
-  when `--stats` is given, so a script reads them rather than parsing the
-  printed lines
-- [ ] Report the share of the maze the solution walks through, which is what
-  separates a maze that is mostly one long corridor from one that is mostly
-  wrong turns
-- [ ] Add a difficulty score built from the measurements above, documented
-  as what it is made of rather than as a number to trust, so `--stats` says
-  something a player understands
 - [ ] Compare the three carving algorithms in the documentation with the
   measurements rather than with prose, so "Prim's dead ends are short" is a
   number a reader can check
-- [ ] Measure a braided maze before and after braiding in the same run, so
-  `--braid 0.25 --stats` says how many dead ends were opened rather than how
-  many are left
-- [ ] Write `docs/analysis.md` covering the measurements and what each one
-  means for a maze, and add it to `docs/_data/nav.yml` and the README's
-  documentation table
 
 ## Rendering Styles and Character Sets
 
@@ -2290,5 +2281,25 @@ No items are currently queued in this section.
     recognizes, so an unreadable heading is reported by the check that is
     about heading shape and by that check alone
   - From: Code Review Override - what the new checks do not hold
+- [x] Carry the same measurements in the JSON document under a `stats` key
+  when `--stats` is given, so a script reads them rather than parsing the
+  printed lines
+  - From: Maze Analysis and Statistics
+- [x] Report the share of the maze the solution walks through, which is what
+  separates a maze that is mostly one long corridor from one that is mostly
+  wrong turns
+  - From: Maze Analysis and Statistics
+- [x] Measure a braided maze before and after braiding in the same run, so
+  `--braid 0.25 --stats` says how many dead ends were opened rather than how
+  many are left
+  - From: Maze Analysis and Statistics
+- [x] Add a difficulty score built from the measurements above, documented
+  as what it is made of rather than as a number to trust, so `--stats` says
+  something a player understands
+  - From: Maze Analysis and Statistics
+- [x] Write `docs/analysis.md` covering the measurements and what each one
+  means for a maze, and add it to `docs/_data/nav.yml` and the README's
+  documentation table
+  - From: Maze Analysis and Statistics
 
 </details>

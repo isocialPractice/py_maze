@@ -27,6 +27,9 @@
     - text: Solving the maze
       file: solving.md
       url: /solving.html
+    - text: Reading a maze
+      file: analysis.md
+      url: /analysis.html
     - text: How to play
       file: playing.md
       url: /playing.html

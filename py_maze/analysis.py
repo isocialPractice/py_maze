@@ -34,12 +34,29 @@ from .grid import open_cells, open_neighbors
 from .solving import UNSEARCHED, solution_runs, solve_maze
 
 __all__ = [
+    'DIFFICULTY_PARTS',
+    'JUNCTION_CEILING',
     'UNSEARCHED',
     'dead_ends',
+    'difficulty_score',
     'junctions',
     'longest_corridor',
     'maze_stats',
+    'solution_share',
 ]
+
+# the three parts :func:`difficulty_score` adds up, named so a reader can
+# hold the number against what it is made of. Each is a share from 0 to
+# 1, each is worth the same as the other two, and the score is their
+# mean over 100
+DIFFICULTY_PARTS = ('wrong turns', 'decisions', 'corners')
+
+# the junctions-per-open-cell at which the decisions part of the score
+# reaches full marks. The three carvers reach 0.14 at their busiest -
+# randomized Prim's on a large maze - so this is above anything py_maze
+# itself makes, and a maze braided into a network can pass it, which is
+# why the part is capped rather than left to climb
+JUNCTION_CEILING = 0.2
 
 
 def dead_ends(grid):
@@ -125,7 +142,102 @@ def longest_corridor(grid):
     return longest
 
 
-def maze_stats(grid, path=UNSEARCHED):
+def solution_share(path, open_count):
+    """Measure how much of a maze the solution walks through.
+
+    The share is the cells the route stands on over every cell the
+    player could stand on, so 1 is a maze whose every open cell is on
+    the way through and a low share is a maze that is mostly wrong
+    turns. That is the difference between a maze made of one long
+    corridor and a maze of the same size made of branches, which no
+    other measurement here separates: both can carry the same dead
+    ends, the same junctions and the same route length.
+
+    It is measured in cells rather than in steps because the maze it is
+    a share *of* is counted in cells. A route of no steps still stands
+    on the one cell it begins and ends on.
+
+    Args:
+        path: Cells from the start to the end, as
+            :func:`py_maze.solving.solve_maze` returns them, or None
+            where the search found no way through
+        open_count: The cells the player can stand on, as ``open``
+            counts them
+
+    Returns:
+        float: The share, from 0 to 1. None for a maze with no way
+        through, there being no route to measure, and None for a maze
+        with no open cell at all, there being nothing to measure it
+        against
+    """
+
+    if not path or not open_count:
+        return None
+
+    return len(path) / open_count
+
+
+def difficulty_score(open_count, junctions_count, path):
+    """Score how hard a maze is to play, out of 100.
+
+    **It is a reading rather than a measurement**, and it is published
+    as what it is made of rather than as a number to trust. Three shares
+    are added up and averaged, each worth the same as the other two:
+
+    - **wrong turns** - how much of the maze is not on the shortest
+      route, which is ``1 - solution_share``. A maze that is one long
+      corridor scores nothing here; a maze of the same size that is
+      mostly branches scores nearly everything.
+    - **decisions** - junctions per open cell, over
+      :data:`JUNCTION_CEILING`, capped at 1. How often the maze stops
+      the player and asks which way.
+    - **corners** - the turns the route makes over the steps it takes.
+      :func:`py_maze.solving.solution_runs` splits the route into its
+      straight runs, and a turn is where one run meets the next, so a
+      route of one run turns nowhere however long it is. How much of the
+      walk is turning rather than going.
+
+    Nothing weights one part above another, because nothing here knows
+    which of them a player finds hard. The three carvers py_maze ships
+    land between roughly 20 and 65, so a score is read against another
+    maze rather than against the whole of 0 to 100.
+
+    Args:
+        open_count: The cells the player can stand on, as ``open``
+            counts them
+        junctions_count: The cells where three or more ways meet, as
+            ``junctions`` counts them
+        path: Cells from the start to the end, as
+            :func:`py_maze.solving.solve_maze` returns them, or None
+            where the search found no way through
+
+    Returns:
+        int: The score, from 0 to 100. None for a maze with no way
+        through, and None for a maze with no open cell at all: two of
+        the three parts are read off the route, so a maze that cannot be
+        crossed has no difficulty to report rather than a difficulty of
+        nought
+    """
+
+    if not path or not open_count:
+        return None
+
+    runs = solution_runs(path)
+    steps = sum(runs)
+
+    wrong_turns = 1.0 - len(path) / open_count
+    decisions = min(junctions_count / open_count / JUNCTION_CEILING, 1.0)
+    # the turns are the joins between the runs rather than the runs
+    # themselves, so a route that never turns scores nothing here
+    # however long it is. A route of no steps is one cell, walked
+    # without turning, and has no step to count a turn against
+    corners = (len(runs) - 1) / steps if steps else 0.0
+
+    return round(100 * (wrong_turns + decisions + corners)
+                 / len(DIFFICULTY_PARTS))
+
+
+def maze_stats(grid, path=UNSEARCHED, dead_ends_before=None):
     """Measure a maze in one call, as ``--stats`` reports it.
 
     Every number is taken from the grid as it stands, so nothing here
@@ -135,12 +247,20 @@ def maze_stats(grid, path=UNSEARCHED):
     search found no way through, which is what None says and
     :data:`UNSEARCHED` does not.
 
+    ``dead_ends_before`` is the one thing a grid cannot be asked. A
+    braided maze looks like a maze that was carved that way, so how many
+    dead ends were opened is only known to the run that opened them, and
+    a caller that braided hands the count it took beforehand over.
+
     Args:
         grid: 2D list of booleans (True = wall, False = path)
         path: The solution to measure. A run that has already solved the
             maze for ``--solve`` or ``--animate`` passes the route it
             found, or None where the search found no way through. Left out
             - or given as :data:`UNSEARCHED` - the maze is solved here
+        dead_ends_before: The dead ends this maze had before it was
+            braided, for a run that braided it. Left out, the maze was
+            never braided and there is nothing to report
 
     Returns:
         dict: The measurements, under these keys:
@@ -152,16 +272,32 @@ def maze_stats(grid, path=UNSEARCHED):
         - ``longest_corridor``: cells in the longest straight run
         - ``solution``: steps the shortest route takes, and None for a
           maze with no way through
+        - ``solution_share``: the share of the open cells that route
+          stands on, from 0 to 1, and None for a maze with no way
+          through
+        - ``dead_ends_opened``: how many dead ends braiding opened, and
+          None for a maze that was not braided
+        - ``difficulty``: the score :func:`difficulty_score` reads out
+          of the three above it, and None for a maze with no way
+          through
     """
 
     if path is UNSEARCHED:
         path = solve_maze(grid)
 
+    open_count = sum(1 for _ in open_cells(grid))
+    dead_end_count = sum(1 for _ in dead_ends(grid))
+    junction_count = sum(1 for _ in junctions(grid))
+
     return {
         'cells': sum(len(row) for row in grid),
-        'open': sum(1 for _ in open_cells(grid)),
-        'dead_ends': sum(1 for _ in dead_ends(grid)),
-        'junctions': sum(1 for _ in junctions(grid)),
+        'open': open_count,
+        'dead_ends': dead_end_count,
+        'dead_ends_opened': (None if dead_ends_before is None
+                             else dead_ends_before - dead_end_count),
+        'junctions': junction_count,
         'longest_corridor': longest_corridor(grid),
         'solution': sum(solution_runs(path)) if path else None,
+        'solution_share': solution_share(path, open_count),
+        'difficulty': difficulty_score(open_count, junction_count, path),
     }

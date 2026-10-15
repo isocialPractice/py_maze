@@ -23,7 +23,8 @@ solvable mazes and navigate through them using your keyboard!
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
 - 📐 **Measurements**: `--stats` reports the cells, dead ends, junctions,
-  longest corridor and solution length under the maze it measured
+  longest corridor, solution length, the share of the maze that route walks
+  through and a difficulty score under the maze it measured
 - 💡 **Hints**: Stuck mid-game? One key lights up the next step
 - ⏱️ **Timer and Move Counter**: Both run while you play and are summarized when you finish
 - 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
@@ -201,6 +202,7 @@ of it is a Markdown file that reads on GitHub just as well:
 | [Generating a maze](docs/generating.md) | Algorithms, braiding, seeds, collectibles |
 | [Saving and loading](docs/saving.md) | Save files, and what is refused |
 | [Solving the maze](docs/solving.md) | `--solve` and `--animate` |
+| [Reading a maze](docs/analysis.md) | What `--stats` measures, and the difficulty score |
 | [How to play](docs/playing.md) | Keys, the status line, hints, the summary |
 | [Scripting py_maze](docs/scripting.md) | Quiet runs, JSON, pipes, status codes |
 | [Using py_maze as a library](docs/library.md) | The grid, a worked example, every public name |

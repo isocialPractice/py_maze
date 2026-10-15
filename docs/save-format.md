@@ -287,6 +287,7 @@ picture:
 | `exit` | The `(x, y)` of the exit |
 | `collectibles` | Every open cell holding a pickup, in reading order. `[]` when there are none |
 | `solution` | The route from the entrance to the exit, cell by cell, when `--solve` or `--animate` asked for one. `null` otherwise, and `null` when there is no way through |
+| `stats` | What the maze measures, when `--stats` asked for it. Absent otherwise, rather than `null`: see [Reading a maze](analysis.html) for the keys it holds |
 | `grid` | The maze itself: a list of rows of `true` and `false`, `true` for a wall |
 
 The grid is the whole of the maze, and the four keys above it are read out
@@ -294,10 +295,15 @@ of it every time a picture is loaded. A reader may take them as written or
 work them out again; py_maze itself works them out, which is why a document
 and a picture of the same maze play identically.
 
-`grid` is required and every other key is optional. `entrance`, `exit` and
-`solution` are written for a reader and are not read back: a loaded
-document hands back the same three things a loaded picture does, the grid,
-the collectibles and the seed. Rows must be lists of `true` and `false`,
+`grid` is required and every other key is optional. `entrance`, `exit`,
+`solution` and `stats` are written for a reader and are not read back: a
+loaded document hands back the same three things a loaded picture does, the
+grid, the collectibles and the seed.
+
+`stats` is the one key a run leaves out rather than writing as `null`. The
+others say something about every maze, so `null` is an answer for them; a
+measurement nobody asked for has no answer, and an absent key says the run
+never measured rather than measuring nothing. Rows must be lists of `true` and `false`,
 all the same length, and each must hold at least one cell. A cell is a list
 of two whole numbers, `[x, y]`.
 
@@ -416,9 +422,9 @@ rows of booleans, `True` for a wall.
 | `py_maze.read_save(path, chars=None, stream=None)` | Read a file, returning `(grid, collectibles, seed)` |
 | `py_maze.parse_save(text, source=None, chars=None)` | The same, from text already in hand. `source` names the file in the error messages |
 | `py_maze.parse_json_save(text, source=None)` | The same again, for a document. `parse_save` calls it for text that opens with `{` |
-| `py_maze.write_save(path, grid, collectibles=(), seed=None, solution=None, form='text', stream=None)` | Write a maze to a file, in either form |
+| `py_maze.write_save(path, grid, collectibles=(), seed=None, solution=None, form='text', stream=None, stats=None)` | Write a maze to a file, in either form |
 | `py_maze.save_lines(grid, collectibles=(), seed=None)` | The lines `write_save` would write, without writing them |
-| `py_maze.save_json(grid, collectibles=(), seed=None, solution=None)` | The document it would write instead, under `form='json'` |
+| `py_maze.save_json(grid, collectibles=(), seed=None, solution=None, stats=None)` | The document it would write instead, under `form='json'` |
 | `py_maze.picture_chars(wall, open_cell)` | The `chars` map a headerless picture is read with |
 | `py_maze.SaveFileError` | Raised for every refusal above. A `ValueError` |
 | `py_maze.SAVE_FORMAT` | The format number this build reads |

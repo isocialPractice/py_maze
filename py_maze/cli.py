@@ -13,7 +13,7 @@ import random
 import sys
 
 from .algorithms import ALGORITHM_NOTES, ALGORITHMS, DEFAULT_ALGORITHM
-from .analysis import UNSEARCHED, maze_stats
+from .analysis import UNSEARCHED, dead_ends, maze_stats
 from .chase import (DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, MAX_CHASE_POINT,
                     MAX_CHASE_SPEED, MIN_CHASE_POINT, MIN_CHASE_SPEED,
                     chase_setting)
@@ -439,8 +439,9 @@ def build_parser():
                              "exactly as it would be without this, and a "
                              "quiet run still reports them, having been "
                              "asked to. A --format json run prints the "
-                             "document alone, so nothing is printed under "
-                             "it there")
+                             "document alone, carrying the same "
+                             "measurements under its 'stats' key instead "
+                             "of printing them under it")
     parser.add_argument("--quiet", "-q", action="store_true",
                         help="Print the maze and nothing else: no banner, no "
                              "seed line and no play prompt, so a run whose "
@@ -554,8 +555,12 @@ def build_maze(args):
         args: Parsed command-line arguments
 
     Returns:
-        tuple: (grid, collectibles, seed). The seed is None for a loaded
-        maze whose save file does not record one
+        tuple: (grid, collectibles, seed, dead_ends_before). The seed is
+        None for a loaded maze whose save file does not record one, and
+        ``dead_ends_before`` is the dead ends the maze had before
+        ``--braid`` opened a share of them - None where nothing was
+        braided, which is every loaded maze and every run that asked for
+        no braid
 
     Raises:
         OSError: If a maze was to be loaded and the file cannot be read
@@ -581,7 +586,9 @@ def build_maze(args):
         # whatever the file drew, and everything downstream reads them
         check_ends(loaded[0], args.load)
 
-        return loaded
+        # a loaded maze is whatever the file drew, so there is no before
+        # to compare it against: --braid does not apply to one
+        return loaded + (None,)
 
     # use the difficulty preset and any width and height overrides,
     # capped to whatever the terminal can actually show
@@ -599,6 +606,13 @@ def build_maze(args):
                               algorithm=args.algorithm)
     maze_grid = generator.generate()
 
+    # a braided maze cannot be asked what it was before, so the count is
+    # taken while the maze still is. An unbraided run pays for no walk
+    # and reports nothing, which is the honest answer for a maze whose
+    # dead ends are all the carver's
+    dead_ends_before = (sum(1 for _ in dead_ends(maze_grid))
+                        if args.braid > 0 else None)
+
     # braiding before the pickups are scattered lets them land in the
     # dead ends it has just opened a second way into. With no --braid
     # this draws no random numbers, so the pickups fall where the seed
@@ -610,7 +624,7 @@ def build_maze(args):
     collectibles = place_collectibles(maze_grid, args.collectibles,
                                       generator.random)
 
-    return maze_grid, collectibles, seed
+    return maze_grid, collectibles, seed, dead_ends_before
 
 
 def build_game(args, grid, collectibles=()):
@@ -658,7 +672,7 @@ def main():
     quiet = is_quiet(args)
 
     try:
-        maze_grid, collectibles, seed = build_maze(args)
+        maze_grid, collectibles, seed, dead_ends_before = build_maze(args)
     except SaveFileError as error:
         fail(error, EXIT_SAVE_FILE)
     except OSError as error:
@@ -672,12 +686,26 @@ def main():
     elif args.animate or args.solve:
         solution = solve_maze(maze_grid)
 
+    # the measurements are taken once and reported wherever the run was
+    # asked to report them: under the picture a text run draws, and
+    # under the `stats` key of the document a JSON run writes and saves.
+    # A run that searched hands over what the search found rather than
+    # paying for a second one, and a search that found nothing is still
+    # a search: None is the answer, where UNSEARCHED is the run that
+    # never asked
+    measured = None
+    if args.stats:
+        measured = maze_stats(
+            maze_grid,
+            solution if args.solve or args.animate else UNSEARCHED,
+            dead_ends_before)
+
     # the JSON form records the solution, so the file is written once
     # there is one to record rather than before the maze is solved
     if args.save:
         try:
             write_save(args.save, maze_grid, collectibles, seed, solution,
-                       args.format)
+                       args.format, stats=measured)
         except OSError as error:
             fail(error, EXIT_FILE_ERROR)
 
@@ -688,7 +716,8 @@ def main():
             print()
 
         if args.format == JSON_FORMAT:
-            print(save_json(maze_grid, collectibles, seed, solution))
+            print(save_json(maze_grid, collectibles, seed, solution,
+                            measured))
         else:
             # the collectibles are drawn over the solution, so a solved
             # maze still shows what there is to pick up along the way
@@ -697,14 +726,10 @@ def main():
 
             # the measurements go under the maze rather than into it, and
             # a quiet run prints them too: --quiet drops what was never
-            # asked for, and this was asked for. A run that searched hands
-            # over what the search found rather than paying for a second
-            # one, and a search that found nothing is still a search: None
-            # is the answer, where UNSEARCHED is the run that never asked
-            if args.stats:
-                measured = maze_stats(
-                    maze_grid,
-                    solution if args.solve or args.animate else UNSEARCHED)
+            # asked for, and this was asked for. A document run prints
+            # none of this, carrying the same numbers under its `stats`
+            # key instead, so what a program reads stays one document
+            if measured is not None:
                 for line in stats_lines(measured):
                     print(line)
 

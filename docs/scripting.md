@@ -84,6 +84,32 @@ with `Generating maze...` in front of it is not a document any more. The
 same document is what `--save` writes under `--format json`, so a file and
 a pipe carry the same bytes.
 
+### The Measurements Under a Key
+
+`--stats` prints tally lines under the maze a text run draws. A document
+run prints no lines at all, so the same numbers go under a `stats` key
+instead, which is what a script reads rather than parsing printed text:
+
+```bash
+python -m py_maze -d easy --seed 2024 --stats --format json > maze.json
+```
+
+Picking one measurement out of what that writes:
+
+```bash
+python -c "import json; print(json.load(open('maze.json'))['stats']['difficulty'])"
+```
+
+**Output:**
+
+```
+36
+```
+
+The key is there only when `--stats` asked for it, so a script that wants
+the numbers passes both flags. [Reading a maze](analysis.md) sets out every
+measurement and what each one says about the maze.
+
 ## Standing in a Pipeline
 
 `-` is standard input to `--load` and standard output to `--save`, as it is

@@ -606,7 +606,18 @@ def stats_lines(stats):
     reads like what they read under one being played. Two lines rather
     than one keeps either from running past a terminal's last column: the
     first says what the maze is made of and the second how far through it
-    goes.
+    goes and how hard that is.
+
+    ``solution_share`` is the one measurement printed in a form of its
+    own. It is held as the exact share a script can compare, and read
+    by a player as a whole percent, so the line says ``47%`` for a share
+    of ``0.4794520547945205``.
+
+    ``dead_ends_opened`` is the one tally a line prints only sometimes.
+    Only a braided run has a before to compare against, so the tally
+    sits beside the dead ends it is about on a run that braided and is
+    left off a run that did not, rather than printing a nought that
+    would read as a braid that opened nothing.
 
     Args:
         stats: The measurements, as :func:`py_maze.analysis.maze_stats`
@@ -614,18 +625,29 @@ def stats_lines(stats):
 
     Returns:
         list: One string per line. A maze with no way through has no
-        solution to measure, and the tally says so in that word rather
-        than in a number that would read as a route of no steps
+        solution to measure, and every tally read off the route says so
+        in that word rather than in a number that would read as a route
+        of no steps
     """
 
     solution = stats['solution']
+    share = stats['solution_share']
+    opened = stats['dead_ends_opened']
+    score = stats['difficulty']
 
-    return ["cells %d   open %d   dead ends %d   junctions %d"
-            % (stats['cells'], stats['open'], stats['dead_ends'],
-               stats['junctions']),
-            "longest corridor %d   solution %s"
+    made_of = ["cells %d" % stats['cells'], "open %d" % stats['open'],
+               "dead ends %d" % stats['dead_ends']]
+    if opened is not None:
+        made_of.append("opened %d" % opened)
+    made_of.append("junctions %d" % stats['junctions'])
+
+    return ['   '.join(made_of),
+            "longest corridor %d   solution %s   solution share %s"
+            "   difficulty %s"
             % (stats['longest_corridor'],
-               'none' if solution is None else solution)]
+               'none' if solution is None else solution,
+               'none' if share is None else '%d%%' % round(share * 100),
+               'none' if score is None else score)]
 
 
 def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
