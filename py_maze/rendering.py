@@ -610,7 +610,7 @@ def stats_lines(stats):
 
     ``solution_share`` is the one measurement printed in a form of its
     own. It is held as the exact share a script can compare, and read
-    by a player as a whole percent, so the line says ``47%`` for a share
+    by a player as a whole percent, so the line says ``48%`` for a share
     of ``0.4794520547945205``.
 
     ``dead_ends_opened`` is the one tally a line prints only sometimes.

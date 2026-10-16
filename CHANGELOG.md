@@ -22,6 +22,20 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **The `stats_lines` docstring read its own worked example as truncation
+  rather than rounding.** It said a stored `0.4794520547945205` prints as
+  `47%`, where `round(share * 100)` makes it `48%` - which is what
+  `docs/analysis.md`, the `1.0.0a4` entry below and the fixture in
+  `TestStatsLines` all say for that same share. The docstring is the whole
+  of what a reader of the module is told about the two forms of that one
+  number, and it was the only place in the repository naming the wrong one,
+  so a caller written off it would have floored the share where the line
+  rounds it.
+
 ## [1.0.0a4] - 2026-10-15
 
 Reading a maze rather than carving one. `--stats` already said what a maze was
