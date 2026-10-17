@@ -166,6 +166,65 @@ maze for this generator and not six tenths of the hardest maze there could be.
 A maze with no way through has no difficulty to report. Two of the three parts
 are read off the route, so the score is `none` rather than nought.
 
+## Comparing the Carving Algorithms
+
+`--algorithm` is described in one phrase apiece - winding corridors with
+long dead ends, a more open maze with short ones, straight runs and
+squared-off rooms. Those are claims, and these are the numbers behind them.
+
+Every figure is the mean over the twenty mazes `--seed 1` to `--seed 20`
+carve at `--difficulty hard`, which is 16 by 20 cells, 1,353 positions and
+641 of them open. One maze says very little - a single seed can hand any
+carver a short route - so the comparison is over twenty of them, and it can
+be taken again:
+
+```python
+import statistics
+
+import py_maze
+
+for name in py_maze.ALGORITHMS:
+    measured = [py_maze.maze_stats(
+        py_maze.MazeGenerator(16, 20, seed=seed, algorithm=name).generate())
+        for seed in range(1, 21)]
+    print(name, statistics.mean(row['dead_ends'] for row in measured))
+```
+
+| Measurement, mean over 20 mazes | `backtracker` | `prim` | `division` |
+| --- | --- | --- | --- |
+| Dead ends | 33.5 | 101.1 | 87.5 |
+| Junctions | 33.0 | 86.1 | 78.6 |
+| Longest corridor | 16.1 | 21.4 | 19.7 |
+| Solution steps | 236.4 | 76.0 | 124.0 |
+| Solution share | 37.0% | 12.0% | 19.5% |
+| Difficulty | 39.9 | 60.1 | 56.9 |
+
+Three of the phrases hold, and read better as numbers than as words.
+
+**Backtracker's route is the long one.** Its shortest way through is 236
+steps against Prim's 76, and it walks 37% of the open cells against Prim's
+12%. That is what "one winding route" measures as: the maze is mostly the
+way through, rather than mostly the branches off it.
+
+**Prim's dead ends are the many short ones.** It leaves 101 of them against
+backtracker's 33, in a maze with the same 641 open cells, so each one is a
+third as deep on average. "Short dead ends" is three times as many of them
+sharing the same floor.
+
+**Branching is what makes a maze score.** Prim's 86 junctions and
+backtracker's 33 are the gap the `difficulty` column reads back: 60.1
+against 39.9, from mazes identical in size. Recursive division sits just
+under Prim's on both.
+
+**One phrase the numbers do not back is "straight corridors".** Recursive
+division's longest straight run averages 19.7 cells, below Prim's 21.4.
+What division builds is walls that run straight, and a wall running straight
+is not a corridor running straight: it leaves many short straight runs
+rather than one long one, and `longest_corridor` reports the longest run
+rather than how many there are. Take the phrase as a description of the
+shape and the column as a measurement of one thing about it, which is not
+the same claim.
+
 ## Measurements in the JSON Document
 
 A `--format json` run prints the document alone, so nothing is printed

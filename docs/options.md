@@ -14,9 +14,10 @@ summary: >-
 | `--braid` | `-b` | `0` | Open this share of the dead ends, from `0` for none to `1` for all |
 | `--seed` | `-s` | chosen at random | Seed for the maze generator |
 | `--collectibles` | `-c` | `0` | Scatter this many pickups through the maze |
-| `--mode` | `-m` | `plain` | How the maze is played: `plain` or `chase` |
+| `--mode` | `-m` | `plain` | How the maze is played: `plain`, `chase` or `quest` |
 | `--chase-point` | | `55` | Share of the maze walked before the chase begins, from `20` to `90` |
 | `--chase-speed` | | `2` | How fast the chaser moves, from `0` for the slowest preset to `5` |
+| `--quest-stages` | | `3` | How many doors a quest shuts the way on with, from `1` to `9` |
 | `--save` | `-o` | | Write the maze to a file so it can be played again, or to standard output as `-` |
 | `--load` | `-l` | | Play the maze saved in a file instead of generating one, or in standard input as `-` |
 | `--wall-char` | | `*` | Character a wall is drawn with in a loaded file that carries no py_maze header |
@@ -35,8 +36,8 @@ reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
 algorithm. The short flag for `--save` is `-o`, as in an output file, since
 `-s` is already the seed. `--wall-char` and `--open-char` have no short
 flags: they are read by a loader rather than typed at a prompt. `-m` is the
-mode; the two chase options have no short flags, being settings for a mode
-rather than everyday typing. `--stats` has none either, there being no letter
+mode; the chase options and `--quest-stages` have no short flags, being
+settings for a mode rather than everyday typing. `--stats` has none either, there being no letter
 left that reads as it: `-s` is the seed and `-S` solves.
 
 `--stats` prints under the maze rather than into it, so the picture is the
@@ -152,6 +153,7 @@ plays exactly as py_maze always has.
 | --- | --- |
 | `plain` | Walk from the entrance to the exit |
 | `chase` | The same walk, with something following you |
+| `quest` | The way on is shut until you find what opens it |
 
 ```bash
 python -m py_maze --mode chase
@@ -159,6 +161,10 @@ python -m py_maze --mode chase
 
 An option belonging to a mode is ignored by every other one, so passing
 `--chase-point` to a plain game does no harm and changes nothing.
+
+[Game modes](modes.html) is the page for all three: what each one plays
+like, what each one draws and the options belonging to each. What follows
+here is how the options themselves read a value.
 
 ### Chase Mode
 
@@ -202,6 +208,34 @@ python -m py_maze --mode chase --chase-point a34
 
 ```
 py_maze: --chase-point: 'a34' is not a number, carrying on without it
+```
+
+### Quest Mode
+
+The way on is shut by a door, drawn `+`, and what opens it is in a box,
+drawn `&`, hidden in the part of the maze the player can already reach.
+A guide, drawn `@`, waits just inside the entrance and says what the next
+errand is when `n` is pressed.
+
+`--quest-stages` is how many door-and-box pairs the chain runs to, from `1`
+to `9`:
+
+```bash
+python -m py_maze --mode quest --quest-stages 5
+```
+
+It shapes the maze before a word is drawn, the way `--collectibles` and
+`--braid` do, so unlike the chase options it is refused rather than settled
+into its range:
+
+```bash
+python -m py_maze --mode quest --quest-stages 40
+```
+
+**Output on standard error:**
+
+```
+py_maze: error: argument --quest-stages: a quest runs from 1 to 9 stages, got 40
 ```
 
 The maze is then played with the default chase point, exactly as though the

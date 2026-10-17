@@ -29,6 +29,7 @@ The modules, and what each one owns:
 - :mod:`py_maze.keys` - single keypresses, and the only terminal imports
 - :mod:`py_maze.game` - playing a maze at the terminal
 - :mod:`py_maze.chase` - the antagonist chase mode sets on the player
+- :mod:`py_maze.quest` - the doors quest mode shuts, and what opens them
 - :mod:`py_maze.modes` - the ways a maze can be played, one to a name
 - :mod:`py_maze.cli` - the options, the parser and :func:`main`
 
@@ -54,12 +55,13 @@ from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
                   build_maze, build_parser, chase_number, chase_point,
                   chase_speed, collectible_count, difficulty_summary,
                   is_quiet, main, maze_char, maze_dimension, mode_summary,
-                  notice, resolve_dimensions)
+                  notice, quest_stage_count, resolve_dimensions)
 from .game import (CAUGHT_BANNER, CAUGHT_OUTCOME, CONTROLS_LINE,
-                   ESCAPED_OUTCOME, EXIT_PROMPT, GOODBYE_MESSAGE,
+                   ESCAPED_OUTCOME, EXIT_PROMPT, GOODBYE_MESSAGE, GUIDE_LINE,
                    HINT_SECONDS, HINT_STEPS, PLAIN_CAUGHT_BANNER,
-                   PLAIN_WIN_BANNER, QUIT_MESSAGE, TICK_SECONDS, WIN_BANNER,
-                   MazeGame, caught_banner, win_banner)
+                   PLAIN_WIN_BANNER, QUEST_CONTROLS_LINE, QUIT_MESSAGE,
+                   TICK_SECONDS, WIN_BANNER, MazeGame, caught_banner,
+                   win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
@@ -69,12 +71,18 @@ from .keys import (INTERRUPT_KEY, KEY_POLL_INTERVAL, WINDOWS_INTERRUPT_KEY,
                    read_key, read_key_posix, read_key_timed,
                    read_key_timed_posix, read_key_timed_windows,
                    read_key_windows, read_response)
-from .modes import (CHASE_MODE, DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS,
-                    MODES, PLAIN_MODE, chase_game, game_mode, plain_game)
+from .modes import (CHASE_MODE, DEFAULT_MODE, MODE_CONTENT, MODE_NOTES,
+                    MODE_OPTIONS, MODES, PLAIN_MODE, QUEST_MODE, chase_game,
+                    game_mode, mode_content, plain_game, quest_content,
+                    quest_game)
+from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES, MIN_QUEST_STAGES,
+                    Quest, door_cells, place_quest, reachable)
 from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
-                        CHASER_MARKER, COLLECTIBLE_MARKER, FRAME_DELAY,
+                        BOX_MARKER, CHASER_MARKER, COLLECTIBLE_MARKER,
+                        DOOR_MARKER, FRAME_DELAY,
                         FRAME_FOOT_ROWS,
-                        FRAME_HEAD_ROWS, FRONTIER_MARKER, HINT_MARKER,
+                        FRAME_HEAD_ROWS, FRONTIER_MARKER, GUIDE_MARKER,
+                        HINT_MARKER,
                         LAST_BMP_CODE_POINT, OPEN_MARKER, PLAYER_MARKER,
                         RENDER_ROW_OVERHEAD, SOLUTION_MARKER, VISITED_MARKER,
                         WALL_MARKER, WINDOWS_TERMINAL_VARIABLE,
@@ -82,13 +90,14 @@ from .rendering import (ANSI_CLEAR, ANSI_CLEAR_LINE, ANSI_HOME, ANSI_ROW,
                         clear_screen, collectible_overlay, fit_dimension,
                         fit_frame, fit_to_terminal, format_duration,
                         frame_diff, frame_text, frame_wraps, maze_lines,
-                        print_maze, solution_overlay, stats_lines,
-                        status_line, summary_lines, terminal_size, wipe_rows)
+                        print_maze, quest_overlay, solution_overlay,
+                        stats_lines, status_line, summary_lines,
+                        terminal_size, wipe_rows)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, JSON_FORMAT_KEY,
-                    SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER, STDIN_NAME,
-                    STDIO_PATH, TEXT_FORMAT, SaveFileError, parse_json_save,
-                    parse_save, picture_chars, read_save, save_json,
-                    save_lines, write_save)
+                    JSON_QUEST_KEY, SAVE_CHARS, SAVE_FORMAT, SAVE_HEADER,
+                    STDIN_NAME, STDIO_PATH, TEXT_FORMAT, SaveFileError,
+                    SavedMaze, parse_json_save, parse_save, picture_chars,
+                    read_save, save_json, save_lines, write_save)
 from .solving import (UNSEARCHED, maze_progress, search_frames,
                       solution_runs, solve_maze)
 from .version import __version__
@@ -140,12 +149,15 @@ __all__ = [
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
     'ANSI_ROW',
+    'BOX_MARKER',
     'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
+    'DOOR_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
     'FRAME_HEAD_ROWS',
     'FRONTIER_MARKER',
+    'GUIDE_MARKER',
     'HINT_MARKER',
     'LAST_BMP_CODE_POINT',
     'OPEN_MARKER',
@@ -170,6 +182,7 @@ __all__ = [
     'frame_wraps',
     'maze_lines',
     'print_maze',
+    'quest_overlay',
     'solution_overlay',
     'stats_lines',
     'status_line',
@@ -181,6 +194,7 @@ __all__ = [
     'FORMATS',
     'JSON_FORMAT',
     'JSON_FORMAT_KEY',
+    'JSON_QUEST_KEY',
     'SAVE_CHARS',
     'SAVE_FORMAT',
     'SAVE_HEADER',
@@ -188,6 +202,7 @@ __all__ = [
     'STDIO_PATH',
     'TEXT_FORMAT',
     'SaveFileError',
+    'SavedMaze',
     'parse_json_save',
     'parse_save',
     'picture_chars',
@@ -213,10 +228,12 @@ __all__ = [
     'ESCAPED_OUTCOME',
     'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
+    'GUIDE_LINE',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
+    'QUEST_CONTROLS_LINE',
     'QUIT_MESSAGE',
     'TICK_SECONDS',
     'WIN_BANNER',
@@ -238,12 +255,25 @@ __all__ = [
     'CHASE_MODE',
     'DEFAULT_MODE',
     'MODES',
+    'MODE_CONTENT',
     'MODE_NOTES',
     'MODE_OPTIONS',
     'PLAIN_MODE',
+    'QUEST_MODE',
     'chase_game',
     'game_mode',
+    'mode_content',
     'plain_game',
+    'quest_content',
+    'quest_game',
+    # quest
+    'DEFAULT_QUEST_STAGES',
+    'MAX_QUEST_STAGES',
+    'MIN_QUEST_STAGES',
+    'Quest',
+    'door_cells',
+    'place_quest',
+    'reachable',
     # cli
     'DEFAULT_DIFFICULTY',
     'DIFFICULTIES',
@@ -269,5 +299,6 @@ __all__ = [
     'maze_dimension',
     'mode_summary',
     'notice',
+    'quest_stage_count',
     'resolve_dimensions',
 ]

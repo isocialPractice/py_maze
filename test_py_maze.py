@@ -14,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -35,11 +36,12 @@ PACKAGE_DIR = os.path.join(PROJECT_ROOT, 'py_maze')
 PACKAGE_MODULES = ('algorithms', 'algorithms.backtracker',
                    'algorithms.division', 'algorithms.prim', 'analysis',
                    'chase', 'cli', 'game', 'generation', 'grid', 'keys',
-                   'modes', 'rendering', 'saves', 'solving', 'version')
+                   'modes', 'quest', 'rendering', 'saves', 'solving',
+                   'version')
 TERMINAL_FREE_MODULES = ('algorithms', 'algorithms.backtracker',
                          'algorithms.division', 'algorithms.prim', 'analysis',
-                         'chase', 'generation', 'grid', 'rendering', 'saves',
-                         'solving')
+                         'chase', 'generation', 'grid', 'quest', 'rendering',
+                         'saves', 'solving')
 
 # the platform machinery that used to sit at the top of the flat module
 TERMINAL_MODULES = ('msvcrt', 'termios', 'tty')
@@ -64,6 +66,7 @@ DEVELOPMENT_PATH = os.path.join(DOCS_DIR, 'development.md')
 GENERATING_PATH = os.path.join(DOCS_DIR, 'generating.md')
 ANALYSIS_PATH = os.path.join(DOCS_DIR, 'analysis.md')
 LIBRARY_PATH = os.path.join(DOCS_DIR, 'library.md')
+MODES_PATH = os.path.join(DOCS_DIR, 'modes.md')
 OPTIONS_PATH = os.path.join(DOCS_DIR, 'options.md')
 SAVE_FORMAT_PATH = os.path.join(DOCS_DIR, 'save-format.md')
 SCRIPTING_PATH = os.path.join(DOCS_DIR, 'scripting.md')
@@ -3796,9 +3799,12 @@ class TestModeOption(ParserRunner, unittest.TestCase):
                 self.assertEqual(self.parse(['-m', name]).mode, name)
 
     def test_a_mode_nothing_answers_to_is_refused(self):
-        message = self.parse_error(['--mode', 'quest'])
+        # a name no mode answers to, which is what this asks about.
+        # 'quest' stood here until quest mode was built, which is the
+        # trap a stand-in taken from the roadmap sets
+        message = self.parse_error(['--mode', 'labyrinth'])
 
-        self.assertIn('quest', message)
+        self.assertIn('labyrinth', message)
 
     def test_the_help_text_lists_the_modes_that_exist(self):
         help_text = ' '.join(py_maze.build_parser().format_help().split())
@@ -3824,12 +3830,14 @@ class TestModeOption(ParserRunner, unittest.TestCase):
                          py_maze.chase_game)
         self.assertEqual(py_maze.game_mode(py_maze.PLAIN_MODE),
                          py_maze.plain_game)
+        self.assertEqual(py_maze.game_mode(py_maze.QUEST_MODE),
+                         py_maze.quest_game)
 
     def test_a_mode_no_game_answers_to_is_refused_by_name(self):
         with self.assertRaises(ValueError) as caught:
-            py_maze.game_mode('quest')
+            py_maze.game_mode('labyrinth')
 
-        self.assertIn('quest', str(caught.exception))
+        self.assertIn('labyrinth', str(caught.exception))
 
     def test_every_option_a_mode_owns_is_an_option_the_parser_takes(self):
         help_text = py_maze.build_parser().format_help()
@@ -9503,6 +9511,22 @@ class TestSaveFormatDocument(unittest.TestCase):
          '{"py_maze": 1, "grid": [[true]], "collectibles": [[0, 0]]}\n'),
         ('a document whose seed is neither a number nor a word',
          '{"py_maze": 1, "grid": [[true]], "seed": {}}\n'),
+        ('a document whose quest is not a set of doors and boxes',
+         '{"py_maze": 1, "grid": [[true]], "quest": 5}\n'),
+        ('a document whose door is not a cell and an item',
+         '{"py_maze": 1, "grid": [[true]], "quest": {"doors": [[1, 5]]}}\n'),
+        ('a document with a box off the maze',
+         '{"py_maze": 1, "grid": [[true, false]],'
+         ' "quest": {"boxes": [[9, 9, 1]]}}\n'),
+        ('a document with a door on a wall',
+         '{"py_maze": 1, "grid": [[true, false]],'
+         ' "quest": {"doors": [[0, 0, 1]]}}\n'),
+        ('a document whose item is below the first stage',
+         '{"py_maze": 1, "grid": [[true, false]],'
+         ' "quest": {"boxes": [[1, 0, 0]]}}\n'),
+        ('a document with its guide off the maze',
+         '{"py_maze": 1, "grid": [[true, false]],'
+         ' "quest": {"guide": [9, 9]}}\n'),
     )
 
     # the one refusal the page cannot show in full, and so cannot be one
@@ -9582,8 +9606,11 @@ class TestSaveFormatDocument(unittest.TestCase):
 
     def test_the_document_rules_out_the_markers_drawn_on_screen(self):
         document = self.document()
-        for marker in (py_maze.PLAYER_MARKER, py_maze.SOLUTION_MARKER):
-            self.assertIn('`%s`' % marker, document)
+        for marker in (py_maze.PLAYER_MARKER, py_maze.SOLUTION_MARKER,
+                       py_maze.CHASER_MARKER, py_maze.DOOR_MARKER,
+                       py_maze.BOX_MARKER, py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertIn('`%s`' % marker, document)
 
     def test_every_documented_refusal_is_one_the_reader_makes(self):
         document = self.document()
@@ -9741,7 +9768,7 @@ class TestLibrarySection(unittest.TestCase):
     # added to one of them is a name the page has to grow a row for
     TABLED_MODULES = ('algorithms', 'algorithms.backtracker',
                       'algorithms.division', 'algorithms.prim', 'analysis',
-                      'generation', 'grid', 'saves', 'solving')
+                      'generation', 'grid', 'quest', 'saves', 'solving')
 
     def section(self):
         # the library page, which is the whole of the file now that the
@@ -10291,8 +10318,9 @@ class TestDocumentationSite(unittest.TestCase):
     # every page of the site, and the file it is written in
     PAGES = ('index.md', 'QUICKSTART.md', 'CHEATSHEET.md', 'installation.md',
              'options.md', 'generating.md', 'saving.md', 'solving.md',
-             'analysis.md', 'playing.md', 'scripting.md', 'library.md',
-             'save-format.md', 'how-it-works.md', 'development.md')
+             'analysis.md', 'playing.md', 'modes.md', 'scripting.md',
+             'library.md', 'save-format.md', 'how-it-works.md',
+             'development.md')
 
     def config(self):
         return read_project_file(SITE_CONFIG_PATH)
@@ -11367,6 +11395,1014 @@ class TestFencedBlockReading(unittest.TestCase):
         # the quote runs to the end of the document and the fence in it
         # is still open there, so the block is open at the end too
         self.assertEqual(self.unclosed('> one\n> ```\n> carve()'), 2)
+
+
+def finish_quest(grid, quest):
+    # play a quest maze through without a keyboard: open every box that
+    # can be reached, unlock every door the items opened, and go round
+    # again until the exit is reachable or nothing more will open
+    #
+    # Args:
+    #     grid: 2D list of booleans (True = wall, False = path)
+    #     quest: The Quest laid into it, which is played to the end
+    #
+    # Returns:
+    #     bool: True when the exit was reached
+
+    start = py_maze.find_entrance(grid)
+    way_out = py_maze.find_exit(grid)
+
+    while True:
+        reached = py_maze.reachable(grid, start, quest.closed_doors())
+        for cell in sorted(reached):
+            quest.open_box(cell)
+
+        if way_out in reached:
+            return True
+
+        opened = [cell for cell in quest.closed_doors()
+                  if quest.doors[cell] in quest.carried
+                  and any(side in reached for side
+                          in py_maze.open_neighbors(grid, *cell))]
+        if not opened:
+            return False
+
+        for cell in opened:
+            quest.unlock(cell)
+
+
+class TestReachable(unittest.TestCase):
+    # the flood fill a door needs: a shut cell is one the player cannot
+    # walk through, however open the corridors beyond it are
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+
+    def test_nothing_shut_reaches_every_open_cell(self):
+        self.assertEqual(py_maze.reachable(self.grid, (1, 0)),
+                         set(py_maze.open_cells(self.grid)))
+
+    def test_a_shut_cell_cuts_off_what_is_behind_it(self):
+        reached = py_maze.reachable(self.grid, (1, 0), [(3, 2)])
+
+        self.assertEqual(reached, {(1, 0), (1, 1), (2, 1), (3, 1)})
+        self.assertNotIn(py_maze.find_exit(self.grid), reached)
+
+    def test_a_shut_start_is_still_where_the_walk_begins(self):
+        # a shut cell is one the player cannot walk *into*. Standing on
+        # one is not being stuck on it, so the walk leaves it the way
+        # it leaves any other cell
+        self.assertEqual(py_maze.reachable(self.grid, (1, 0), [(1, 0)]),
+                         set(py_maze.open_cells(self.grid)))
+
+    def test_a_start_that_is_not_an_open_cell_reaches_nothing(self):
+        for start in ((0, 0), (99, 99), (-1, 0)):
+            with self.subTest(start=start):
+                self.assertEqual(py_maze.reachable(self.grid, start), set())
+
+
+class TestDoorCells(unittest.TestCase):
+    # where a quest shuts the route, which is evenly along it
+
+    ROUTE = [(x, 0) for x in range(9)]
+
+    def test_the_doors_are_spaced_along_the_route(self):
+        self.assertEqual(py_maze.door_cells(self.ROUTE, 3),
+                         [(2, 0), (4, 0), (6, 0)])
+
+    def test_neither_end_of_the_route_is_ever_shut(self):
+        for stages in range(1, py_maze.MAX_QUEST_STAGES + 1):
+            with self.subTest(stages=stages):
+                chosen = py_maze.door_cells(self.ROUTE, stages)
+
+                self.assertNotIn(self.ROUTE[0], chosen)
+                self.assertNotIn(self.ROUTE[-1], chosen)
+                self.assertEqual(len(chosen), len(set(chosen)))
+
+    def test_a_short_route_gets_as_many_doors_as_it_has_room_for(self):
+        chosen = py_maze.door_cells([(x, 0) for x in range(4)], 9)
+
+        self.assertEqual(len(chosen), len(set(chosen)))
+        self.assertLess(len(chosen), 9)
+
+    def test_a_route_with_no_room_at_all_gets_none(self):
+        self.assertEqual(py_maze.door_cells([(1, 0), (1, 1)], 3), [])
+
+
+class TestPlaceQuest(unittest.TestCase):
+    # a chain laid into a maze that already exists, which can always be
+    # finished and never before the stage it belongs to
+
+    def quest(self, seed=2024, stages=3, width=6, height=6, **extra):
+        grid = py_maze.MazeGenerator(width, height, seed=seed).generate()
+
+        return grid, py_maze.place_quest(grid, stages,
+                                         random.Random(seed), **extra)
+
+    def test_it_lays_the_stages_it_was_asked_for(self):
+        _, quest = self.quest()
+
+        self.assertEqual(quest.stages, 3)
+        self.assertEqual(sorted(quest.doors.values()), [1, 2, 3])
+        self.assertEqual(sorted(quest.boxes.values()), [1, 2, 3])
+
+    def test_a_door_and_a_box_never_share_a_cell(self):
+        _, quest = self.quest(stages=py_maze.MAX_QUEST_STAGES, width=16,
+                              height=20)
+
+        self.assertEqual(set(quest.doors) & set(quest.boxes), set())
+
+    def test_the_maze_itself_is_left_exactly_as_it_was(self):
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+        before = [row[:] for row in grid]
+        py_maze.place_quest(grid, 3, random.Random(2024))
+
+        self.assertEqual(grid, before)
+
+    def test_every_door_and_box_stands_on_a_cell_that_can_be_walked(self):
+        grid, quest = self.quest()
+
+        for cell in list(quest.doors) + list(quest.boxes) + [quest.guide]:
+            with self.subTest(cell=cell):
+                self.assertFalse(grid[cell[1]][cell[0]])
+
+    def test_the_exit_cannot_be_reached_before_a_door_is_opened(self):
+        grid, quest = self.quest()
+        reached = py_maze.reachable(grid, py_maze.find_entrance(grid),
+                                    quest.closed_doors())
+
+        self.assertNotIn(py_maze.find_exit(grid), reached)
+
+    def test_the_first_box_is_reachable_before_anything_is_opened(self):
+        grid, quest = self.quest()
+        reached = py_maze.reachable(grid, py_maze.find_entrance(grid),
+                                    quest.closed_doors())
+        first = [cell for cell, item in quest.boxes.items() if item == 1]
+
+        self.assertEqual(len(first), 1)
+        self.assertIn(first[0], reached)
+
+    def test_a_quest_can_always_be_finished(self):
+        # the whole promise of the placement: every box is hidden in the
+        # part of the maze that is reachable at the time it is wanted
+        for seed in range(1, 21):
+            for stages in (1, 3, 5):
+                with self.subTest(seed=seed, stages=stages):
+                    grid, quest = self.quest(seed=seed, stages=stages,
+                                             width=9, height=11)
+
+                    self.assertTrue(finish_quest(grid, quest))
+
+    def test_the_same_seed_hides_the_boxes_in_the_same_places(self):
+        first = self.quest()[1]
+        again = self.quest()[1]
+
+        self.assertEqual(first.boxes, again.boxes)
+        self.assertEqual(first.doors, again.doors)
+        self.assertEqual(first.guide, again.guide)
+
+    def test_the_guide_waits_on_the_route_just_inside_the_entrance(self):
+        grid, quest = self.quest()
+
+        self.assertEqual(quest.guide, py_maze.solve_maze(grid)[1])
+
+    def test_nothing_is_laid_on_a_cell_a_pickup_is_already_on(self):
+        grid = py_maze.MazeGenerator(9, 11, seed=2024).generate()
+        collectibles = py_maze.place_collectibles(grid, 20,
+                                                  random.Random(2024))
+        quest = py_maze.place_quest(grid, 3, random.Random(2024),
+                                    taken=collectibles)
+
+        self.assertEqual(set(quest.boxes) & collectibles, set())
+        self.assertNotIn(quest.guide, collectibles)
+
+    def test_a_maze_with_no_way_through_has_no_quest_to_lay(self):
+        self.assertIsNone(py_maze.place_quest(
+            grid_from_strings(UNSOLVABLE_SAVE.splitlines()[1:]), 3))
+
+    def test_a_quest_of_no_stages_is_no_quest(self):
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+        self.assertIsNone(py_maze.place_quest(grid, 0))
+
+    def test_a_route_too_short_to_shut_leaves_no_quest(self):
+        self.assertIsNone(py_maze.place_quest(
+            grid_from_strings(["* *", "*  "]), 3))
+
+
+class TestQuestInventory(unittest.TestCase):
+    # the doors, the boxes and what is being carried
+
+    def setUp(self):
+        self.quest = py_maze.Quest(boxes={(1, 1): 1, (5, 5): 2},
+                                   doors={(2, 2): 1, (6, 6): 2},
+                                   guide=(1, 0))
+
+    def test_an_empty_quest_is_finished_before_it_starts(self):
+        empty = py_maze.Quest()
+
+        self.assertEqual(empty.stages, 0)
+        self.assertTrue(empty.finished())
+        self.assertIsNone(empty.stage())
+        self.assertIsNone(empty.target())
+        self.assertIsNone(empty.guide)
+
+    def test_a_door_whose_item_is_not_carried_shuts_the_way(self):
+        self.assertFalse(self.quest.unlock((2, 2)))
+        self.assertEqual(self.quest.opened, set())
+
+    def test_a_cell_with_no_door_on_it_is_walked_through(self):
+        self.assertTrue(self.quest.unlock((3, 3)))
+
+    def test_carrying_the_item_opens_the_door_and_keeps_it_open(self):
+        self.quest.open_box((1, 1))
+
+        self.assertTrue(self.quest.unlock((2, 2)))
+        self.assertEqual(self.quest.opened, {(2, 2)})
+        self.assertEqual(self.quest.closed_doors(), [(6, 6)])
+
+        # the item is kept rather than spent, so the door stays open
+        self.assertTrue(self.quest.unlock((2, 2)))
+        self.assertEqual(self.quest.carried, {1})
+
+    def test_a_box_is_opened_once(self):
+        self.assertEqual(self.quest.open_box((1, 1)), 1)
+        self.assertIsNone(self.quest.open_box((1, 1)))
+        self.assertEqual(self.quest.boxes, {(5, 5): 2})
+
+    def test_a_cell_with_no_box_on_it_hands_nothing_over(self):
+        self.assertIsNone(self.quest.open_box((4, 4)))
+        self.assertEqual(self.quest.carried, set())
+
+    def test_the_doors_are_listed_shut_and_in_reading_order(self):
+        self.assertEqual(self.quest.closed_doors(), [(2, 2), (6, 6)])
+
+    def test_the_stage_is_the_lowest_door_still_shut(self):
+        self.assertEqual(self.quest.stage(), 1)
+        self.quest.carried.add(1)
+        self.quest.unlock((2, 2))
+
+        self.assertEqual(self.quest.stage(), 2)
+        self.assertFalse(self.quest.finished())
+
+    def test_the_target_is_the_box_first_and_then_the_door(self):
+        self.assertEqual(self.quest.target(), (1, 1))
+        self.quest.open_box((1, 1))
+
+        self.assertEqual(self.quest.target(), (2, 2))
+
+    def test_there_is_nothing_left_to_point_at_once_it_is_done(self):
+        for cell in ((1, 1), (5, 5)):
+            self.quest.open_box(cell)
+        for cell in ((2, 2), (6, 6)):
+            self.quest.unlock(cell)
+
+        self.assertTrue(self.quest.finished())
+        self.assertIsNone(self.quest.target())
+        self.assertIn('every door is open', self.quest.task())
+
+    def test_the_task_names_the_item_the_errand_is_about(self):
+        self.assertIn('item 1', self.quest.task())
+        self.quest.open_box((1, 1))
+
+        self.assertIn('item 1', self.quest.task())
+        self.assertIn('carrying', self.quest.task())
+
+    def test_no_task_it_gives_says_where_the_exit_is(self):
+        # a second kind of hint rather than a second way to ask for the
+        # first, which is what the roadmap item asked for
+        self.quest.open_box((1, 1))
+        said = [py_maze.Quest().task(), self.quest.task()]
+        self.quest.unlock((2, 2))
+        said.append(self.quest.task())
+
+        for task in said:
+            with self.subTest(task=task):
+                self.assertNotIn('exit', task)
+
+    def test_what_is_drawn_is_the_shut_doors_and_the_boxes_left(self):
+        doors, boxes, guide = self.quest.drawn()
+
+        self.assertEqual(doors, [(2, 2), (6, 6)])
+        self.assertEqual(boxes, {(1, 1), (5, 5)})
+        self.assertEqual(guide, (1, 0))
+
+        self.quest.open_box((1, 1))
+        self.quest.unlock((2, 2))
+        doors, boxes, _ = self.quest.drawn()
+
+        self.assertEqual(doors, [(6, 6)])
+        self.assertEqual(boxes, {(5, 5)})
+
+
+class TestQuestOverlay(unittest.TestCase):
+    # the three markers a quest adds to a maze
+
+    def test_it_draws_each_of_the_three_with_its_own_marker(self):
+        drawn = py_maze.maze_lines(
+            grid_from_strings(TestMazeGame.MAZE),
+            py_maze.quest_overlay([(3, 2)], [(2, 1)], (1, 1)))
+
+        self.assertEqual(drawn, [
+            "* ***",
+            "*%s%s *" % (py_maze.GUIDE_MARKER, py_maze.BOX_MARKER),
+            "***%s*" % py_maze.DOOR_MARKER,
+            "*   *",
+            "*** *",
+        ])
+
+    def test_nothing_to_draw_is_no_overlay_at_all(self):
+        self.assertEqual(py_maze.quest_overlay(), [])
+        self.assertEqual(py_maze.quest_overlay([], [], None), [])
+
+    def test_every_marker_a_quest_draws_is_its_own_character(self):
+        quest_markers = (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                         py_maze.GUIDE_MARKER)
+        others = (py_maze.WALL_MARKER, py_maze.OPEN_MARKER,
+                  py_maze.PLAYER_MARKER, py_maze.SOLUTION_MARKER,
+                  py_maze.COLLECTIBLE_MARKER, py_maze.CHASER_MARKER,
+                  py_maze.HINT_MARKER, py_maze.VISITED_MARKER)
+
+        self.assertEqual(len(set(quest_markers)), 3)
+        self.assertEqual(set(quest_markers) & set(others), set())
+        self.assertEqual(set(quest_markers) & set(py_maze.SAVE_CHARS), set())
+
+
+class TestQuestGame(unittest.TestCase):
+    # the game with a quest in it: the same grid, the same renderer and
+    # the same key loop, played with the way on shut
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+        self.quest = py_maze.Quest(boxes={(2, 1): 1}, doors={(3, 2): 1},
+                                   guide=(1, 1))
+        self.game = py_maze.MazeGame(self.grid, quest=self.quest)
+
+    def walk(self, *steps):
+        # move the player a step at a time, reporting what each returned
+        return [self.game.move_player(dx, dy) for dx, dy in steps]
+
+    def test_the_plain_game_has_no_quest_in_it(self):
+        plain = py_maze.MazeGame(self.grid)
+
+        self.assertIsNone(plain.quest)
+        self.assertEqual(plain.inventory(), (0, 0))
+        self.assertIsNone(plain.open_box())
+        self.assertEqual(plain.show_quest_hint(), [])
+        self.assertEqual(plain.controls(), py_maze.CONTROLS_LINE)
+
+    def test_a_shut_door_refuses_the_step_and_counts_no_move(self):
+        # the box is taken out of the maze, so the way to the door can
+        # be walked without the item that opens it being picked up
+        self.quest.boxes = {}
+        self.walk((0, 1), (1, 0), (1, 0))
+        moves = self.game.moves
+
+        self.assertFalse(self.game.move_player(0, 1))
+        self.assertEqual(self.game.player_cell(), (3, 1))
+        self.assertEqual(self.game.moves, moves)
+
+    def test_walking_onto_a_box_puts_what_is_in_it_in_the_inventory(self):
+        self.walk((0, 1), (1, 0))
+
+        self.assertEqual(self.game.player_cell(), (2, 1))
+        self.assertEqual(self.quest.carried, {1})
+        self.assertEqual(self.quest.boxes, {})
+        self.assertEqual(self.game.inventory(), (1, 1))
+
+    def test_the_door_opens_once_its_item_is_being_carried(self):
+        walked = self.walk((0, 1), (1, 0), (1, 0), (0, 1))
+
+        self.assertEqual(walked, [True, True, True, True])
+        self.assertEqual(self.game.player_cell(), (3, 2))
+        self.assertEqual(self.quest.opened, {(3, 2)})
+        self.assertEqual(self.quest.closed_doors(), [])
+
+    def test_a_box_on_the_entrance_is_handed_over_before_the_first_move(self):
+        started = py_maze.MazeGame(
+            self.grid, quest=py_maze.Quest(boxes={(1, 0): 1},
+                                           doors={(3, 2): 1}))
+
+        self.assertEqual(started.quest.carried, {1})
+
+    def test_the_tally_under_the_maze_counts_the_inventory(self):
+        self.assertIn('items 0/1', self.game.status())
+        self.walk((0, 1), (1, 0))
+
+        self.assertIn('items 1/1', self.game.status())
+
+    def test_a_game_with_no_quest_tallies_no_inventory(self):
+        self.assertNotIn('items', py_maze.MazeGame(self.grid).status())
+
+    def test_the_summary_reports_what_was_carried_out(self):
+        self.walk((0, 1), (1, 0))
+
+        self.assertIn('Items: 1 of 1', self.game.summary())
+        self.assertEqual([line for line in py_maze.MazeGame(
+            self.grid).summary() if line.startswith('Items:')], [])
+
+    def test_the_controls_line_names_the_key_the_guide_answers_on(self):
+        self.assertEqual(self.game.controls(), py_maze.QUEST_CONTROLS_LINE)
+        self.assertIn("'n'", py_maze.QUEST_CONTROLS_LINE)
+        self.assertEqual(self.game.frame()[-1], py_maze.QUEST_CONTROLS_LINE)
+
+    def test_the_frame_draws_the_door_the_box_and_the_guide(self):
+        frame = '\n'.join(self.game.frame())
+
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, frame)
+
+    def test_an_opened_door_and_an_emptied_box_stop_being_drawn(self):
+        self.walk((0, 1), (1, 0), (1, 0), (0, 1))
+        frame = '\n'.join(self.game.frame())
+
+        self.assertNotIn(py_maze.DOOR_MARKER, frame)
+        self.assertNotIn(py_maze.BOX_MARKER, frame)
+
+
+class TestTheGuide(unittest.TestCase):
+    # the hint-giving character: a second kind of hint, on a key of its
+    # own, shown the way the solution hint already is
+
+    def setUp(self):
+        self.grid = grid_from_strings(TestMazeGame.MAZE)
+        self.quest = py_maze.Quest(boxes={(2, 1): 1}, doors={(3, 2): 1},
+                                   guide=(1, 1))
+        self.game = py_maze.MazeGame(self.grid, quest=self.quest)
+
+    def ask(self):
+        # Returns:
+        #     tuple: (highlighted cells, what was drawn, sleep mock)
+
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(time, 'sleep') as sleep, \
+                contextlib.redirect_stdout(stdout):
+            shown = self.game.show_quest_hint()
+
+        return shown, stdout.getvalue(), sleep
+
+    def test_it_points_at_the_box_the_errand_is_about(self):
+        shown, drawn, _ = self.ask()
+
+        self.assertEqual(shown, [(2, 1)])
+        self.assertIn("*%s%s *" % (py_maze.GUIDE_MARKER,
+                                   py_maze.HINT_MARKER), drawn)
+
+    def test_it_points_at_the_door_once_the_item_is_carried(self):
+        self.quest.open_box((2, 1))
+
+        self.assertEqual(self.ask()[0], [(3, 2)])
+
+    def test_the_answer_is_only_up_for_a_moment(self):
+        _, _, sleep = self.ask()
+
+        sleep.assert_called_once_with(py_maze.HINT_SECONDS)
+        self.assertEqual(self.game.hint_cells, set())
+        self.assertIsNone(self.game.quest_message)
+
+    def test_what_it_said_takes_the_controls_line_rather_than_a_row(self):
+        plain = len(self.game.frame())
+        self.game.quest_message = py_maze.GUIDE_LINE % self.quest.task()
+        speaking = self.game.frame()
+
+        self.assertEqual(len(speaking), plain)
+        self.assertEqual(speaking[-1], self.game.quest_message)
+        self.assertIn('item 1', speaking[-1])
+
+    def test_it_says_so_in_words_while_it_is_answering(self):
+        _, drawn, _ = self.ask()
+
+        self.assertIn(py_maze.GUIDE_LINE % self.quest.task(), drawn)
+
+    def test_there_is_nothing_to_point_at_once_every_door_is_open(self):
+        self.quest.open_box((2, 1))
+        self.quest.unlock((3, 2))
+        shown, drawn, _ = self.ask()
+
+        self.assertEqual(shown, [])
+        self.assertIn('every door is open', drawn)
+
+    def test_the_n_key_asks_the_guide_and_the_maze_is_redrawn_after(self):
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(self.game, 'get_key',
+                                  side_effect=['n', 'q']), \
+                mock.patch.object(time, 'sleep'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.play()
+
+        output = stdout.getvalue()
+        self.assertIn(py_maze.HINT_MARKER, output)
+        self.assertIsNone(self.game.quest_message)
+        self.assertEqual(self.game.moves, 0)
+
+    def test_the_n_key_moves_nothing_in_a_game_with_no_quest(self):
+        plain = py_maze.MazeGame(self.grid)
+        stdout = io.StringIO()
+        with mock.patch.object(plain, 'clear_screen'), \
+                mock.patch.object(plain, 'get_key',
+                                  side_effect=['n', 'q']), \
+                mock.patch.object(time, 'sleep') as sleep, \
+                contextlib.redirect_stdout(stdout):
+            plain.play()
+
+        self.assertEqual(sleep.call_count, 0)
+        self.assertEqual(plain.moves, 0)
+
+
+class TestQuestModeRegistry(unittest.TestCase):
+    # a mode is an entry in the registries rather than a branch, and
+    # what a mode lays in the maze is an entry of its own
+
+    def setUp(self):
+        self.grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+    def test_quest_mode_is_one_of_the_modes_there_are(self):
+        self.assertIn(py_maze.QUEST_MODE, py_maze.MODES)
+        self.assertEqual(py_maze.game_mode(py_maze.QUEST_MODE),
+                         py_maze.quest_game)
+        self.assertIn(py_maze.QUEST_MODE, py_maze.MODE_NOTES)
+
+    def test_the_option_it_owns_is_named_beside_it(self):
+        self.assertEqual(py_maze.MODE_OPTIONS[py_maze.QUEST_MODE],
+                         ('--quest-stages',))
+        self.assertIn('--quest-stages', py_maze.mode_summary())
+
+    def test_only_the_modes_that_lay_something_have_an_entry(self):
+        self.assertEqual(set(py_maze.MODE_CONTENT), {py_maze.QUEST_MODE})
+
+        for name in set(py_maze.MODES) - set(py_maze.MODE_CONTENT):
+            with self.subTest(mode=name):
+                self.assertIsNone(py_maze.mode_content(name, self.grid))
+
+    def test_quest_mode_lays_a_quest_into_the_maze(self):
+        laid = py_maze.mode_content(py_maze.QUEST_MODE, self.grid,
+                                    rng=random.Random(2024), quest_stages=2)
+
+        self.assertIsInstance(laid, py_maze.Quest)
+        self.assertEqual(laid.stages, 2)
+
+    def test_a_mode_nothing_answers_to_is_refused_here_too(self):
+        with self.assertRaises(ValueError) as caught:
+            py_maze.mode_content('labyrinth', self.grid)
+
+        self.assertIn('labyrinth', str(caught.exception))
+
+    def test_the_game_is_built_with_the_chain_it_is_handed(self):
+        laid = py_maze.quest_content(self.grid, random.Random(2024))
+
+        self.assertIs(py_maze.quest_game(self.grid, content=laid).quest,
+                      laid)
+
+    def test_a_mode_handed_nothing_lays_its_own(self):
+        self.assertEqual(
+            py_maze.quest_game(self.grid, quest_stages=2).quest.stages, 2)
+
+    def test_the_settings_of_another_mode_are_read_by_nobody(self):
+        game = py_maze.quest_game(self.grid, chase_point=70, chase_speed=4)
+
+        self.assertIsNone(game.chaser)
+
+
+class TestQuestStageCount(unittest.TestCase):
+    # --quest-stages shapes the maze before a word is drawn, so it is
+    # refused rather than settled into its range as a chase option is
+
+    def test_the_default_is_the_reasonable_chain(self):
+        self.assertEqual(py_maze.build_parser().parse_args([]).quest_stages,
+                         py_maze.DEFAULT_QUEST_STAGES)
+
+    def test_every_count_inside_the_range_is_taken(self):
+        for stages in range(py_maze.MIN_QUEST_STAGES,
+                            py_maze.MAX_QUEST_STAGES + 1):
+            with self.subTest(stages=stages):
+                parsed = py_maze.build_parser().parse_args(
+                    ['--quest-stages', str(stages)])
+
+                self.assertEqual(parsed.quest_stages, stages)
+
+    def test_a_count_outside_the_range_is_refused(self):
+        for value in ('0', '10', '-1'):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError) as caught:
+                    py_maze.quest_stage_count(value)
+
+                self.assertIn('%d to %d' % (py_maze.MIN_QUEST_STAGES,
+                                            py_maze.MAX_QUEST_STAGES),
+                              str(caught.exception))
+
+    def test_something_that_is_not_a_count_is_refused(self):
+        with self.assertRaises(argparse.ArgumentTypeError) as caught:
+            py_maze.quest_stage_count('a lot')
+
+        self.assertIn('whole number', str(caught.exception))
+
+    def test_the_help_text_says_the_option_belongs_to_quest_mode(self):
+        help_text = ' '.join(py_maze.build_parser().format_help().split())
+
+        self.assertIn('--quest-stages', help_text)
+        self.assertIn('Quest mode only', help_text)
+
+
+class TestQuestSaveFile(unittest.TestCase):
+    # only the document carries a quest: a picture can draw a door and
+    # cannot say which item opens it
+
+    def setUp(self):
+        self.grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+        self.quest = py_maze.place_quest(self.grid, 3, random.Random(2024))
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def path(self, name):
+        return os.path.join(self.directory.name, name)
+
+    def test_a_document_round_trips_a_quest_maze(self):
+        loaded = py_maze.parse_save(
+            py_maze.save_json(self.grid, seed=2024, quest=self.quest))
+
+        self.assertEqual(loaded.grid, self.grid)
+        self.assertEqual(loaded.quest.doors, self.quest.doors)
+        self.assertEqual(loaded.quest.boxes, self.quest.boxes)
+        self.assertEqual(loaded.quest.guide, self.quest.guide)
+
+    def test_a_document_reads_back_as_a_quest_nobody_has_started(self):
+        shut = self.quest.closed_doors()[0]
+        self.quest.carried.add(self.quest.doors[shut])
+        self.quest.unlock(shut)
+        loaded = py_maze.parse_save(
+            py_maze.save_json(self.grid, quest=self.quest))
+
+        self.assertEqual(loaded.quest.carried, set())
+        self.assertEqual(loaded.quest.opened, set())
+        self.assertEqual(loaded.quest.stages, 3)
+
+    def test_a_maze_with_no_quest_carries_no_key_for_one(self):
+        document = json.loads(py_maze.save_json(self.grid))
+
+        self.assertNotIn(py_maze.JSON_QUEST_KEY, document)
+        self.assertIsNone(py_maze.parse_save(json.dumps(document)).quest)
+
+    def test_the_quest_is_written_in_reading_order(self):
+        written = json.loads(py_maze.save_json(
+            self.grid, quest=self.quest))[py_maze.JSON_QUEST_KEY]
+
+        for key in ('doors', 'boxes'):
+            with self.subTest(key=key):
+                self.assertEqual(written[key], sorted(
+                    written[key], key=lambda cell: (cell[1], cell[0])))
+
+    def test_a_picture_carries_no_quest_and_reads_back_as_none(self):
+        text = '\n'.join(py_maze.save_lines(self.grid))
+
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, text)
+
+        self.assertIsNone(py_maze.parse_save(text).quest)
+
+    def test_a_picture_drawn_with_a_quest_marker_is_refused(self):
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                with self.assertRaises(py_maze.SaveFileError) as caught:
+                    py_maze.parse_save(
+                        "%s\n*%s*\n" % (py_maze.SAVE_HEADER, marker))
+
+                self.assertIn("unexpected character '%s'" % marker,
+                              str(caught.exception))
+
+    def test_the_reader_hands_back_the_triple_it_always_has(self):
+        grid, collectibles, seed = py_maze.parse_save(
+            py_maze.save_json(self.grid, [(1, 1)], 2024, quest=self.quest))
+
+        self.assertEqual(grid, self.grid)
+        self.assertEqual(collectibles, {(1, 1)})
+        self.assertEqual(seed, 2024)
+
+    def test_the_triple_is_reachable_by_name_as_well(self):
+        saved = py_maze.parse_save(py_maze.save_json(self.grid, seed=7))
+
+        self.assertEqual(saved.grid, saved[0])
+        self.assertEqual(saved.collectibles, saved[1])
+        self.assertEqual(saved.seed, 7)
+        self.assertEqual(saved, (self.grid, set(), 7))
+
+    def test_a_file_round_trips_a_quest_through_the_json_form(self):
+        py_maze.write_save(self.path('quest.json'), self.grid, seed=2024,
+                           form=py_maze.JSON_FORMAT, quest=self.quest)
+
+        self.assertEqual(py_maze.read_save(self.path('quest.json')).quest
+                         .doors, self.quest.doors)
+
+    def test_the_picture_form_writes_the_plain_maze_under_it(self):
+        py_maze.write_save(self.path('quest.txt'), self.grid, seed=2024,
+                           quest=self.quest)
+
+        self.assertIsNone(py_maze.read_save(self.path('quest.txt')).quest)
+
+
+class TestMainQuestMode(MainRunner, unittest.TestCase):
+    # the command line end to end: what a quest run draws, writes and
+    # loads back
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def write(self, text, name='maze.json'):
+        path = os.path.join(self.directory.name, name)
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write(text)
+
+        return path
+
+    def test_a_quest_run_draws_its_markers_over_the_maze(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                   '--mode', 'quest'])
+
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.maze_of(output))
+
+    def test_a_plain_run_draws_none_of_them(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q'])
+
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, self.maze_of(output))
+
+    def test_the_maze_a_quest_run_carves_is_the_one_the_seed_makes(self):
+        # the chain is laid over the maze rather than into its walls, so
+        # the same seed carves the same maze whichever mode is played
+        quest, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                  '--mode', 'quest', '--format', 'json'])
+        plain, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                  '--format', 'json'])
+
+        self.assertEqual(json.loads(quest)['grid'],
+                         json.loads(plain)['grid'])
+
+    def test_the_document_a_quest_run_writes_carries_the_chain(self):
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                   '--mode', 'quest', '--format', 'json'])
+        written = json.loads(output)[py_maze.JSON_QUEST_KEY]
+
+        self.assertEqual(len(written['doors']), 3)
+        self.assertEqual(len(written['boxes']), 3)
+        self.assertEqual(len(written['guide']), 2)
+
+    def test_the_stages_asked_for_are_the_stages_laid(self):
+        output, _ = self.run_main(['-d', 'hard', '--seed', '2024',
+                                   '--mode', 'quest', '--quest-stages', '5',
+                                   '--format', 'json'])
+
+        self.assertEqual(
+            len(json.loads(output)[py_maze.JSON_QUEST_KEY]['doors']), 5)
+
+    def test_a_document_carrying_a_quest_loads_back_as_the_same_one(self):
+        written, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                    '--mode', 'quest', '--format', 'json'])
+        reloaded, _ = self.run_main(['--load', self.write(written),
+                                     '--mode', 'quest', '--format', 'json'])
+
+        self.assertEqual(json.loads(reloaded)[py_maze.JSON_QUEST_KEY],
+                         json.loads(written)[py_maze.JSON_QUEST_KEY])
+
+    def test_a_picture_loaded_in_quest_mode_has_a_chain_laid_into_it(self):
+        drawn = "%s\n%s\n" % (py_maze.SAVE_HEADER, '\n'.join(
+            py_maze.maze_lines(
+                py_maze.MazeGenerator(6, 6, seed=2024).generate())))
+        output, _ = self.run_main(['--load', self.write(drawn, 'maze.txt'),
+                                   '--mode', 'quest', '--format', 'json'])
+
+        self.assertEqual(
+            len(json.loads(output)[py_maze.JSON_QUEST_KEY]['doors']), 3)
+
+    def test_an_option_of_another_mode_changes_nothing_here(self):
+        with_chase, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                       '--mode', 'quest', '--chase-speed',
+                                       '5', '--format', 'json'])
+        without, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                    '--mode', 'quest', '--format', 'json'])
+
+        self.assertEqual(with_chase, without)
+
+    def test_a_count_outside_the_range_ends_the_run_as_a_usage_error(self):
+        code, stderr, _ = self.run_main_failing(
+            ['--mode', 'quest', '--quest-stages', '40'])
+
+        self.assertEqual(code, py_maze.EXIT_USAGE)
+        self.assertIn('a quest runs from', stderr)
+
+    def test_the_game_it_builds_plays_the_chain_the_maze_holds(self):
+        parsed = py_maze.build_parser().parse_args(['--mode', 'quest'])
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+        laid = py_maze.place_quest(grid, 3, random.Random(2024))
+
+        self.assertIs(py_maze.build_game(parsed, grid, (), laid).quest, laid)
+
+
+class TestCarvingComparison(unittest.TestCase):
+    # docs/analysis.md puts the measurements beside the three phrases
+    # --algorithm is described in, so every figure it prints is one the
+    # package still measures
+
+    # the sample the page states, and the column each row reads
+    SEEDS = range(1, 21)
+    SIZE = (16, 20)
+    TALLIES = (('Dead ends', 'dead_ends'),
+               ('Junctions', 'junctions'),
+               ('Longest corridor', 'longest_corridor'),
+               ('Solution steps', 'solution'),
+               ('Difficulty', 'difficulty'))
+    HEADING = '## Comparing the Carving Algorithms'
+
+    def means(self):
+        # every measurement averaged over the page's sample
+        #
+        # Returns:
+        #     dict: Each algorithm's name mapped to its mean per key
+
+        averaged = {}
+        for name in py_maze.ALGORITHMS:
+            measured = [py_maze.maze_stats(py_maze.MazeGenerator(
+                self.SIZE[0], self.SIZE[1], seed=seed, algorithm=name
+            ).generate()) for seed in self.SEEDS]
+            averaged[name] = {
+                key: statistics.mean(row[key] for row in measured)
+                for key in [key for _, key in self.TALLIES]
+                + ['solution_share']}
+
+        return averaged
+
+    def table(self):
+        # the comparison table, as the label of each row mapped to the
+        # figures beside it
+        #
+        # Returns:
+        #     tuple: (the heading row's cells, the rows by their label)
+
+        page = read_project_file(ANALYSIS_PATH).split(self.HEADING, 1)
+        self.assertEqual(len(page), 2,
+                         'docs/analysis.md compares no algorithms')
+
+        rows = {}
+        heading = None
+        for line in page[1].split('\n## ')[0].splitlines():
+            if not line.startswith('|') or line.startswith('| ---'):
+                continue
+            cells = [cell.strip() for cell in line.strip('|').split('|')]
+            if heading is None:
+                heading = cells
+            else:
+                rows[cells[0]] = cells[1:]
+
+        self.assertTrue(rows, 'the comparison table has no rows')
+        return heading, rows
+
+    def test_it_compares_the_three_the_package_carves_with(self):
+        heading, _ = self.table()
+
+        self.assertEqual(heading[1:],
+                         ['`%s`' % name for name in py_maze.ALGORITHMS])
+
+    def test_every_tally_it_prints_is_the_mean_it_says_it_is(self):
+        averaged = self.means()
+        _, rows = self.table()
+
+        for label, key in self.TALLIES:
+            with self.subTest(tally=label):
+                self.assertIn(label, rows)
+                self.assertEqual(
+                    rows[label],
+                    ['%.1f' % averaged[name][key]
+                     for name in py_maze.ALGORITHMS])
+
+    def test_the_share_it_prints_is_that_mean_as_a_percent(self):
+        averaged = self.means()
+        _, rows = self.table()
+
+        self.assertEqual(
+            rows['Solution share'],
+            ['%.1f%%' % (averaged[name]['solution_share'] * 100)
+             for name in py_maze.ALGORITHMS])
+
+    def test_the_row_labels_and_the_tallies_read_here_are_the_same_set(self):
+        # a row added to the page and not to TALLIES is a figure nothing
+        # checks, which is the drift this whole class is against
+        _, rows = self.table()
+
+        self.assertEqual(set(rows),
+                         {label for label, _ in self.TALLIES} |
+                         {'Solution share'})
+
+    def test_the_claims_it_makes_about_the_carvers_still_hold(self):
+        averaged = self.means()
+
+        # one winding route: the longest way through, walking the most
+        # of the maze
+        self.assertGreater(averaged['backtracker']['solution'],
+                           averaged['prim']['solution'])
+        self.assertGreater(averaged['backtracker']['solution_share'],
+                           averaged['division']['solution_share'])
+
+        # a more open maze with short dead ends: the most of them, and
+        # the most junctions, in a maze of the same size
+        for name in ('backtracker', 'division'):
+            with self.subTest(against=name):
+                self.assertGreater(averaged['prim']['dead_ends'],
+                                   averaged[name]['dead_ends'])
+                self.assertGreater(averaged['prim']['junctions'],
+                                   averaged[name]['junctions'])
+
+    def test_the_one_phrase_the_numbers_do_not_back_is_named_as_such(self):
+        # recursive division's longest straight run is below Prim's, and
+        # the page says so rather than letting "straight corridors" read
+        # as a measurement. If that ever stops being true the page is
+        # the thing that is wrong
+        averaged = self.means()
+        page = read_project_file(ANALYSIS_PATH)
+
+        self.assertLess(averaged['division']['longest_corridor'],
+                        averaged['prim']['longest_corridor'])
+        self.assertIn('do not back', page)
+
+    def test_the_sample_it_states_is_the_sample_read_here(self):
+        page = read_project_file(ANALYSIS_PATH).split(self.HEADING, 1)[1]
+
+        self.assertIn('`--seed %d`' % self.SEEDS[0], page)
+        self.assertIn('`--seed %d`' % self.SEEDS[-1], page)
+        self.assertIn('%d by %d cells' % self.SIZE, page)
+
+    def test_the_carving_page_points_a_reader_at_the_comparison(self):
+        anchor = 'analysis.html#comparing-the-carving-algorithms'
+
+        self.assertIn(anchor, read_project_file(GENERATING_PATH))
+
+
+class TestModesPage(unittest.TestCase):
+    # docs/modes.md is the page the three modes are set out on, so what
+    # it tables is held against the registries
+
+    def page(self):
+        self.assertTrue(os.path.isfile(MODES_PATH),
+                        'docs/modes.md is missing')
+        return read_project_file(MODES_PATH)
+
+    def test_the_page_is_there_and_both_doors_point_at_it(self):
+        self.assertIn('docs/modes.md', read_project_file(README_PATH))
+        self.assertIn('modes.md', read_project_file(SITE_NAV_PATH))
+
+    def test_it_names_every_mode_there_is(self):
+        page = self.page()
+
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                self.assertIn('`%s`' % name, page)
+
+    def test_it_names_every_option_a_mode_owns(self):
+        page = self.page()
+
+        for owned in py_maze.MODE_OPTIONS.values():
+            for option in owned:
+                with self.subTest(option=option):
+                    self.assertIn('`%s`' % option, page)
+
+    def test_it_names_every_marker_a_mode_draws(self):
+        page = self.page()
+
+        for marker in (py_maze.PLAYER_MARKER, py_maze.COLLECTIBLE_MARKER,
+                       py_maze.HINT_MARKER, py_maze.CHASER_MARKER,
+                       py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertIn('`%s`' % marker, page)
+
+    def test_it_says_the_range_the_quest_option_really_takes(self):
+        # the prose wraps, so the page is read as the sentence it is
+        # rather than as the lines it was typed on
+        page = ' '.join(self.page().split())
+
+        self.assertIn('`%d` to `%d`' % (py_maze.MIN_QUEST_STAGES,
+                                        py_maze.MAX_QUEST_STAGES), page)
+        self.assertIn('defaulting to `%d`' % py_maze.DEFAULT_QUEST_STAGES,
+                      page)
+
+    def test_every_page_it_links_is_one_the_site_builds(self):
+        for link in re.findall(r'\]\((\S+?\.html)(?:#\S+?)?\)',
+                               self.page()):
+            with self.subTest(link=link):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(
+                        DOCS_DIR, link[:-len('.html')] + '.md')),
+                    'docs/modes.md links %s, which no page builds' % link)
 
 
 if __name__ == '__main__':

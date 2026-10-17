@@ -17,8 +17,8 @@ from .keys import (read_key, read_key_posix, read_key_timed,
 from .rendering import (ANSI_ROW, CHASER_MARKER, COLLECTIBLE_MARKER,
                         HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_display,
                         clear_screen, fit_frame, frame_diff, frame_text,
-                        frame_wraps, maze_lines, status_line, summary_lines,
-                        terminal_size, wipe_rows)
+                        frame_wraps, maze_lines, quest_overlay, status_line,
+                        summary_lines, terminal_size, wipe_rows)
 from .solving import solve_maze
 
 __all__ = [
@@ -28,10 +28,12 @@ __all__ = [
     'ESCAPED_OUTCOME',
     'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
+    'GUIDE_LINE',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
     'PLAIN_WIN_BANNER',
+    'QUEST_CONTROLS_LINE',
     'QUIT_MESSAGE',
     'TICK_SECONDS',
     'WIN_BANNER',
@@ -61,9 +63,18 @@ GOODBYE_MESSAGE = "Goodbye!"
 QUIT_MESSAGE = "Thanks for playing!"
 EXIT_PROMPT = "Press any key to exit..."
 
-# the keys the player has, printed under the maze
+# the keys the player has, printed under the maze, and the longer line
+# a quest maze gets: the guide is a second key and a second kind of
+# hint, so a mode that has one says so where the other keys are listed
 CONTROLS_LINE = ("Use arrow keys or WASD to move. "
                  "Press 'h' for a hint, 'q' to quit.")
+QUEST_CONTROLS_LINE = ("Use arrow keys or WASD to move. Press 'h' for a "
+                       "hint, 'n' to ask the guide, 'q' to quit.")
+
+# how the guide's answer is written where the controls line usually
+# sits. It takes the controls line's row rather than a row of its own,
+# so asking a question never changes the height of the frame
+GUIDE_LINE = "The guide says: %s"
 
 # the banner shown when the maze is solved, and the plain text a console
 # that cannot draw the party poppers gets instead
@@ -125,7 +136,8 @@ def caught_banner(stream=None):
 class MazeGame:
     """Interactive maze game with player movement."""
 
-    def __init__(self, maze_grid, collectibles=(), clock=None, chaser=None):
+    def __init__(self, maze_grid, collectibles=(), clock=None, chaser=None,
+                 quest=None):
         """Initialize the game.
 
         Args:
@@ -138,6 +150,9 @@ class MazeGame:
             chaser: A :class:`py_maze.Chaser` to set on the player once
                 they are far enough in, or None for the plain game. A
                 game with no chaser plays exactly as it always has
+            quest: A :class:`py_maze.Quest` whose doors shut the way on
+                until what opens them has been found, or None for a
+                maze with nothing in it to collect but its pickups
         """
 
         self.maze = [row[:] for row in maze_grid]  # copy the grid
@@ -194,6 +209,15 @@ class MazeGame:
         self.chaser = chaser
         self.outcome = None
 
+        # the errands, the doors they open and what has been found so
+        # far. None is the game with nothing to fetch, which is every
+        # mode but quest
+        self.quest = quest
+
+        # what the guide last answered, shown on the controls line's own
+        # row while the answer is up and cleared when it comes down
+        self.quest_message = None
+
         # the route the chase point is measured against, solved once
         # here rather than on every step: the maze does not change under
         # a game, so neither does the way through it. None is what that
@@ -205,8 +229,10 @@ class MazeGame:
         self.solution = solve_maze(self.maze) if chaser is not None else None
 
         # a maze saved with a collectible on the entrance hands it over
-        # before the first move
+        # before the first move, and a document that put a box there
+        # hands that over too
         self.collect()
+        self.open_box()
 
     def player_cell(self):
         """Report where the player is standing.
@@ -293,16 +319,45 @@ class MazeGame:
         now = self.stopped if self.stopped is not None else self.clock()
         return now - self.started
 
+    def inventory(self):
+        """Report what the quest has handed over so far.
+
+        Returns:
+            tuple: (carried, items) - the quest items in hand and the
+            ones the maze holds. Both are nought for a game with no
+            quest, which is what keeps the inventory off the tally of
+            every mode that has none
+        """
+
+        if self.quest is None:
+            return 0, 0
+
+        return len(self.quest.carried), self.quest.stages
+
+    def controls(self):
+        """Build the line of keys printed under the maze.
+
+        Returns:
+            str: The keys this game answers to, which is one more for a
+            quest: the guide is asked on a key of its own
+        """
+
+        return CONTROLS_LINE if self.quest is None else QUEST_CONTROLS_LINE
+
     def status(self):
         """Build the running tally drawn under the maze.
 
         Returns:
             str: The elapsed time, the moves taken and, when the maze
-            holds collectibles, how many have been picked up
+            holds collectibles or a quest, how many of each have been
+            picked up
         """
 
+        carried, items = self.inventory()
+
         return status_line(self.elapsed(), self.moves,
-                           self.collected, self.total_collectibles)
+                           self.collected, self.total_collectibles,
+                           carried, items)
 
     def summary(self):
         """Build the end-of-game summary.
@@ -311,9 +366,11 @@ class MazeGame:
             list: One string per line of the summary
         """
 
+        carried, items = self.inventory()
+
         return summary_lines(self.elapsed(), self.moves,
                              self.collected, self.total_collectibles,
-                             self.outcome)
+                             self.outcome, carried, items)
 
     def ending(self, banner, prompt=None):
         """Build what is printed under the frame once the game is over.
@@ -412,9 +469,10 @@ class MazeGame:
 
         Returns:
             list: The maze between its start and end markers, drawn
-            with the player, the collectibles left to pick up and any
-            hint being shown, then the running tally, a blank spacer
-            and the controls line
+            with the player, the collectibles left to pick up, the
+            doors and boxes of a quest and any hint being shown, then
+            the running tally, a blank spacer and the controls line -
+            or, while the guide is answering, what it said
         """
 
         overlays = []
@@ -432,8 +490,15 @@ class MazeGame:
             (COLLECTIBLE_MARKER, self.collectibles),
         ]
 
+        # a door that has been opened is drawn as the corridor it has
+        # become, and a box that has been emptied is gone: both read
+        # off the quest as it stands rather than as it was laid
+        if self.quest is not None:
+            overlays += quest_overlay(*self.quest.drawn())
+
         return (["start"] + maze_lines(self.maze, overlays) +
-                ["end", self.status(), "", CONTROLS_LINE])
+                ["end", self.status(), "",
+                 self.quest_message or self.controls()])
 
     def render(self, stream=None, reserve=0):
         """Draw the play screen over the frame already on it.
@@ -583,6 +648,53 @@ class MazeGame:
         self.hint_cells = set()
         return steps
 
+    def show_quest_hint(self):
+        """Ask the guide what the next step of the quest is.
+
+        It answers the way the solution hint does - the cell lit up for
+        a moment, the maze redrawn without it - and says something
+        else: where the box or the door the errand in front of the
+        player is at, with what it is in words on the controls line's
+        own row. It is a second kind of hint rather than a second way
+        to ask for the first, and it says nothing about where the exit
+        is.
+
+        Returns:
+            list: The cells that were highlighted, empty for a game
+            with no quest and for a quest with every door already open
+        """
+
+        if self.quest is None:
+            return []
+
+        cell = self.quest.target()
+        self.quest_message = GUIDE_LINE % self.quest.task()
+        self.hint_cells = {cell} if cell is not None else set()
+        self.render()
+        time.sleep(HINT_SECONDS)
+
+        # the game loop redraws the maze straight after, without the
+        # hint and with the keys back on the controls line
+        shown = sorted(self.hint_cells)
+        self.hint_cells = set()
+        self.quest_message = None
+
+        return shown
+
+    def open_box(self):
+        """Open whatever box the player is standing on.
+
+        Returns:
+            The item that was in it, and None when the cell held no box
+            or the game has no quest at all. An item is kept once it is
+            picked up, so the box is gone and the inventory has grown
+        """
+
+        if self.quest is None:
+            return None
+
+        return self.quest.open_box(self.player_cell())
+
     def collect(self):
         """Pick up whatever is on the cell the player is standing on.
 
@@ -601,9 +713,15 @@ class MazeGame:
     def move_player(self, dx, dy):
         """Move the player by dx, dy if the destination is not a wall.
 
-        A step that lands on a collectible picks it up, and only a step
-        that went somewhere is counted, so walking into a wall costs
-        nothing but the time it took.
+        A step that lands on a collectible picks it up, a step that
+        lands on a box opens it, and only a step that went somewhere is
+        counted, so walking into a wall costs nothing but the time it
+        took.
+
+        A door whose item has not been found yet is a wall for as long
+        as that holds: the step is refused and nothing is counted. One
+        whose item is being carried opens as the player walks through
+        it, and stays open.
 
         Args:
             dx: Change in x position
@@ -619,10 +737,14 @@ class MazeGame:
         # check bounds and wall collision
         if (0 <= new_x < self.width and 0 <= new_y < self.height and
             not self.maze[new_y][new_x]):
+            if (self.quest is not None and
+                    not self.quest.unlock((new_x, new_y))):
+                return False
             self.player_x = new_x
             self.player_y = new_y
             self.moves += 1
             self.collect()
+            self.open_box()
             return True
         return False
 
@@ -758,6 +880,8 @@ class MazeGame:
                     self.move_player(1, 0)
                 elif key == 'h':
                     self.show_hint()
+                elif key == 'n':
+                    self.show_quest_hint()
 
                 # a key the game has no use for moves nothing, but the
                 # clock ran while it was held down all the same, so it is

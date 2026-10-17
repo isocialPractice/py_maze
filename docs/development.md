@@ -57,6 +57,7 @@ py_maze/
 ├── keys.py             # Single keypresses, and the terminal imports
 ├── game.py             # Playing a maze at the terminal
 ├── chase.py            # The antagonist chase mode sets on the player
+├── quest.py            # The doors quest mode shuts, and what opens them
 ├── modes.py            # The registry --mode reads its names from
 ├── cli.py              # The options, the parser and main()
 └── version.py          # The version number, on its own

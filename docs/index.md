@@ -68,6 +68,8 @@ py_maze
   end
 - **Chase Mode**: Walk far enough in and something starts following you, at a
   speed and from a point you can set
+- **Quest Mode**: Doors shut the way on until you find the box holding what
+  opens them, with a guide in the maze to say what is next
 - **Save and Load**: Keep a maze in a file and play it again later
 - **Scriptable**: A quiet mode, JSON output, standard input and output, and a
   status code for each thing that can go wrong

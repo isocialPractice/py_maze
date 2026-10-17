@@ -79,6 +79,13 @@ squared-off rooms come from.
 `backtracker` is the algorithm py_maze has always carved with, so a run
 without `--algorithm` is unchanged.
 
+The three phrases in the table above are claims about shape, and
+[reading a maze](analysis.html#comparing-the-carving-algorithms) puts the
+measurements beside them: the dead ends, the junctions, the longest straight
+run and the route each carver leaves, averaged over twenty mazes of the same
+size. One of the three does not survive the comparison, and that page says
+which.
+
 ## Braiding
 
 A carved maze is a *perfect* maze: one route between any two cells, and every

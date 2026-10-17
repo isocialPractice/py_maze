@@ -16,9 +16,10 @@ summary: >-
 | `--braid` | `-b` | `0` | `0` to `1`, bare flag means `1` |
 | `--seed` | `-s` | random | a number or a word |
 | `--collectibles` | `-c` | `0` | a count |
-| `--mode` | `-m` | `plain` | `plain`, `chase` |
+| `--mode` | `-m` | `plain` | `plain`, `chase`, `quest` |
 | `--chase-point` | | `55` | `20` to `90`, chase mode only |
 | `--chase-speed` | | `2` | `0` to `5`, chase mode only |
+| `--quest-stages` | | `3` | `1` to `9`, quest mode only |
 | `--save` | `-o` | | a file, or `-` for standard output |
 | `--load` | `-l` | | a file, or `-` for standard input |
 | `--wall-char` | | `*` | one character, headerless files only |
@@ -44,7 +45,8 @@ maze](analysis.md) explains each of them.
 Both chase options round a decimal to the nearest whole number, resolve a
 number outside their range to the nearer end of it, and answer anything that
 is not a number at all with a notice on standard error before carrying on
-without it.
+without it. `--quest-stages` is refused rather than settled, shaping the
+maze rather than tuning a chase already under way.
 
 ## Sizes
 
@@ -70,6 +72,8 @@ py_maze --seed 2024 --save - | py_maze --load - --solve
 py_maze --load drawn.txt --wall-char '#' --open-char '.' --quiet
 py_maze --mode chase                     # something follows you halfway in
 py_maze -m chase --chase-point 20 --chase-speed 5
+py_maze --mode quest                     # doors, boxes and a guide
+py_maze -m quest --quest-stages 5 -f json --save quest.json
 py_maze -d hard --stats                  # what the maze measures, under it
 py_maze -q --stats                       # the maze and the measurements
 ```
@@ -80,6 +84,7 @@ py_maze -q --stats                       # the maze and the measurements
 | --- | --- | --- |
 | `plain` | The walk from the entrance to the exit | |
 | `chase` | The same walk, with something following you | `--chase-point`, `--chase-speed` |
+| `quest` | The way on is shut until you find what opens it | `--quest-stages` |
 
 `--chase-point` is a share of the maze, read off the solution measured as
 the straight runs it is made of. `--chase-speed` is a preset: the moves the
@@ -87,12 +92,17 @@ chaser makes in a second, `0` for one a second rising to `5` for six. Being
 caught ends the run the way the exit does, with an `Outcome` line on the
 summary naming which of the two happened.
 
+`--quest-stages` is how many doors shut the route, each opened by the item
+in a box hidden before it. Only the JSON document carries a quest; a picture
+is the plain maze under it. [Game modes](modes.md) has all three.
+
 ## Keys, in play
 
 | Key | Does |
 | --- | --- |
 | Arrows, `W` `A` `S` `D` | Move up, left, down, right |
 | `h` | Light the next step for a moment |
+| `n` | Ask the guide what the next errand is, in quest mode |
 | `q` | Quit, with the summary so far |
 | `Ctrl+C` | Interrupt, restoring the terminal |
 | `y` / `n` | The "would you like to play" prompt, one keypress |
@@ -109,6 +119,9 @@ summary naming which of the two happened.
 | `?` | Frontier, and a hint | `FRONTIER_MARKER`, `HINT_MARKER` |
 | `$` | Collectible | `COLLECTIBLE_MARKER` |
 | `X` | The chaser, in chase mode | `CHASER_MARKER` |
+| `+` | A door still shut, in quest mode | `DOOR_MARKER` |
+| `&` | A box with an item in it, in quest mode | `BOX_MARKER` |
+| `@` | The guide, in quest mode | `GUIDE_MARKER` |
 
 ## Status codes
 

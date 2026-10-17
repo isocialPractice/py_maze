@@ -377,6 +377,7 @@ yield in reading order, left to right and then down the rows.
 | `print_maze(grid, overlays, stream)` | The same, written between the `start` and `end` markers |
 | `solution_overlay(path)` | The overlay that draws a solution over a maze |
 | `collectible_overlay(collectibles)` | The overlay that draws pickups over a maze |
+| `quest_overlay(doors, boxes, guide)` | The overlays that draw a quest's shut doors, its boxes and its guide |
 | `animate_search(grid, start, end, ...)` | Step the search across a terminal, frame by frame |
 | `status_line(...)`, `summary_lines(...)` | The tallies shown during play and at the end |
 | `stats_lines(stats)` | What `--stats` prints under a maze, in the status line's style |
@@ -396,16 +397,18 @@ them running from the most important marker to the least: the first pair
 holding a cell decides what is drawn there. The markers themselves are named
 constants, so a caller need not repeat the characters: `WALL_MARKER`,
 `OPEN_MARKER`, `PLAYER_MARKER`, `SOLUTION_MARKER`, `VISITED_MARKER`,
-`FRONTIER_MARKER`, `HINT_MARKER`, `COLLECTIBLE_MARKER` and `CHASER_MARKER`.
+`FRONTIER_MARKER`, `HINT_MARKER`, `COLLECTIBLE_MARKER`, `CHASER_MARKER`,
+`DOOR_MARKER`, `BOX_MARKER` and `GUIDE_MARKER`.
 
 **Save files** (`py_maze.saves`)
 
 | Name | What it does |
 | --- | --- |
-| `write_save(path, grid, collectibles, seed, solution, form, stream)` | Write a maze to a file, in either form |
+| `write_save(path, grid, collectibles, seed, solution, form, stream, stats, quest)` | Write a maze to a file, in either form |
 | `read_save(path, chars, stream)` | Read one back as `(grid, collectibles, seed)` |
 | `save_lines(grid, collectibles, seed)` | The file's lines, without writing them |
-| `save_json(grid, collectibles, seed, solution)` | The document it would write under `form='json'` |
+| `save_json(grid, collectibles, seed, solution, stats, quest)` | The document it would write under `form='json'` |
+| `SavedMaze(grid, collectibles, seed, quest)` | What a reader hands back: that triple, with a document's quest beside it |
 | `parse_save(text, source, chars)` | The same read, from text already in hand |
 | `parse_json_save(text, source)` | The same again for a document, which `parse_save` calls for one |
 | `picture_chars(wall, open_cell)` | The `chars` map a picture with no header is read with |
@@ -413,6 +416,7 @@ constants, so a caller need not repeat the characters: `WALL_MARKER`,
 | `SAVE_FORMAT`, `SAVE_HEADER`, `SAVE_CHARS` | The format number, its header line and the characters it allows |
 | `FORMATS`, `TEXT_FORMAT`, `JSON_FORMAT`, `DEFAULT_FORMAT` | The two forms a maze is written in, and the one written unasked |
 | `JSON_FORMAT_KEY` | The key a document carries the format number under |
+| `JSON_QUEST_KEY` | The key a document carries a quest's doors and boxes under |
 | `STDIO_PATH` | The file name that means standard input or standard output, `-` |
 | `STDIN_NAME` | What a message calls that stream, `<stdin>`, there being no file name |
 
@@ -437,6 +441,22 @@ grid, _, _ = py_maze.parse_save("#.#\n#.#\n",
                                 chars=py_maze.picture_chars('#', '.'))
 ```
 
+What comes back is a `SavedMaze`: that same triple, with the quest a
+document carried on its `quest` attribute. A picture can draw a door and
+cannot say which item opens it, so only a document ever writes one and only
+a document ever reads one back:
+
+```python
+>>> import random
+>>> import py_maze
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> quest = py_maze.place_quest(grid, 2, random.Random(2024))
+>>> py_maze.parse_save(py_maze.save_json(grid, quest=quest)).quest.doors
+{(1, 7): 1, (5, 11): 2}
+>>> py_maze.parse_save('\n'.join(py_maze.save_lines(grid))).quest is None
+True
+```
+
 ## Playing, and the Modes
 
 A mode is the game that is already there played differently: the same grid,
@@ -450,10 +470,14 @@ of setting a mode up:
 | `MODES` | The name `--mode` takes, mapped to the function that builds that game |
 | `MODE_NOTES` | What each one plays like, in the words the help text uses |
 | `MODE_OPTIONS` | The options belonging to each mode, for a mode that has any |
-| `DEFAULT_MODE`, `PLAIN_MODE`, `CHASE_MODE` | The mode a bare run plays, and the names of the two there are |
+| `MODE_CONTENT` | What each mode lays into the maze itself, for the modes that lay anything |
+| `DEFAULT_MODE`, `PLAIN_MODE`, `CHASE_MODE`, `QUEST_MODE` | The mode a bare run plays, and the names of the three there are |
 | `game_mode(name)` | The building function a name stands for, or `ValueError` |
+| `mode_content(name, grid, ...)` | Lay whatever that mode puts in the maze, and `None` for a mode that puts nothing |
 | `plain_game(grid, collectibles, ...)` | The walk from the entrance to the exit |
 | `chase_game(grid, collectibles, chase_point, chase_speed)` | The same walk, with a chaser behind it |
+| `quest_game(grid, collectibles, content, quest_stages)` | The same walk, with the way on shut until what opens it is found |
+| `quest_content(grid, rng, collectibles, quest_stages)` | The chain quest mode lays into a maze before it is played |
 
 Every mode is handed every mode setting and reads the ones that belong to
 it, which is why a setting for a mode you are not playing is ignored rather
@@ -505,6 +529,53 @@ chaser standing on the player it has caught - and `MAX_CHASE_CATCH_UP` bounds
 the moves reached for, so a stall over a chaser that cannot move is not a
 walk through everything the stall passed over.
 
+Some of a mode is in the maze rather than in the game. Quest mode's doors
+and boxes are laid into the grid before a word is drawn, written into a JSON
+document beside the collectibles and read back out of one, so `MODE_CONTENT`
+is where a mode says what it puts there and `mode_content` is what lays it.
+`place_quest` is the call behind quest mode's entry, and `Quest` is the
+inventory the player fills:
+
+| Name | What it does |
+| --- | --- |
+| `place_quest(grid, stages, rng, path, taken)` | Lay a chain of doors and boxes into a maze, or `None` for one with no way through |
+| `Quest(boxes, doors, guide)` | The doors, the boxes that open them and what is being carried |
+| `Quest.unlock(cell)` | Whether the cell may be stepped onto, opening a door whose item is carried |
+| `Quest.open_box(cell)` | The item in the box on a cell, which is then in the inventory |
+| `Quest.closed_doors()` | The doors still shut, in reading order |
+| `Quest.drawn()` | The `(doors, boxes, guide)` triple `quest_overlay` takes |
+| `Quest.stage()`, `Quest.finished()` | The errand in front of the player, and whether there is one left |
+| `Quest.target()`, `Quest.task()` | Where that errand is, and what it is in words |
+| `reachable(grid, start, blocked)` | Flood fill a maze with some of its cells shut, which is what a door needs |
+| `door_cells(path, stages)` | Space a quest's doors evenly along the route through a maze |
+| `MIN_QUEST_STAGES`, `MAX_QUEST_STAGES`, `DEFAULT_QUEST_STAGES` | The range `--quest-stages` takes, and the reasonable chain |
+
+Each box is hidden in the part of the maze that is reachable at the time it
+is wanted - box one before door one, box two between door one and door two -
+so a quest laid by `place_quest` can always be finished, and never before
+the stage it belongs to. The chain only holds for a maze with one route
+through it: `braid_maze` opens a second way round, and a door with a way
+round it gates nothing.
+
+```python
+>>> import random
+>>> import py_maze
+>>> grid = py_maze.MazeGenerator(width=6, height=6, seed=2024).generate()
+>>> quest = py_maze.place_quest(grid, 3, random.Random(2024))
+>>> quest.stages
+3
+>>> quest.stage()
+1
+>>> sorted(quest.doors.values())
+[1, 2, 3]
+>>> quest.unlock(quest.closed_doors()[0])
+False
+>>> quest.open_box(quest.target())
+1
+>>> sorted(quest.carried)
+[1]
+```
+
 The terminal half is public too: `MazeGame` plays a maze at the console,
 `read_key` and `read_response` take single keypresses, `read_key_timed` waits
 a given moment for one and answers `None` when the moment passes empty, or
@@ -513,7 +584,8 @@ waits however long it takes when the moment it is given is `None` itself, and
 itself, along
 with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `EXIT_NO_WAY_THROUGH` codes it exits with. `build_maze` hands back
-`(grid, collectibles, seed, dead_ends_before)`, that last being what
-`maze_stats` needs to report a braid and `None` for a run that braided
-nothing. Those are the names that want a
+`(grid, collectibles, seed, dead_ends_before, content)`, the fourth being
+what `maze_stats` needs to report a braid and `None` for a run that braided
+nothing, and the last being whatever the mode laid into the maze - a `Quest`
+for quest mode and `None` for every other. Those are the names that want a
 terminal. Everything above runs without one.

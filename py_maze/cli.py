@@ -22,11 +22,15 @@ from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
-from .modes import DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS, MODES, game_mode
-from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
-                        animate_search, collectible_overlay, fit_to_terminal,
-                        print_maze, solution_overlay, stats_lines,
-                        terminal_size)
+from .modes import (DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS, MODES,
+                    game_mode, mode_content)
+from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES,
+                    MIN_QUEST_STAGES)
+from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DOOR_MARKER,
+                        OPEN_MARKER, WALL_MARKER,
+                        animate_search, collectible_overlay,
+                        fit_to_terminal, print_maze, quest_overlay,
+                        solution_overlay, stats_lines, terminal_size)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIN_NAME,
                     STDIO_PATH, TEXT_FORMAT, SaveFileError, picture_chars,
                     read_save, save_json, write_save)
@@ -58,6 +62,7 @@ __all__ = [
     'maze_dimension',
     'mode_summary',
     'notice',
+    'quest_stage_count',
     'resolve_dimensions',
 ]
 
@@ -233,6 +238,41 @@ def chase_speed(value):
                         MAX_CHASE_SPEED, DEFAULT_CHASE_SPEED)
 
 
+def quest_stage_count(value):
+    """Read how many stages a quest runs to, as --quest-stages does.
+
+    The chase options take whatever they are given and settle it into
+    their range, being tunings of a chase already under way. This one
+    shapes the maze before a word is drawn, the way --collectibles and
+    --braid do, so it is refused rather than settled: a quest of the
+    wrong length is a maze the run would have to generate before
+    anybody found out.
+
+    Args:
+        value: Raw command-line string for the option
+
+    Returns:
+        int: How many door-and-box pairs to lay
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a whole number
+        from MIN_QUEST_STAGES to MAX_QUEST_STAGES
+    """
+
+    try:
+        stages = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "'%s' is not a whole number of quest stages" % value)
+
+    if not MIN_QUEST_STAGES <= stages <= MAX_QUEST_STAGES:
+        raise argparse.ArgumentTypeError(
+            "a quest runs from %d to %d stages, got %d"
+            % (MIN_QUEST_STAGES, MAX_QUEST_STAGES, stages))
+
+    return stages
+
+
 def maze_char(value):
     """Read a picture character, as --wall-char and --open-char do.
 
@@ -385,6 +425,17 @@ def build_parser():
                              "only"
                              % (MIN_CHASE_SPEED, MAX_CHASE_SPEED,
                                 DEFAULT_CHASE_SPEED))
+    parser.add_argument("--quest-stages", type=quest_stage_count,
+                        default=DEFAULT_QUEST_STAGES, metavar="COUNT",
+                        help="How many doors a quest shuts the way on with, "
+                             "from %d to %d (default: %d). Each one is "
+                             "opened by the item in a box (%s) hidden in the "
+                             "part of the maze that is reachable before it, "
+                             "and a door (%s) that has been opened stays "
+                             "open. Quest mode only"
+                             % (MIN_QUEST_STAGES, MAX_QUEST_STAGES,
+                                DEFAULT_QUEST_STAGES, BOX_MARKER,
+                                DOOR_MARKER))
     parser.add_argument("--save", "-o", default=None, metavar="FILE",
                         help="Write the maze, and any collectibles, to FILE "
                              "so it can be played again with --load. '%s' "
@@ -555,12 +606,14 @@ def build_maze(args):
         args: Parsed command-line arguments
 
     Returns:
-        tuple: (grid, collectibles, seed, dead_ends_before). The seed is
-        None for a loaded maze whose save file does not record one, and
-        ``dead_ends_before`` is the dead ends the maze had before
-        ``--braid`` opened a share of them - None where nothing was
-        braided, which is every loaded maze and every run that asked for
-        no braid
+        tuple: (grid, collectibles, seed, dead_ends_before, content).
+        The seed is None for a loaded maze whose save file does not
+        record one, ``dead_ends_before`` is the dead ends the maze had
+        before ``--braid`` opened a share of them - None where nothing
+        was braided, which is every loaded maze and every run that
+        asked for no braid - and ``content`` is whatever the mode laid
+        into the maze, which is a :class:`py_maze.Quest` for quest mode
+        and None for every other
 
     Raises:
         OSError: If a maze was to be loaded and the file cannot be read
@@ -584,11 +637,20 @@ def build_maze(args):
 
         # a generated maze always has room for both ends; a loaded one is
         # whatever the file drew, and everything downstream reads them
-        check_ends(loaded[0], args.load)
+        check_ends(loaded.grid, args.load)
+
+        # a document that recorded a quest is played as it was saved. A
+        # picture never records one, so a mode that wants something in
+        # the maze lays it into the maze the file drew
+        content = loaded.quest
+        if content is None:
+            content = mode_content(args.mode, loaded.grid,
+                                   collectibles=loaded.collectibles,
+                                   quest_stages=args.quest_stages)
 
         # a loaded maze is whatever the file drew, so there is no before
         # to compare it against: --braid does not apply to one
-        return loaded + (None,)
+        return (loaded.grid, loaded.collectibles, loaded.seed, None, content)
 
     # use the difficulty preset and any width and height overrides,
     # capped to whatever the terminal can actually show
@@ -624,10 +686,18 @@ def build_maze(args):
     collectibles = place_collectibles(maze_grid, args.collectibles,
                                       generator.random)
 
-    return maze_grid, collectibles, seed, dead_ends_before
+    # whatever the mode puts in the maze itself goes in last, so it can
+    # be kept off the cells a pickup is already on. A mode that puts
+    # nothing there draws no random numbers, and the maze a seed makes
+    # is the maze that seed has always made
+    content = mode_content(args.mode, maze_grid, rng=generator.random,
+                           collectibles=collectibles,
+                           quest_stages=args.quest_stages)
+
+    return maze_grid, collectibles, seed, dead_ends_before, content
 
 
-def build_game(args, grid, collectibles=()):
+def build_game(args, grid, collectibles=(), content=None):
     """Build the game this run plays, in the mode it was asked for.
 
     The mode is looked up rather than branched on, so a mode added to
@@ -640,6 +710,9 @@ def build_game(args, grid, collectibles=()):
         args: Parsed command-line arguments
         grid: 2D list of booleans (True = wall, False = path)
         collectibles: Cells holding a collectible to pick up
+        content: Whatever the mode already laid into this maze, as
+            :func:`build_maze` hands it back. A mode handed None lays
+            its own, so a caller with nothing to pass is not refused
 
     Returns:
         MazeGame: The game, set up for the mode --mode named
@@ -647,7 +720,9 @@ def build_game(args, grid, collectibles=()):
 
     return game_mode(args.mode)(grid, collectibles,
                                 chase_point=args.chase_point,
-                                chase_speed=args.chase_speed)
+                                chase_speed=args.chase_speed,
+                                content=content,
+                                quest_stages=args.quest_stages)
 
 
 def main():
@@ -672,7 +747,8 @@ def main():
     quiet = is_quiet(args)
 
     try:
-        maze_grid, collectibles, seed, dead_ends_before = build_maze(args)
+        (maze_grid, collectibles, seed, dead_ends_before,
+         content) = build_maze(args)
     except SaveFileError as error:
         fail(error, EXIT_SAVE_FILE)
     except OSError as error:
@@ -705,7 +781,7 @@ def main():
     if args.save:
         try:
             write_save(args.save, maze_grid, collectibles, seed, solution,
-                       args.format, stats=measured)
+                       args.format, stats=measured, quest=content)
         except OSError as error:
             fail(error, EXIT_FILE_ERROR)
 
@@ -717,12 +793,17 @@ def main():
 
         if args.format == JSON_FORMAT:
             print(save_json(maze_grid, collectibles, seed, solution,
-                            measured))
+                            measured, content))
         else:
             # the collectibles are drawn over the solution, so a solved
-            # maze still shows what there is to pick up along the way
-            print_maze(maze_grid, collectible_overlay(collectibles) +
-                       solution_overlay(solution))
+            # maze still shows what there is to pick up along the way,
+            # and so are the doors and boxes of a quest: the route runs
+            # through a door whether or not it is open yet
+            drawn = collectible_overlay(collectibles)
+            if content is not None:
+                drawn += quest_overlay(*content.drawn())
+
+            print_maze(maze_grid, drawn + solution_overlay(solution))
 
             # the measurements go under the maze rather than into it, and
             # a quiet run prints them too: --quiet drops what was never
@@ -756,7 +837,7 @@ def main():
         print(response)
 
         if response == 'y':
-            game = build_game(args, maze_grid, collectibles)
+            game = build_game(args, maze_grid, collectibles, content)
             game.play()
         else:
             print(GOODBYE_MESSAGE)

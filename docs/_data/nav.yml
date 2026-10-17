@@ -33,6 +33,9 @@
     - text: How to play
       file: playing.md
       url: /playing.html
+    - text: Game modes
+      file: modes.md
+      url: /modes.html
 
 - title: Going further
   items:

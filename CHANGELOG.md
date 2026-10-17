@@ -22,7 +22,90 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a5] - 2026-10-17
+
+A maze played for what is in it rather than only for the way out. `--mode
+quest` shuts the route with doors, hides what opens them in boxes behind
+those doors, and puts somebody in the maze to say which errand is next. The
+same run also puts numbers beside the three phrases `--algorithm` has always
+been described in, so "Prim's dead ends are short" is something a reader can
+check rather than something to take on trust.
+
+**A quest is a chain rather than a locked door.** Door one shuts the route a
+quarter of the way along, and the item that opens it is in a box somewhere in
+the part of the maze that can already be reached. Opening it reaches the part
+of the maze box two is hidden in, and so on, so the maze is played in stages
+and each one is finishable exactly when it is wanted. Nothing is ever spent:
+an item is kept and a door that has been opened stays open.
+
+**The guide is a second kind of hint rather than a second way to ask for the
+first.** `h` has always lit the next step of the way to the exit. `n` asks
+the character waiting just inside the entrance what the errand in front of
+you is: it lights up the box you still need, or the door it opens once you
+are carrying it, and says which in words on the controls line's own row, so
+asking never changes the height of the frame.
+
+**The picture refuses a quest and the document carries one.** A save file can
+draw a door; nothing in a picture can say which item opens it, and a door
+nobody can tell from another door is not a quest. So `+`, `&` and `@` are
+refused by the picture exactly as `.` and `o` already are, and the JSON
+document grows a `quest` key holding the doors, the boxes and the guide. A
+document round trips a quest maze; a text save of the same maze is the plain
+maze under it.
+
+**What a mode puts in the maze is now a registry of its own.** A chaser is
+built when the game is, but doors and boxes are laid into the grid before a
+word is drawn and are saved and loaded with it, so they belong to the maze
+rather than to the game. `MODE_CONTENT` is where a mode says what it lays
+there and `mode_content` is what lays it, which keeps `build_maze` free of
+any mode's name - the promise `MODES` has made since chase mode shipped.
+
+**The carving comparison is measured rather than asserted.** `docs/analysis.md`
+now tables the dead ends, junctions, longest corridor, route length, solution
+share and difficulty each of the three carvers averages over twenty mazes of
+the same size, and the suite recomputes every figure. Three of the phrases
+hold and read better as numbers. One does not: recursive division's longest
+straight run averages below randomized Prim's, because a wall running straight
+is not a corridor running straight, and the page says so rather than letting
+the phrase read as a measurement.
+
+### Added
+
+- `py_maze.quest`, a module of its own: `Quest` holds the doors, the boxes
+  and the inventory, and `place_quest` lays a chain into a maze that already
+  exists, hiding each box in the part of the maze reachable at the time it is
+  wanted. `reachable` is the flood fill a shut door needs and `door_cells`
+  spaces the doors along the route
+- `--mode quest`, with `--quest-stages` from 1 to 9 and a default of 3.
+  Unlike the chase options it is refused rather than settled into its range:
+  it shapes the maze before a word is drawn, the way `--collectibles` and
+  `--braid` do
+- The `n` key, which asks the guide what the next errand is, and
+  `QUEST_CONTROLS_LINE`, which says so beside the other keys
+- `DOOR_MARKER` (`+`), `BOX_MARKER` (`&`) and `GUIDE_MARKER` (`@`), with
+  `quest_overlay` to draw them over a maze
+- A `quest` key in the JSON document, and `SavedMaze`, which is the
+  `(grid, collectibles, seed)` triple every reader here has always handed
+  back with the quest beside it rather than as a fourth item a picture could
+  never fill
+- `MODE_CONTENT` and `mode_content`, the registry of what each mode lays into
+  the maze itself, and `quest_content`, quest mode's entry in it
+- `docs/modes.md`, the page the three modes are set out on: what each one
+  plays like, what each one draws and the options belonging to each
+- A carving comparison in `docs/analysis.md`, with the sample it was taken
+  over stated and every figure recomputed by the suite
+
+### Changed
+
+- `status_line` and `summary_lines` take the inventory, so a quest tallies
+  `items 2/3` under the maze and `Items: 2 of 3` on the summary. A mode with
+  no quest carries neither, exactly as a maze with no pickups carries no
+  collectible tally
+- `build_maze` hands back what the mode laid into the maze beside the four
+  things it already returned
+- `docs/playing.md`, `docs/options.md`, `docs/CHEATSHEET.md`,
+  `docs/save-format.md`, `docs/library.md` and the README all cover the new
+  mode, its option, its markers and its key
 
 ### Fixed
 

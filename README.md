@@ -30,6 +30,8 @@ solvable mazes and navigate through them using your keyboard!
 - 💰 **Collectibles**: Scatter pickups through the maze and see the tally at the end
 - 👣 **Chase Mode**: Walk far enough in and something starts following you,
   at a speed and from a point you can set
+- 🗝️ **Quest Mode**: Doors shut the way on until you find the box holding
+  what opens them, with a guide in the maze to say what is next
 - 💾 **Save and Load**: Keep a maze in a file and play it again later
 - 🔧 **Scriptable**: A quiet mode, JSON output, standard input and output,
   and a status code for each thing that can go wrong
@@ -137,10 +139,11 @@ python -m py_maze --mode chase
 `--mode` picks how the maze is played. `chase` is the same maze with an
 antagonist behind it: nothing follows you at first, and once you have walked
 far enough in a chaser appears at the entrance and comes after you, drawn
-with an `X` and turning when you turn. Being caught ends the run the way the
-exit does, with a line on the summary naming which of the two happened.
-`--chase-point` sets how far in it begins and `--chase-speed` how fast it
-moves, both covered under [game modes](docs/options.md#game-modes).
+with an `X` and turning when you turn. `quest` shuts the way on instead: a
+door (`+`) stays closed until you are carrying what opens it, and that is in
+a box (`&`) somewhere behind you, with a guide (`@`) in the maze to say what
+is next. All three, and the options belonging to each, are in
+[game modes](docs/modes.md).
 
 ## [Saving and Loading](docs/saving.md)
 
@@ -204,6 +207,7 @@ of it is a Markdown file that reads on GitHub just as well:
 | [Solving the maze](docs/solving.md) | `--solve` and `--animate` |
 | [Reading a maze](docs/analysis.md) | What `--stats` measures, and the difficulty score |
 | [How to play](docs/playing.md) | Keys, the status line, hints, the summary |
+| [Game modes](docs/modes.md) | The three ways to play, their options and their markers |
 | [Scripting py_maze](docs/scripting.md) | Quiet runs, JSON, pipes, status codes |
 | [Using py_maze as a library](docs/library.md) | The grid, a worked example, every public name |
 | [The save file format](docs/save-format.md) | The specification another tool writes to |

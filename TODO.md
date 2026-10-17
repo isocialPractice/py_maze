@@ -7,32 +7,26 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Compare the three carving algorithms in the documentation with the
-  measurements rather than with prose, so "Prim's dead ends are short" is a
-  number a reader can check
-  - From: Maze Analysis and Statistics
-- [ ] Add a quest mode: an inventory the player fills from the maze, where
-  what is carried is what opens the way on, so a maze is played for what is
-  in it rather than only for the way out
-  - **Door**: closed until the matching item is carried, and opening one
-    reaches the next stage or the next part of the maze
-  - **Box**: holds an item, so one pickup leads to another
-  - Each is drawn with its own marker, refused by the save format the way
-    an unknown character already is, and carried through the JSON document
-    so a document round trips a quest maze as it does a plain one
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Add a non-playable character to quest mode that hands out a hint on
-  the task in front of the player, shown on its own key the way the hint
-  along the solution already is
-  - It says what the next step of the quest is rather than where the exit
-    is, so it is a second kind of hint rather than a second way to ask for
-    the first
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Write `docs/modes.md` covering each mode, its options and its markers,
-  add it to `docs/_data/nav.yml` and the README's documentation table, and
-  add the new names to `py_maze/__init__.py` and the tables in
-  `docs/library.md`
-  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Gather the markers into one style object in `py_maze/rendering.py` -
+  the wall, the open cell, the player, the solution, the frontier, the
+  visited cell, the hint and the collectible - so a second style is a second
+  object rather than a change to `maze_lines`
+  - From: Rendering Styles and Character Sets
+- [ ] Keep the current markers as the default style under a name, so a run
+  with no options draws exactly what it draws today and the suite's fixed
+  mazes still match
+  - From: Rendering Styles and Character Sets
+- [ ] Add a box-drawing style using the light box characters, drawn only
+  where the output encoding can carry them, falling back to the ASCII style
+  the way the win banner already falls back
+  - From: Rendering Styles and Character Sets
+- [ ] Add a `--style` option choosing between the styles, defaulting to the
+  current one, with the names listed in its help text as `--algorithm` lists
+  its own
+  - From: Rendering Styles and Character Sets
+- [ ] Add a heavy-block style for a terminal whose font makes the asterisk
+  maze hard to read, using a full block for a wall and a space for a cell
+  - From: Rendering Styles and Character Sets
 
 ## Fixes and Hardening
 
@@ -71,25 +65,7 @@ bare run naming no mode playing exactly as it does today. Completing an item
 here advances the version counter by one, and the changelog entry says the
 change added a mode with the current behaviour unchanged.
 
-- [ ] Add a quest mode: an inventory the player fills from the maze, where
-  what is carried is what opens the way on, so a maze is played for what is
-  in it rather than only for the way out
-  - **Door**: closed until the matching item is carried, and opening one
-    reaches the next stage or the next part of the maze
-  - **Box**: holds an item, so one pickup leads to another
-  - Each is drawn with its own marker, refused by the save format the way
-    an unknown character already is, and carried through the JSON document
-    so a document round trips a quest maze as it does a plain one
-- [ ] Add a non-playable character to quest mode that hands out a hint on
-  the task in front of the player, shown on its own key the way the hint
-  along the solution already is
-  - It says what the next step of the quest is rather than where the exit
-    is, so it is a second kind of hint rather than a second way to ask for
-    the first
-- [ ] Write `docs/modes.md` covering each mode, its options and its markers,
-  add it to `docs/_data/nav.yml` and the README's documentation table, and
-  add the new names to `py_maze/__init__.py` and the tables in
-  `docs/library.md`
+No items are currently queued in this section.
 
 ### Further Game Modes
 
@@ -298,9 +274,7 @@ generated maze and on one read out of a file. New options with the current
 output unchanged, so completing an item here advances the version counter by
 one and the changelog entry says the change added an option.
 
-- [ ] Compare the three carving algorithms in the documentation with the
-  measurements rather than with prose, so "Prim's dead ends are short" is a
-  number a reader can check
+No items are currently queued in this section.
 
 ## Rendering Styles and Character Sets
 
@@ -2301,5 +2275,31 @@ No items are currently queued in this section.
   means for a maze, and add it to `docs/_data/nav.yml` and the README's
   documentation table
   - From: Maze Analysis and Statistics
+- [x] Compare the three carving algorithms in the documentation with the
+  measurements rather than with prose, so "Prim's dead ends are short" is a
+  number a reader can check
+  - From: Maze Analysis and Statistics
+- [x] Add a quest mode: an inventory the player fills from the maze, where
+  what is carried is what opens the way on, so a maze is played for what is
+  in it rather than only for the way out
+  - **Door**: closed until the matching item is carried, and opening one
+    reaches the next stage or the next part of the maze
+  - **Box**: holds an item, so one pickup leads to another
+  - Each is drawn with its own marker, refused by the save format the way
+    an unknown character already is, and carried through the JSON document
+    so a document round trips a quest maze as it does a plain one
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Add a non-playable character to quest mode that hands out a hint on
+  the task in front of the player, shown on its own key the way the hint
+  along the solution already is
+  - It says what the next step of the quest is rather than where the exit
+    is, so it is a second kind of hint rather than a second way to ask for
+    the first
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Write `docs/modes.md` covering each mode, its options and its markers,
+  add it to `docs/_data/nav.yml` and the README's documentation table, and
+  add the new names to `py_maze/__init__.py` and the tables in
+  `docs/library.md`
+  - From: Gameplay Enhancements `->` New Game Modes
 
 </details>

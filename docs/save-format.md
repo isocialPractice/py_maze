@@ -137,10 +137,18 @@ Those three and nothing else. `py_maze.SAVE_CHARS` is the same table in
 code, mapping each character to the boolean it becomes.
 
 The markers py_maze draws over a maze on screen are **not** part of a save
-file: the player `o`, the solution `.`, the hint, the search frontier and
-the cells already visited are all drawn over the grid at the moment of
-drawing and are never written to a file. Pasting a solved maze back into
-one is refused, which is the point of a fixed character set.
+file: the player `o`, the solution `.`, the hint, the search frontier, the
+cells already visited, the chaser `X` and quest mode's door `+`, box `&`
+and guide `@` are all drawn over the grid at the moment of drawing and are
+never written to a file. Pasting a solved maze back into one is refused,
+which is the point of a fixed character set.
+
+The three quest markers are refused for a reason of their own rather than
+only by the rule. A picture can draw a door; nothing in a picture can say
+which item opens it, and a door nobody can tell apart from another door is
+not a quest. So the picture refuses all three and the JSON document carries
+the chain under its `quest` key instead, which makes the document the only
+form that round-trips a quest maze.
 
 ### The Ragged-Line Rule
 
@@ -288,6 +296,7 @@ picture:
 | `collectibles` | Every open cell holding a pickup, in reading order. `[]` when there are none |
 | `solution` | The route from the entrance to the exit, cell by cell, when `--solve` or `--animate` asked for one. `null` otherwise, and `null` when there is no way through |
 | `stats` | What the maze measures, when `--stats` asked for it. Absent otherwise, rather than `null`: see [Reading a maze](analysis.html) for the keys it holds |
+| `quest` | The doors and boxes `--mode quest` laid into the maze. Absent for a maze with nothing to fetch in it, which is every maze a picture can draw |
 | `grid` | The maze itself: a list of rows of `true` and `false`, `true` for a wall |
 
 The grid is the whole of the maze, and the four keys above it are read out
@@ -298,7 +307,36 @@ and a picture of the same maze play identically.
 `grid` is required and every other key is optional. `entrance`, `exit`,
 `solution` and `stats` are written for a reader and are not read back: a
 loaded document hands back the same three things a loaded picture does, the
-grid, the collectibles and the seed.
+grid, the collectibles and the seed. `quest` is the one exception, and the
+one key a picture has no way of carrying, so it is read back and handed
+over beside those three.
+
+A `quest` is an object of three keys, and every one of them is optional:
+
+```json
+"quest": {
+  "doors": [[1, 5, 1], [3, 9, 2]],
+  "boxes": [[1, 3, 1], [1, 7, 2]],
+  "guide": [1, 1]
+}
+```
+
+| Key | Holds |
+| --- | --- |
+| `doors` | Every door, as `[x, y, item]`: the cell it stands on and the number of the item that opens it |
+| `boxes` | Every box, written the same way: the cell it is hidden on and the item inside it |
+| `guide` | The `(x, y)` the hint-giving character waits on, or `null` for a maze with nobody in it |
+
+Both lists are written in reading order, so the same maze writes the same
+document every run. What has been collected is not recorded: a save file is
+a maze rather than a game half played, so a document always reads back as a
+quest nobody has started.
+
+An item is a whole number of 1 or more, naming the stage it belongs to. A
+door and the box holding what opens it carry the same number. Nothing
+checks that every door has a box, or that a box can be reached before the
+door it opens: the reader checks the file rather than the maze, exactly as
+it loads a maze with no way through.
 
 `stats` is the one key a run leaves out rather than writing as `null`. The
 others say something about every maze, so `null` is an answer for them; a
@@ -340,6 +378,12 @@ And for a document:
 | Puts a collectible off the maze | `collectibles holds [9, 9], which is outside the maze` |
 | Puts a collectible on a wall | `collectibles holds [0, 0], which is a wall` |
 | Records a seed that is neither | `the seed is not a number or a word` |
+| Carries a `quest` that is not an object | `the quest is not a set of doors and boxes` |
+| Lists a door or a box that is not a cell and an item | `quest doors holds [1, 5], which is not an (x, y, item) cell` |
+| Puts a door or a box off the maze | `quest boxes holds [9, 9, 1], which is outside the maze` |
+| Puts a door or a box on a wall | `quest doors holds [0, 0, 1], which is a wall` |
+| Numbers an item below the first stage | `quest boxes holds [1, 0, 0], whose item is not a stage of the quest` |
+| Puts the guide off the maze or on a wall | `the quest guide holds [9, 9], which is outside the maze` |
 
 A picture cannot express either of those collectibles, a `$` always being
 one of the characters the maze is drawn with and always an open cell, so

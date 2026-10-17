@@ -24,12 +24,15 @@ __all__ = [
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
     'ANSI_ROW',
+    'BOX_MARKER',
     'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
+    'DOOR_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
     'FRAME_HEAD_ROWS',
     'FRONTIER_MARKER',
+    'GUIDE_MARKER',
     'HINT_MARKER',
     'LAST_BMP_CODE_POINT',
     'OPEN_MARKER',
@@ -54,6 +57,7 @@ __all__ = [
     'frame_wraps',
     'maze_lines',
     'print_maze',
+    'quest_overlay',
     'solution_overlay',
     'stats_lines',
     'status_line',
@@ -74,6 +78,15 @@ FRONTIER_MARKER = '?'
 HINT_MARKER = '?'
 COLLECTIBLE_MARKER = '$'
 CHASER_MARKER = 'X'
+
+# the characters a quest is drawn with: a door still shut, a box with an
+# item in it, and the character who says what the next errand is. None of
+# them is a character a maze is saved as - a picture says there is a door
+# and cannot say which item opens it - so all three are drawn on screen
+# and refused by the save format, as the player and the solution are
+DOOR_MARKER = '+'
+BOX_MARKER = '&'
+GUIDE_MARKER = '@'
 
 # seconds each frame of the animated solver stays on screen
 FRAME_DELAY = 0.05
@@ -530,6 +543,33 @@ def collectible_overlay(collectibles):
     return [(COLLECTIBLE_MARKER, set(collectibles))] if collectibles else []
 
 
+def quest_overlay(doors=(), boxes=(), guide=None):
+    """Build the overlays that draw a quest over a maze.
+
+    The three are returned from the most important to the least, as
+    :func:`maze_lines` reads a sequence of overlays: a door and a box
+    never share a cell, and the guide gives way to either rather than
+    hiding one.
+
+    Args:
+        doors: Cells holding a door that is still shut. An opened door
+            is drawn as the corridor it has become, so only the closed
+            ones are handed over
+        boxes: Cells holding a box that has not been opened
+        guide: The cell the hint-giving character waits on, or None for
+            a maze with nobody in it
+
+    Returns:
+        list: Overlays for maze_lines, empty when there is nothing of a
+        quest to draw
+    """
+
+    drawn = [(DOOR_MARKER, set(doors)), (BOX_MARKER, set(boxes)),
+             (GUIDE_MARKER, {tuple(guide)} if guide is not None else set())]
+
+    return [pair for pair in drawn if pair[1]]
+
+
 def format_duration(seconds):
     """Write a length of time the way a stopwatch would.
 
@@ -548,7 +588,7 @@ def format_duration(seconds):
     return "%d:%02d" % (minutes, seconds)
 
 
-def status_line(elapsed, moves, collected=0, total=0):
+def status_line(elapsed, moves, collected=0, total=0, carried=0, items=0):
     """Build the running tally shown under the maze while it is played.
 
     Args:
@@ -556,19 +596,25 @@ def status_line(elapsed, moves, collected=0, total=0):
         moves: Steps the player has taken
         collected: Collectibles picked up so far
         total: Collectibles the maze started with
+        carried: Quest items in the inventory so far
+        items: Quest items the maze holds, one to a stage
 
     Returns:
         str: The tally, naming collectibles only when the maze holds any
+        and the inventory only when there is a quest to fill it
     """
 
     line = "time %s   moves %d" % (format_duration(elapsed), moves)
     if total:
         line += "   collected %d/%d" % (collected, total)
+    if items:
+        line += "   items %d/%d" % (carried, items)
 
     return line
 
 
-def summary_lines(elapsed, moves, collected=0, total=0, outcome=None):
+def summary_lines(elapsed, moves, collected=0, total=0, outcome=None,
+                  carried=0, items=0):
     """Build the end-of-game summary, one line per tally.
 
     Args:
@@ -580,17 +626,21 @@ def summary_lines(elapsed, moves, collected=0, total=0, outcome=None):
             one way. Chase mode gives it, the exit and the chaser being
             two ways out of the same maze; the plain game leaves it out,
             having only the one
+        carried: Quest items the player ended up carrying
+        items: Quest items the maze held, one to a stage
 
     Returns:
         list: One string per line, naming collectibles only when the
-        maze held any and the outcome only when there was a choice of
-        them
+        maze held any, the inventory only when there was a quest, and
+        the outcome only when there was a choice of them
     """
 
     lines = ["Time:  %s" % format_duration(elapsed),
              "Moves: %d" % moves]
     if total:
         lines.append("Collected: %d of %d" % (collected, total))
+    if items:
+        lines.append("Items: %d of %d" % (carried, items))
     if outcome:
         lines.append("Outcome: %s" % outcome)
 

@@ -9,9 +9,19 @@ thing: the maze.
 
 A maze can also be written as a JSON document, which says outright what a
 picture leaves to be worked out: where the entrance and the exit are, which
-cells hold a collectible, the solution when one was asked for, and what the
-maze measures when that was asked for too. The two are the values
-:data:`FORMATS` offers, and the reader takes either.
+cells hold a collectible, the solution when one was asked for, what the
+maze measures when that was asked for too, and the doors and boxes of a
+quest when the maze holds one. The two are the values :data:`FORMATS`
+offers, and the reader takes either.
+
+A quest is the one thing only the document carries. A picture can draw a
+door, and nothing in a picture can say which item opens it, so the markers
+a quest is drawn with are refused by a picture exactly as any other
+character it was not drawn with is - and a document round trips a quest
+maze as it does a plain one. :class:`SavedMaze` is how it comes back: the
+``(grid, collectibles, seed)`` triple every reader here has always
+returned, with the quest beside it rather than as a fourth item a picture
+could never fill.
 
 A picture carrying no header at all is read too, with the characters it is
 drawn with named by :func:`picture_chars`, so a maze drawn by another tool
@@ -32,6 +42,7 @@ import sys
 
 from .generation import maze_seed
 from .grid import find_entrance, find_exit
+from .quest import Quest
 from .rendering import (COLLECTIBLE_MARKER, OPEN_MARKER, WALL_MARKER,
                         collectible_overlay, maze_lines)
 
@@ -40,6 +51,7 @@ __all__ = [
     'FORMATS',
     'JSON_FORMAT',
     'JSON_FORMAT_KEY',
+    'JSON_QUEST_KEY',
     'SAVE_CHARS',
     'SAVE_FORMAT',
     'SAVE_HEADER',
@@ -47,6 +59,7 @@ __all__ = [
     'STDIO_PATH',
     'TEXT_FORMAT',
     'SaveFileError',
+    'SavedMaze',
     'parse_json_save',
     'parse_save',
     'picture_chars',
@@ -64,6 +77,11 @@ SAVE_HEADER = "# py_maze save %d" % SAVE_FORMAT
 # the key a JSON maze carries that same number under, so both forms are
 # refused by the same build for the same reason
 JSON_FORMAT_KEY = 'py_maze'
+
+# the key a quest maze carries its doors and boxes under. A document
+# without it is a maze with nothing to fetch in it, which is every maze
+# a picture can draw
+JSON_QUEST_KEY = 'quest'
 
 # the two ways a maze is written, and the one a run writes unless it is
 # asked for the other
@@ -96,6 +114,55 @@ SAVE_CHARS = {
 
 class SaveFileError(ValueError):
     """Raised when a file handed to --load is not a maze this build reads."""
+
+
+class SavedMaze(tuple):
+    """A maze read out of a save file, and the quest a document carried.
+
+    It is the ``(grid, collectibles, seed)`` triple the readers here
+    have always handed back, so ``grid, collectibles, seed =
+    parse_save(text)`` reads a document exactly as it reads a picture.
+
+    The quest is an attribute rather than a fourth item of the tuple.
+    Only one of the two forms can carry one - a picture has no room to
+    say which item opens which door - so a fourth place would be a
+    place every caller had to unpack and half of them could only ever
+    find None in.
+    """
+
+    def __new__(cls, grid, collectibles=(), seed=None, quest=None):
+        """Hold what a reader found in a save file.
+
+        Args:
+            grid: 2D list of booleans (True = wall, False = path)
+            collectibles: Cells holding a collectible
+            seed: Seed the file records, or None when it records none
+            quest: The :class:`py_maze.Quest` a document carried, or
+                None for a maze with nothing to fetch in it
+        """
+
+        saved = super().__new__(cls, (grid, set(collectibles), seed))
+        saved.quest = quest
+
+        return saved
+
+    @property
+    def grid(self):
+        """The maze itself, as the grid every module here passes around."""
+
+        return self[0]
+
+    @property
+    def collectibles(self):
+        """The cells holding a collectible, as a set."""
+
+        return self[1]
+
+    @property
+    def seed(self):
+        """The seed the file records, and None when it records none."""
+
+        return self[2]
 
 
 def picture_chars(wall=WALL_MARKER, open_cell=OPEN_MARKER):
@@ -169,7 +236,31 @@ def save_lines(grid, collectibles=(), seed=None):
     return lines
 
 
-def save_json(grid, collectibles=(), seed=None, solution=None, stats=None):
+def quest_document(quest):
+    """Lay a quest out as the keys a JSON document carries it under.
+
+    Args:
+        quest: The :class:`py_maze.Quest` to write out
+
+    Returns:
+        dict: Its doors and boxes as ``[x, y, item]`` entries in
+        reading order, and the cell its guide waits on. What has been
+        collected is left out: a save file is a maze rather than a game
+        half played, so a document always reads back as a quest nobody
+        has started
+    """
+
+    return {
+        'doors': [list(cell) + [quest.doors[cell]]
+                  for cell in reading_order(quest.doors)],
+        'boxes': [list(cell) + [quest.boxes[cell]]
+                  for cell in reading_order(quest.boxes)],
+        'guide': None if quest.guide is None else list(quest.guide),
+    }
+
+
+def save_json(grid, collectibles=(), seed=None, solution=None, stats=None,
+              quest=None):
     """Write a maze out as a JSON document, for a program to read.
 
     The picture a save file draws says where the walls are and nothing
@@ -190,6 +281,10 @@ def save_json(grid, collectibles=(), seed=None, solution=None, stats=None):
             ``stats`` key at all: every key but ``grid`` is optional, and
             an absent one says the run never measured the maze rather
             than measuring nothing in it
+        quest: The :class:`py_maze.Quest` laid into this maze, for a
+            run that laid one. Left out, the document carries no
+            ``quest`` key, which says the maze has nothing to fetch in
+            it rather than a quest of nothing
 
     Returns:
         str: The document on a single line, so it pipes into a reader as
@@ -206,10 +301,13 @@ def save_json(grid, collectibles=(), seed=None, solution=None, stats=None):
                      else [list(cell) for cell in solution]),
     }
 
-    # the measurements go in above the grid, so the keys a reader wants
-    # are all before the bulk of the document rather than behind it
+    # the measurements and the quest go in above the grid, so the keys a
+    # reader wants are all before the bulk of the document rather than
+    # behind it
     if stats is not None:
         document['stats'] = stats
+    if quest is not None:
+        document[JSON_QUEST_KEY] = quest_document(quest)
 
     document['grid'] = grid
 
@@ -217,7 +315,7 @@ def save_json(grid, collectibles=(), seed=None, solution=None, stats=None):
 
 
 def write_save(path, grid, collectibles=(), seed=None, solution=None,
-               form=DEFAULT_FORMAT, stream=None, stats=None):
+               form=DEFAULT_FORMAT, stream=None, stats=None, quest=None):
     """Save a maze so it can be replayed with --load.
 
     Args:
@@ -234,6 +332,10 @@ def write_save(path, grid, collectibles=(), seed=None, solution=None,
             :func:`py_maze.analysis.maze_stats` returns them. Only the
             JSON form records them, for the same reason it is the only
             form that records a solution
+        quest: The quest laid into this maze, for a run that laid one.
+            Only the JSON form records it: a picture can draw a door
+            and cannot say which item opens it, so a quest maze saved
+            as a picture is the plain maze under it
 
     Raises:
         OSError: If the file cannot be written
@@ -244,7 +346,7 @@ def write_save(path, grid, collectibles=(), seed=None, solution=None,
         raise ValueError("no such format: %s" % form)
 
     if form == JSON_FORMAT:
-        text = save_json(grid, collectibles, seed, solution, stats)
+        text = save_json(grid, collectibles, seed, solution, stats, quest)
     else:
         text = '\n'.join(save_lines(grid, collectibles, seed))
 
@@ -322,21 +424,123 @@ def json_cells(cells, key, where, grid):
             raise SaveFileError("%s%s holds %s, which is not an (x, y) cell"
                                 % (where, key, json.dumps(cell)))
 
-        x, y = cell
-        if not (0 <= x < len(grid[0]) and 0 <= y < len(grid)):
-            raise SaveFileError("%s%s holds %s, which is outside the maze"
-                                % (where, key, json.dumps(cell)))
-
-        # a picture cannot express this one either: save_lines draws the
-        # marker over the wall and parse_save reads it back as an open
-        # cell, so the round trip would turn that wall into a path
-        if grid[y][x]:
-            raise SaveFileError("%s%s holds %s, which is a wall"
-                                % (where, key, json.dumps(cell)))
-
-        read.append((x, y))
+        check_place(cell[0], cell[1], key, where, grid, json.dumps(cell))
+        read.append(tuple(cell))
 
     return read
+
+
+def check_place(x, y, key, where, grid, shown):
+    # refuse a cell of a document that is off the maze or on one of its
+    # walls
+    #
+    # A cell off the grid is drawn by nothing and can be stepped on by
+    # nobody, and a cell on a wall is drawn over and can be stood on by
+    # nobody either, so both would be read back and never reached.
+    #
+    # A picture cannot express either one: save_lines draws the marker
+    # over the wall and parse_save reads it back as an open cell, so
+    # the round trip would turn that wall into a path.
+    #
+    # Args:
+    #     x: Column of the cell
+    #     y: Row of the cell
+    #     key: Name of the key it came from, for the messages
+    #     where: The file name and its separator, for the messages
+    #     grid: The maze the cell has to be an open cell of
+    #     shown: The cell as the document wrote it, for the messages
+    #
+    # Raises:
+    #     SaveFileError: If the cell is off the maze or on a wall
+
+    if not (0 <= x < len(grid[0]) and 0 <= y < len(grid)):
+        raise SaveFileError("%s%s holds %s, which is outside the maze"
+                            % (where, key, shown))
+
+    if grid[y][x]:
+        raise SaveFileError("%s%s holds %s, which is a wall"
+                            % (where, key, shown))
+
+
+def json_items(entries, key, where, grid):
+    # read a list of (x, y, item) places out of a JSON maze document
+    #
+    # A door and a box are a cell and the number of the stage they
+    # belong to, which is the one thing a picture of a maze cannot say.
+    #
+    # Args:
+    #     entries: Whatever the document carried under that key
+    #     key: Name of the key, for the messages
+    #     where: The file name and its separator, for the messages
+    #     grid: The maze the cells have to be open cells of
+    #
+    # Returns:
+    #     dict: Each (x, y) mapped to its item, empty when the key is
+    #     absent
+    #
+    # Raises:
+    #     SaveFileError: If any entry is not a cell and a stage number
+
+    if entries is None:
+        return {}
+
+    if not isinstance(entries, list):
+        raise SaveFileError("%s%s is not a list of cells" % (where, key))
+
+    held = {}
+    for entry in entries:
+        # a boolean is a whole number in Python and is neither a
+        # coordinate nor a stage
+        if (not isinstance(entry, list) or len(entry) != 3 or
+                not all(isinstance(number, int) and
+                        not isinstance(number, bool) for number in entry)):
+            raise SaveFileError(
+                "%s%s holds %s, which is not an (x, y, item) cell"
+                % (where, key, json.dumps(entry)))
+
+        shown = json.dumps(entry)
+        x, y, item = entry
+        check_place(x, y, key, where, grid, shown)
+
+        if item < 1:
+            raise SaveFileError(
+                "%s%s holds %s, whose item is not a stage of the quest"
+                % (where, key, shown))
+
+        held[(x, y)] = item
+
+    return held
+
+
+def json_quest(quest, where, grid):
+    # read a quest back out of a JSON maze document
+    #
+    # Args:
+    #     quest: Whatever the document carried under JSON_QUEST_KEY
+    #     where: The file name and its separator, for the messages
+    #     grid: The maze the doors, boxes and guide belong to
+    #
+    # Returns:
+    #     Quest: The chain as the document recorded it, with nothing
+    #     collected yet, and None when the document carried no quest
+    #
+    # Raises:
+    #     SaveFileError: If what the document carried is not one
+
+    if quest is None:
+        return None
+
+    if not isinstance(quest, dict):
+        raise SaveFileError("%sthe quest is not a set of doors and boxes"
+                            % where)
+
+    guide = quest.get('guide')
+    if guide is not None:
+        guide = json_cells([guide], 'the quest guide', where, grid)[0]
+
+    return Quest(json_items(quest.get('boxes'), 'quest boxes', where, grid),
+                 json_items(quest.get('doors'), 'quest doors', where, grid),
+                 guide)
 
 
 def parse_json_save(text, source=None):
@@ -347,11 +551,12 @@ def parse_json_save(text, source=None):
         source: Name of the file, for the error messages
 
     Returns:
-        tuple: (grid, collectibles, seed), the same three
-        :func:`parse_save` hands back. The entrance, the exit and the
-        solution the document records are not among them: all three are
-        read out of the grid, which is what lets a loaded maze be used
-        exactly like a carved one
+        SavedMaze: The ``(grid, collectibles, seed)`` triple
+        :func:`parse_save` hands back, with the quest the document
+        carried on its ``quest`` attribute. The entrance, the exit and
+        the solution the document records are not among them: all
+        three are read out of the grid, which is what lets a loaded
+        maze be used exactly like a carved one
 
     Raises:
         SaveFileError: If the text is not a maze this build can read
@@ -387,10 +592,11 @@ def parse_json_save(text, source=None):
     # and would be tallied all the same
     grid = json_grid(document.get('grid'), where)
 
-    return (grid,
-            set(json_cells(document.get('collectibles'), 'collectibles',
-                           where, grid)),
-            seed)
+    return SavedMaze(grid,
+                     json_cells(document.get('collectibles'),
+                                'collectibles', where, grid),
+                     seed,
+                     json_quest(document.get(JSON_QUEST_KEY), where, grid))
 
 
 def parse_save(text, source=None, chars=None):
@@ -410,9 +616,10 @@ def parse_save(text, source=None, chars=None):
             py_maze picture with its header cut off loads as it stands
 
     Returns:
-        tuple: (grid, collectibles, seed). The grid is the interchange
-        type the generator produces, and the seed is None when the file
-        does not record one
+        SavedMaze: (grid, collectibles, seed). The grid is the
+        interchange type the generator produces, and the seed is None
+        when the file does not record one. Its ``quest`` is None for a
+        picture, which has no room for one
 
     Raises:
         SaveFileError: If the text is not a maze this build can read
@@ -486,7 +693,7 @@ def parse_save(text, source=None, chars=None):
     if not grid:
         raise SaveFileError("%sthe save file has no maze in it" % where)
 
-    return grid, collectibles, seed
+    return SavedMaze(grid, collectibles, seed)
 
 
 def read_save(path, chars=None, stream=None):
@@ -499,7 +706,8 @@ def read_save(path, chars=None, stream=None):
         stream: Where STDIO_PATH reads from, defaulting to standard input
 
     Returns:
-        tuple: (grid, collectibles, seed), as for parse_save
+        SavedMaze: (grid, collectibles, seed), as for parse_save, with
+        the quest a document carried on its ``quest`` attribute
 
     Raises:
         OSError: If the file cannot be read

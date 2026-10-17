@@ -17,30 +17,44 @@ carver, so a mode is a function here and an entry below rather than a change
 to the option or to :func:`py_maze.main`.
 
 Settings belonging to one mode are passed to all of them and read by the one
-they belong to, which is why every mode ends in ``**settings``. Quest mode
+they belong to, which is why every mode ends in ``**settings``. A mode
 joining the list is then an entry here and the options it wants, with
 nothing to change in the modes already listed.
+
+Some of a mode is in the maze rather than in the game. Quest mode's doors
+and boxes are laid into the grid before a word is drawn, written into a
+JSON document beside the collectibles and read back out of one, so they
+belong to the maze the run settled on. :data:`MODE_CONTENT` is where a mode
+says what it puts there and :func:`mode_content` is what lays it, which is
+why :func:`py_maze.build_maze` can ask for it without naming a mode.
 """
 
 from .chase import DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, Chaser
 from .game import MazeGame
 from .grid import find_entrance
+from .quest import DEFAULT_QUEST_STAGES, place_quest
 
 __all__ = [
     'CHASE_MODE',
     'DEFAULT_MODE',
     'MODES',
+    'MODE_CONTENT',
     'MODE_NOTES',
     'MODE_OPTIONS',
     'PLAIN_MODE',
+    'QUEST_MODE',
     'chase_game',
     'game_mode',
+    'mode_content',
     'plain_game',
+    'quest_content',
+    'quest_game',
 ]
 
 # the name each mode answers to
 PLAIN_MODE = 'plain'
 CHASE_MODE = 'chase'
+QUEST_MODE = 'quest'
 
 
 def plain_game(grid, collectibles=(), **settings):
@@ -57,6 +71,34 @@ def plain_game(grid, collectibles=(), **settings):
     """
 
     return MazeGame(grid, collectibles)
+
+
+def quest_game(grid, collectibles=(), content=None,
+               quest_stages=DEFAULT_QUEST_STAGES, **settings):
+    """Build the quest: the same maze, with the way on shut until it is earned.
+
+    Args:
+        grid: 2D list of booleans (True = wall, False = path)
+        collectibles: Cells holding a collectible to pick up
+        content: The :class:`py_maze.Quest` already laid into this
+            maze, as :func:`mode_content` lays one and a JSON document
+            carries one. A fresh chain is laid when there is none, so
+            the mode plays whether or not the caller prepared it
+        quest_stages: How many door-and-box pairs a fresh chain runs
+            to, held between :data:`py_maze.MIN_QUEST_STAGES` and
+            :data:`py_maze.MAX_QUEST_STAGES` by the option that reads
+            it
+        **settings: Settings belonging to the other modes
+
+    Returns:
+        MazeGame: The game, with the quest set on it. A maze with no
+        way through has no chain to lay and plays as the plain game
+    """
+
+    if content is None:
+        content = place_quest(grid, quest_stages, taken=collectibles)
+
+    return MazeGame(grid, collectibles, quest=content)
 
 
 def chase_game(grid, collectibles=(), chase_point=DEFAULT_CHASE_POINT,
@@ -89,10 +131,38 @@ def chase_game(grid, collectibles=(), chase_point=DEFAULT_CHASE_POINT,
                                   speed=chase_speed))
 
 
+def quest_content(grid, rng=None, collectibles=(),
+                  quest_stages=DEFAULT_QUEST_STAGES, **settings):
+    """Lay quest mode's doors and boxes into a maze before it is played.
+
+    Args:
+        grid: 2D list of booleans (True = wall, False = path)
+        rng: Random number generator the boxes are hidden with, so a
+            seeded run hides them in the same places every time
+        collectibles: Cells a pickup is already on, so a box and a
+            pickup never land on one cell
+        quest_stages: How many door-and-box pairs to lay
+        **settings: Settings belonging to the other modes
+
+    Returns:
+        Quest: The chain, or None for a maze with no way through
+    """
+
+    return place_quest(grid, quest_stages, rng, taken=collectibles)
+
+
 # the name each mode answers to, and the function that builds it
 MODES = {
     PLAIN_MODE: plain_game,
     CHASE_MODE: chase_game,
+    QUEST_MODE: quest_game,
+}
+
+# what each mode lays into the maze itself, for the modes that lay
+# anything. A mode with nothing to put there is left out rather than
+# listed empty, so mode_content answers None for it
+MODE_CONTENT = {
+    QUEST_MODE: quest_content,
 }
 
 # what each one plays like, for the --mode help text. The note lives
@@ -100,12 +170,14 @@ MODES = {
 MODE_NOTES = {
     PLAIN_MODE: 'walk from the entrance to the exit',
     CHASE_MODE: 'the same walk, with something following you',
+    QUEST_MODE: 'the way on is shut until you find what opens it',
 }
 
 # the options belonging to each mode, for a help text that says so. A
 # mode with no options of its own is left out rather than listed empty
 MODE_OPTIONS = {
     CHASE_MODE: ('--chase-point', '--chase-speed'),
+    QUEST_MODE: ('--quest-stages',),
 }
 
 # the mode py_maze has always played, so a bare run is unchanged
@@ -132,3 +204,34 @@ def game_mode(name):
         raise ValueError(
             "no maze mode called '%s', there is %s"
             % (name, ", ".join(sorted(MODES))))
+
+
+def mode_content(name, grid, **settings):
+    """Lay whatever the named mode puts in the maze, before it is played.
+
+    A mode is looked up here rather than branched on, exactly as
+    :func:`game_mode` looks one up, so the step that settles on a maze
+    never has to know which mode wants what.
+
+    Args:
+        name: One of the keys of :data:`MODES`
+        grid: 2D list of booleans (True = wall, False = path)
+        **settings: Everything the modes read, handed to all of them
+            and read by the one it belongs to
+
+    Returns:
+        Whatever that mode puts in the maze - a :class:`py_maze.Quest`
+        for quest mode - and None for every mode that puts nothing
+        there, which is every other one
+
+    Raises:
+        ValueError: If no mode goes by that name
+    """
+
+    # an unknown mode is as wrong here as it is in game_mode, and is
+    # worth the same message rather than a quiet None
+    game_mode(name)
+
+    builder = MODE_CONTENT.get(name)
+
+    return None if builder is None else builder(grid, **settings)

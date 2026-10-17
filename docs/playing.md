@@ -15,15 +15,20 @@ summary: >-
    - Walk over any collectibles (`$`) to pick them up
    - Press **'h'** for a hint when you are stuck
    - Press **'q'** to quit at any time, or **Ctrl+C** to interrupt
-5. `--mode chase` plays the same maze with something following you. See
-   [game modes](options.md#game-modes) for the options that go with it
+5. `--mode chase` plays the same maze with something following you, and
+   `--mode quest` shuts the way on until you find what opens it. See
+   [game modes](modes.md) for all three and the options that go with them
 
 ## Controls
 
 - **Arrow Keys** or **W/A/S/D**: Move up/left/down/right
 - **H**: Show a hint for a moment
+- **N**: Ask the guide what the next errand is, in quest mode
 - **Q**: Quit the game
 - **Ctrl+C**: Interrupt the game
+
+**N** does nothing outside quest mode, there being nobody to ask. Quest mode
+says so on its own controls line, which lists it beside the other keys.
 
 While the game is running, the terminal is put into raw mode so single
 keypresses can be read without waiting for Enter. The same goes for the
@@ -194,7 +199,52 @@ one of six presets from 0 for one move a second to 5 for six. Left alone
 they are a point past halfway and a speed a player who keeps moving matches
 without hurrying, so the chaser alone never catches somebody still walking.
 The two are covered in full under
-[game modes](options.md#game-modes).
+[game modes](modes.html).
+
+## Quest Mode
+
+`--mode quest` is the same maze with the way on shut. A door (`+`) stays
+closed until the matching item is carried, and the item is in a box (`&`)
+hidden in the part of the maze that can already be reached:
+
+```
+start
+* ***
+*o& *
+***+*
+*   *
+*** *
+end
+time 0:07   moves 3   items 0/1
+
+Use arrow keys or WASD to move. Press 'h' for a hint, 'n' to ask the guide, 'q' to quit.
+```
+
+Walking onto the box opens it. Walking into the door before that costs
+nothing - the step is refused the way walking into a wall is, and no move is
+counted - and walking into it afterwards opens it for good.
+
+The status line carries the inventory while the maze holds a quest, and the
+summary reports it the way it reports collectibles:
+
+```
+🎉 Congratulations! You solved the maze! 🎉
+
+Time:  1:04
+Moves: 88
+Items: 3 of 3
+
+Press any key to exit...
+```
+
+The maze has one way out, so there is no outcome line: finishing a quest is
+reaching the exit, and the exit is behind the last door.
+
+A guide (`@`) waits just inside the entrance. Pressing **n** asks it what
+the errand in front of you is, from anywhere in the maze: it lights the cell
+up the way a hint does, and says what it is where the controls line usually
+sits. [Game modes](modes.html) has the whole of it, including what `--braid`
+does to a quest.
 
 ## Hints
 
@@ -218,6 +268,11 @@ The path is solved from wherever the player is standing rather than from the
 entrance, so a hint still points the way after a wrong turn, and asking for
 one in a dead end points back out of it. At the exit there is nothing left to
 hint at, so nothing is highlighted.
+
+**n** is a second kind of hint rather than a second way to ask for the
+first. **h** points at the next step of the way to the exit; the guide
+points at the box or the door the quest wants next and says nothing about
+where the exit is.
 
 ## Redrawing the Screen
 
