@@ -83,6 +83,56 @@ into a `## Complete` section at the bottom of this file.
     line already names the keys, and `docs/modes.md` has a markers table
     that could say "a `+` is a door you cannot pass yet"
   - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [ ] Settle the repository on one line ending
+  - **Issue**: The `1.0.0a5` commit rewrote 23 tracked text files from LF to
+    CRLF while the files it did not open stay LF: `py_maze/chase.py`,
+    `grid.py`, `generation.py`, `solving.py`, `analysis.py`, `keys.py`,
+    `__main__.py` and `py_maze/algorithms/`. `docs/modes.md`, created by
+    that same commit, is LF, so the two endings now meet inside one
+    release. There is no `.gitattributes` to decide it, so the split is
+    whichever files a run happened to edit. The cost is already
+    paid: `git show v1.0.0a5` reports 25,113 insertions against a real
+    2,741, so the release cannot be read without `--ignore-cr-at-eol`, and
+    every later run that edits one of the remaining LF files moves the line
+    again
+  - **Goal**: Add a `.gitattributes` naming one ending for the repository -
+    `* text=auto eol=lf` is the usual choice for a package published to
+    PyPI - renormalize the tree in a single commit of its own so the
+    renormalization never sits inside a release diff, and say in
+    `docs/development.md` which ending the repository keeps
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [ ] Exercise the branch that shortens a quest that will not fit
+  - **Issue**: `place_quest` has a branch for the stage it cannot hide a box
+    for: it drops that door and every later one, leaving the stages that did
+    fit rather than a chain with a break in it. Nothing reaches it. Over
+    6,021 quests laid across seeds 1 to 299, sizes 3x3 to 16x20 and 1, 3, 5
+    and 9 stages, `box_spot` never once answered None, so neither that
+    branch nor the `fresh or region - ...` fallback above it (0 of 3,588
+    stages) has ever run - and `TestPlaceQuest` does not construct the
+    condition directly either. The branch that decides whether a small maze
+    gets a playable quest or an unfinishable one is the only part of the
+    placement no test and no run has executed
+  - **Goal**: Drive `place_quest` against a maze with no room to hide a
+    later box - a hand-written grid, or `box_spot` patched to answer None at
+    a chosen stage - and assert what the docstring promises: the doors left
+    are numbered 1 to n with no gap, every one of them has its box, and
+    `finish_quest` still walks it
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [ ] Give a quest laid into a loaded maze a seed to come from
+  - **Issue**: `build_maze` threads `generator.random` into `mode_content`
+    for a generated maze, so the chain a seed lays is the chain that seed
+    has always laid. The `--load` branch passes no `rng` at all, so
+    `place_quest` falls back to the global `random` module:
+    `python -m py_maze --load maze.txt --mode quest --seed 5` laid six
+    different chains in six runs of that one command. A loaded picture is
+    the only maze in the project whose contents cannot be reproduced
+  - **Goal**: Decide which seed governs content laid into a loaded maze -
+    `--seed` where the run gave one, the seed the file records where it did
+    not, fresh randomness where there is neither - say so beside the "it is
+    neither resized nor re-seeded here" comment that currently answers only
+    for the grid, and pin it with a test that loads one picture twice under
+    the same seed and gets the same chain
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
 
 ## Fixes and Hardening
 
@@ -122,6 +172,115 @@ here advances the version counter by one, and the changelog entry says the
 change added a mode with the current behaviour unchanged.
 
 No items are currently queued in this section.
+
+### Existing Game Modes Improvements
+
+Chase mode and quest mode are built and shipped, and this is where each
+one is sharpened rather than replaced: what the screen says while a mode
+is played, and what it reports when the run is over. Completing an item
+here advances the version counter by one, and the changelog entry says
+the change improved an existing mode with every other mode unchanged.
+
+#### Chase Mode
+
+The plain walk with something behind it: a `Chaser` waits on the entrance
+until the player has walked the share of the route `--chase-point` names,
+then steps after them at one of the `CHASE_SPEEDS` presets. An item here
+changes what a player is told about the chase, or what the chaser knows.
+
+- [ ] Report the chase on the end-of-game summary: the steps the chaser
+  took and the share of the maze it started at, so a run that was followed
+  says how hard it was rather than only how it ended
+  - `Chaser.moves` is counted on every step that moved the chaser and is
+    read nowhere but the suite, which is the summary the comment beside it
+    was kept for
+  - `summary_lines` already carries a line only for a mode that has one -
+    `Items` for a quest, `Outcome` for a chase - so the chase tallies go in
+    beside them rather than onto a screen of their own
+  - A plain game carries neither, exactly as a maze with no pickups carries
+    no collectible tally
+- [ ] Draw how close the chaser is on the status line, so standing still
+  has a cost a player can read rather than one they only find out about
+  - `Chaser.step` already solves the whole route from itself to the player
+    and keeps only `path[1]`, so the gap is `len(path) - 1` of a search the
+    mode is paying for already
+  - `status_line` names a tally only when the mode has one, the way it
+    names `items 2/3` for a quest, so a plain game's line is unchanged
+  - It is drawn only once the chase has begun, as `CHASER_MARKER` is, so
+    the maze reads as the plain game until something is following
+- [ ] Say when the chase begins rather than letting the chaser appear
+  unannounced, so the one moment the mode turns on is a moment the player
+  is told about
+  - `Chaser.start` is the single place that knows the chase has just begun,
+    and it already answers once: `started` is set there and never cleared
+  - The line takes the controls line's own row for `HINT_SECONDS`, as
+    `GUIDE_LINE` does for the guide's answer, so announcing the chase never
+    changes the height of the frame
+  - It is drawn into the frame rather than printed under it: the chase is
+    beginning rather than ending, so `MazeGame.ending` is not involved
+- [ ] Add a `--chase-sight` option bounding how far the chaser can see, so
+  a chase can be broken rather than only outrun: out of sight it walks to
+  the cell it last saw the player on
+  - The gap the search already measures is what decides it, so a player
+    more steps away than the option allows is out of sight and the mode
+    needs no second search and no line of sight across walls
+  - It reads its number through `chase_setting` as `--chase-point` and
+    `--chase-speed` do, so the range holds wherever the number came from
+    rather than only off the command line
+  - The default leaves the chaser seeing the whole maze, so a run that does
+    not pass it plays exactly as chase mode plays today
+
+#### Quest Mode
+
+The same maze with the way on shut: `place_quest` spaces `--quest-stages`
+doors along the route, hides what opens each one in a box behind the door
+before it, and puts a guide inside the entrance. An item here is about
+what a player is told of the chain, and about a chain that holds.
+
+- [ ] Say which item a shut door wants when the step onto it is refused,
+  so walking into a door reads differently from walking into a wall
+  - `Quest.unlock` already knows the item and already answers False
+    without saying anything, which `MazeGame.move_player` turns into a
+    step that counts no move
+  - The answer takes the controls line's own row for `HINT_SECONDS`, as
+    the guide's answer does through `GUIDE_LINE`, so the frame keeps its
+    height and the refusal still costs no move
+  - A door already opened and an ordinary wall both stay silent, so the
+    line is only ever drawn for the one refusal a player cannot see the
+    reason for
+- [ ] Draw a door whose item is being carried differently from one whose
+  item is still in its box, so a player can see which door is theirs to
+  open rather than counting the stages off the tally
+  - `Quest.closed_doors` hands every shut door over as one set and
+    `Quest.carried` already says which items are in hand, so the split is
+    a second set rather than a second reading of the maze
+  - `quest_overlay` takes the doors, the boxes and the guide in the order
+    they are drawn, so a fourth marker beside `DOOR_MARKER`, `BOX_MARKER`
+    and `GUIDE_MARKER` is an entry in the same list
+  - The new marker is refused by a picture exactly as the other three are,
+    and `docs/modes.md` tables it with them
+- [ ] Report a quest laid with fewer stages than `--quest-stages` asked
+  for, so a maze with nowhere left to hide a box says so rather than being
+  played as a shorter quest nobody chose
+  - `place_quest` already drops the door it could not hide a box for and
+    every door after it, and `Quest.stages` counts what it did lay, so the
+    two numbers to compare are both in hand
+  - `notice` is how a run says what it carried on past, as `--chase-point`
+    already uses it for a value it could not read, and standard error
+    keeps a quiet run's output the maze and nothing else
+  - A quest that fitted says nothing, and `docs/modes.md` gains the
+    sentence saying what a small maze does with a long chain
+- [ ] Check that a door shuts something before it is laid, so a quest
+  carved with `--braid` is either a quest or reported as not one
+  - `reachable` is the flood fill that answers it: a door whose cell, held
+    shut, still leaves the exit in the set it returns is a door with a way
+    round it, and the maze has a second route through
+  - `door_cells` picks its cells off the route alone, which holds for a
+    carved maze having one route between any two cells and stops holding
+    once `--braid` has opened a dead end
+  - The combination stays legal, as `docs/modes.md` says it is: what
+    changes is that the run says the chain gates nothing rather than
+    leaving a player to find that out at the first door
 
 ### Further Game Modes
 
