@@ -28,6 +28,62 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the quest foot wraps a console it was fitted to
+
+#### Resolve Issues
+
+- [ ] Wrapped Foot 1
+  - **Issue**: On a real Windows console whose rows the frame exactly
+    fills, quest mode loses the `start` marker off the top of the screen.
+    At 80 by 18 it is gone from the first frame, before the guide is ever
+    asked: `QUEST_CONTROLS_LINE` is 88 characters, so an 80 column console
+    carries it onto a nineteenth row that an eighteen row console does not
+    have, and the write scrolls the buffer. At 100 by 18 the first frame is
+    clean and the first guide answer breaks it, the answer being 104
+    characters where the controls line is 88 - and there the damage
+    persists: the screen is left holding two tallies, one stale and frozen,
+    with the guide's answer stranded on the blank spacer's row above the
+    controls line, because the spacer never changes and so is never
+    rewritten. Asking again does not repair it. `fit_frame` cuts the frame
+    by comparing `len(lines)` against `size.lines`, which counts a wrapped
+    line as one row. The plain game does the same thing at 60 columns, so
+    the fault predates quest mode; the 88 character controls line is what
+    brought it to the standard 80 column console. Measured with
+    `.tmp/ui-ux/drive_1_0_0a5.py` reading the screen buffer back, 4 of 35
+    checks failing, all four on those two consoles
+  - **Goal**: Resolve to [wrapped-foot.prompt.md](.claude/prompts/wrapped-foot.prompt.md)
+  - From: Gameplay Enhancements `->` New Game Modes
+
+#### Found Issues
+
+- [ ] Pin the frame's rendered height in the suite
+  - **Issue**: Nothing in the suite measures how many console rows a frame
+    occupies, as opposed to how many lines it holds, so the whole class of
+    fault above is invisible to it. `TerminalScreen` models a screen that
+    never wraps
+  - **Goal**: Add the helper the fix introduces - the rows a frame occupies
+    given a terminal width - as a pure function, and test it against a
+    table of widths: the quest controls line at 88 characters over 60, 80,
+    88, 100 and 120 columns, and the guide's answer at 104 over the same,
+    asserting `fit_frame` gives up a maze row whenever the foot wraps
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [ ] A shut door is drawn lighter than the wall it stands in
+  - **Issue**: Rendered in Consolas at the console's default 8 by 16 cell
+    and inspected as pixels, `+` reads as a corridor junction rather than
+    as a shut door. It sits centred in its cell with four thin arms where
+    the `*` wall sits high with six, so the door is the *lighter* mark of
+    the two and a cell holding one scans as more passable than a wall,
+    which is the opposite of what it means. `&` and `@` are the closest
+    pair in the set, both being full-cell rounded masses, but they are
+    never adjacent in a maze and are told apart in place. Nothing is
+    mis-rendered: all four markers are ASCII and came back off the buffer
+    as themselves
+  - **Goal**: Either draw a shut door with a glyph that reads as heavy as a
+    wall, or name the convention where the player sees it - the controls
+    line already names the keys, and `docs/modes.md` has a markers table
+    that could say "a `+` is a door you cannot pass yet"
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2289,9 +2345,9 @@ No items are currently queued in this section.
     an unknown character already is, and carried through the JSON document
     so a document round trips a quest maze as it does a plain one
   - From: Gameplay Enhancements `->` New Game Modes
-- [x] Add a non-playable character to quest mode that hands out a hint on
-  the task in front of the player, shown on its own key the way the hint
-  along the solution already is
+- [x] **Wrapped Foot**: Add a non-playable character to quest mode that
+  hands out a hint on the task in front of the player, shown on its own key
+  the way the hint along the solution already is
   - It says what the next step of the quest is rather than where the exit
     is, so it is a second kind of hint rather than a second way to ask for
     the first
