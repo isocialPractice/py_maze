@@ -146,6 +146,24 @@ class SavedMaze(tuple):
 
         return saved
 
+    def __getnewargs__(self):
+        """Hand __new__ back its own arguments, for copy and pickle.
+
+        A tuple subclass is rebuilt by calling ``__new__`` with what
+        this returns, and tuple's own answer is the triple as a single
+        argument - which this ``__new__`` would read as the grid. So a
+        copied or unpickled maze would come back with its whole triple
+        nested inside its grid, and the quest, which is no part of the
+        tuple at all, would have to be restored separately.
+
+        Returns:
+            tuple: The four arguments :meth:`__new__` was given, so
+            ``copy.copy``, ``copy.deepcopy`` and ``pickle`` all hand
+            back the maze that went in, quest included
+        """
+
+        return self[0], self[1], self[2], self.quest
+
     @property
     def grid(self):
         """The maze itself, as the grid every module here passes around."""

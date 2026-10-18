@@ -22,6 +22,32 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+Two corrections to the quest release below, found reviewing it and fixed
+after it was tagged, so neither is in `v1.0.0a5`.
+
+### Fixed
+
+- **A quest document loaded in a mode that plays no quest was still drawn
+  and still saved.** `build_maze` took the chain off the document whatever
+  `--mode` said, so `python -m py_maze --load quest.json` - the save command
+  `docs/modes.md` prints, run back without repeating `--mode quest` - drew
+  `+`, `&` and `@` over the maze and wrote them out again, while the game it
+  then offered to play had no doors, no boxes, no guide and no `items`
+  tally. The picture said one thing and the game did another. The document's
+  chain is now adopted only by a mode that lays that kind of content, so
+  what is drawn over a loaded maze is always what is in play on it
+- **`SavedMaze` came back from `copy` and `pickle` with its whole triple
+  inside its grid.** A tuple subclass is rebuilt by calling `__new__` with
+  whatever `__getnewargs__` hands back, and `tuple`'s own answer is the
+  triple as a single argument - which this `__new__` reads as the grid. So
+  `copy.deepcopy(py_maze.read_save(path))` returned a `SavedMaze` whose
+  `grid` was `(grid, collectibles, seed)`, whose `collectibles` was empty
+  and whose `seed` was `None`, with no error raised anywhere. `SavedMaze`
+  answers `__getnewargs__` with its own four arguments now, so a copied,
+  deep-copied or unpickled maze is the maze that went in, quest included
+
 ## [1.0.0a5] - 2026-10-17
 
 A maze played for what is in it rather than only for the way out. `--mode

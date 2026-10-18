@@ -5,12 +5,14 @@
 import argparse
 import collections
 import contextlib
+import copy
 import doctest
 import importlib
 import inspect
 import io
 import json
 import os
+import pickle
 import random
 import re
 import shutil
@@ -12105,6 +12107,22 @@ class TestQuestSaveFile(unittest.TestCase):
 
         self.assertIsNone(py_maze.read_save(self.path('quest.txt')).quest)
 
+    def test_a_saved_maze_survives_being_copied_and_pickled(self):
+        # a tuple subclass is rebuilt by calling __new__ with whatever
+        # __getnewargs__ hands back, and tuple's own answer is the
+        # triple as one argument, which this __new__ reads as the grid
+        saved = py_maze.parse_save(
+            py_maze.save_json(self.grid, [(1, 1)], 2024, quest=self.quest))
+
+        for name, made in (('copy', copy.copy(saved)),
+                           ('deepcopy', copy.deepcopy(saved)),
+                           ('pickle', pickle.loads(pickle.dumps(saved)))):
+            with self.subTest(made=name):
+                self.assertEqual(made.grid, self.grid)
+                self.assertEqual(made.collectibles, {(1, 1)})
+                self.assertEqual(made.seed, 2024)
+                self.assertEqual(made.quest.doors, self.quest.doors)
+
 
 class TestMainQuestMode(MainRunner, unittest.TestCase):
     # the command line end to end: what a quest run draws, writes and
@@ -12200,6 +12218,40 @@ class TestMainQuestMode(MainRunner, unittest.TestCase):
 
         self.assertEqual(code, py_maze.EXIT_USAGE)
         self.assertIn('a quest runs from', stderr)
+
+    def test_a_document_loaded_in_another_mode_is_handed_no_quest(self):
+        # what is drawn over a loaded maze is what is in play on it: a
+        # mode that puts nothing in a maze is handed nothing, whatever
+        # the document carried
+        written, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                    '--mode', 'quest', '--format', 'json'])
+        path = self.write(written)
+
+        for mode in (py_maze.PLAIN_MODE, py_maze.CHASE_MODE):
+            with self.subTest(mode=mode):
+                argv = ['--load', path, '--mode', mode, '-q']
+                output, _ = self.run_main(argv)
+                parsed = py_maze.build_parser().parse_args(argv)
+                grid, collectibles, _, _, content = py_maze.build_maze(parsed)
+
+                self.assertIsNone(content)
+                self.assertIsNone(py_maze.build_game(
+                    parsed, grid, collectibles, content).quest)
+
+                for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                               py_maze.GUIDE_MARKER):
+                    self.assertNotIn(marker, self.maze_of(output))
+
+    def test_a_document_loaded_in_quest_mode_keeps_the_chain_it_carried(self):
+        written, _ = self.run_main(['-d', 'easy', '--seed', '2024',
+                                    '--mode', 'quest', '--format', 'json'])
+        argv = ['--load', self.write(written), '--mode', 'quest', '-q']
+        output, _ = self.run_main(argv)
+
+        for marker in (py_maze.DOOR_MARKER, py_maze.BOX_MARKER,
+                       py_maze.GUIDE_MARKER):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.maze_of(output))
 
     def test_the_game_it_builds_plays_the_chain_the_maze_holds(self):
         parsed = py_maze.build_parser().parse_args(['--mode', 'quest'])

@@ -22,8 +22,8 @@ from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
-from .modes import (DEFAULT_MODE, MODE_NOTES, MODE_OPTIONS, MODES,
-                    game_mode, mode_content)
+from .modes import (DEFAULT_MODE, MODE_CONTENT, MODE_NOTES, MODE_OPTIONS,
+                    MODES, game_mode, mode_content)
 from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES,
                     MIN_QUEST_STAGES)
 from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DOOR_MARKER,
@@ -639,14 +639,19 @@ def build_maze(args):
         # whatever the file drew, and everything downstream reads them
         check_ends(loaded.grid, args.load)
 
-        # a document that recorded a quest is played as it was saved. A
-        # picture never records one, so a mode that wants something in
-        # the maze lays it into the maze the file drew
-        content = loaded.quest
-        if content is None:
-            content = mode_content(args.mode, loaded.grid,
-                                   collectibles=loaded.collectibles,
-                                   quest_stages=args.quest_stages)
+        # a document that recorded a quest is played as it was saved,
+        # by the mode that plays one. A picture never records one, so a
+        # mode that wants something in the maze lays it into the maze
+        # the file drew, and a mode that puts nothing there is handed
+        # nothing whatever the file carried: what is drawn over a loaded
+        # maze is always what is in play on it
+        content = None
+        if args.mode in MODE_CONTENT:
+            content = loaded.quest
+            if content is None:
+                content = mode_content(args.mode, loaded.grid,
+                                       collectibles=loaded.collectibles,
+                                       quest_stages=args.quest_stages)
 
         # a loaded maze is whatever the file drew, so there is no before
         # to compare it against: --braid does not apply to one

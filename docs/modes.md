@@ -149,3 +149,8 @@ back as the same quest with nothing collected. A text save of the same maze
 is the plain maze under it - the picture has no room to say which item opens
 which door - and loading that one with `--mode quest` lays a fresh chain
 into it instead.
+
+The mode on the loading run is what decides, so the second command above
+needs its `--mode quest`. Loading a quest document in any other mode plays
+the plain maze under the chain and draws none of it: what is drawn over a
+loaded maze is always what is in play on it.
