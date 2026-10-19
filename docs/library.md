@@ -389,6 +389,7 @@ yield in reading order, left to right and then down the rows.
 | `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
 | `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
 | `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
+| `frame_height(lines, size)` | The screen rows a frame occupies, counting a wrapped line as the rows it is carried onto |
 | `can_display(text, stream)` | Whether a destination draws the text as written, the encoding and the screen buffer cell both asked |
 | `clear_screen`, `ansi_enabled`, `can_encode` | The rest of the escape sequence machinery behind a redraw |
 
@@ -587,5 +588,8 @@ with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `(grid, collectibles, seed, dead_ends_before, content)`, the fourth being
 what `maze_stats` needs to report a braid and `None` for a run that braided
 nothing, and the last being whatever the mode laid into the maze - a `Quest`
-for quest mode and `None` for every other. Those are the names that want a
-terminal. Everything above runs without one.
+for quest mode and `None` for every other. `content_seed(given, recorded)`
+is the rule it lays that content from: the seed the run named, else the seed
+the save file records, else `None` for the fresh randomness a seedless
+picture gets. Those are the names that want a terminal. Everything above
+runs without one.

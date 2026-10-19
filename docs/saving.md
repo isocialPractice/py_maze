@@ -43,12 +43,27 @@ python -m py_maze --load maze.txt
 ```
 
 The maze comes from the file as it was saved, so the options that generate one
-do not apply to it: `--width`, `--height`, `--difficulty`, `--seed`,
-`--algorithm`, `--braid` and `--collectibles` are all ignored for a loaded
-maze. `--solve`, `--animate` and the in-game hints work on it exactly as they
-do on a generated one, and `--wall-char` and `--open-char` apply to nothing
-else: they say how a file that carries no py_maze header was
+do not apply to it: `--width`, `--height`, `--difficulty`, `--algorithm`,
+`--braid` and `--collectibles` are all ignored for a loaded maze. `--solve`,
+`--animate` and the in-game hints work on it exactly as they do on a
+generated one, and `--wall-char` and `--open-char` apply to nothing else:
+they say how a file that carries no py_maze header was
 [drawn](scripting.md#loading-a-maze-drawn-by-something-else).
+
+`--seed` is the one of them that is not quite ignored. The grid is in the
+file and is never re-seeded, but what a mode lays *over* that grid is not in
+the file at all - quest mode's chain of doors and boxes is laid fresh each
+time a picture is loaded - and that does come from a seed:
+
+| The run gives | The file records | The chain comes from |
+| --- | --- | --- |
+| `--seed N` | anything | `N` |
+| nothing | a seed line | the seed the file records |
+| nothing | no seed line | fresh randomness, so it differs every run |
+
+So `--load picture.txt --mode quest --seed 5` lays the same quest every
+time, and a document that already carries a quest is played with the chain
+it carries rather than a new one, seed or no seed.
 
 A loaded maze reports the seed its file records, so a maze that turned out to
 be worth keeping can still be traced back:

@@ -129,6 +129,38 @@ major to move: the counter advances by one for any change that earns a version,
 whatever the size of it, and the size is recorded in that run's changelog entry
 instead. The `1.0.0` core stays where it is until the project releases.
 
+## Line Endings
+
+Every text file in the repository is stored and checked out with LF endings.
+`.gitattributes` says so in one line, and it applies to the whole tree:
+
+```
+* text=auto eol=lf
+```
+
+LF is the choice because the package is published to PyPI and its sources
+are read on every platform. On Windows, git checks the same bytes out that it
+stores, and every editor and tool in this project's toolchain reads LF
+without complaint.
+
+The rule exists because the repository once held both. A release that
+rewrote 23 files from LF to CRLF, while the files it did not open stayed LF,
+reported 25,113 insertions against a real 2,741 - a diff that could not be
+read without `--ignore-cr-at-eol`, and a release that could not be reviewed.
+
+The renormalization itself is in `v1.0.0a6`, alongside that release's own
+changes, because a run of this project's automation records one commit rather
+than two. So `v1.0.0a5` and `v1.0.0a6` are the two tags whose diffs want
+`--ignore-cr-at-eol`, and every tag after them reads straight.
+
+If you find a file with CRLF endings, normalise it rather than working around
+it:
+
+```bash
+# what git thinks, for one file
+git check-attr text eol -- py_maze/rendering.py
+```
+
 ## Running the Tests
 
 The tests use only the standard library, so no test dependencies are

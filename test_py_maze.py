@@ -2150,6 +2150,118 @@ class TestFrameWraps(unittest.TestCase):
             terminal_size(len(py_maze.CONTROLS_LINE), 24)))
 
 
+class TestFrameHeight(unittest.TestCase):
+    # a frame is a list of lines and a screen is a grid of rows, and the
+    # two are the same count only while every line fits on one row.
+    # frame_height is what fit_frame measures against, so a frame
+    # carrying a wrapped line gives up a maze row for the row it wraps
+    # onto rather than being handed a screen it is too tall for
+
+    def test_a_frame_inside_the_last_column_is_as_tall_as_it_is_long(self):
+        lines = ['start', '*** *', 'end']
+
+        self.assertEqual(py_maze.frame_height(lines, terminal_size(80, 24)),
+                         len(lines))
+
+    def test_a_blank_line_still_occupies_the_row_it_is_on(self):
+        # the spacer between the tally and the controls line is empty
+        # and is still a row of the screen
+        self.assertEqual(py_maze.frame_height([''], terminal_size(80, 24)), 1)
+
+    def test_a_line_as_wide_as_the_screen_exactly_occupies_one_row(self):
+        # the same boundary frame_wraps reads: a row is filled by the
+        # character that reaches its last column, and carried on by the
+        # one after it
+        self.assertEqual(py_maze.frame_height(['abcde'], terminal_size(5, 2)),
+                         1)
+
+    def test_a_line_past_the_last_column_occupies_the_row_below_too(self):
+        self.assertEqual(py_maze.frame_height(['abcdef'], terminal_size(5, 2)),
+                         2)
+
+    def test_a_line_several_times_the_width_occupies_every_row_it_fills(self):
+        self.assertEqual(py_maze.frame_height(['a' * 11], terminal_size(5, 9)),
+                         3)
+
+    def test_a_frame_with_no_terminal_is_measured_by_its_lines(self):
+        # output that is piped or redirected has no last column to be
+        # carried past, so nothing wraps and nothing costs a row
+        self.assertEqual(py_maze.frame_height(['abcdef', 'gh'], None), 2)
+
+    def test_a_terminal_with_no_columns_is_measured_by_its_lines(self):
+        # a width of zero divides into nothing, and a screen that can
+        # hold no characters is not a screen to cut a frame for
+        self.assertEqual(py_maze.frame_height(['abcdef'],
+                                              terminal_size(0, 24)), 1)
+
+    def test_an_empty_frame_occupies_no_rows(self):
+        self.assertEqual(py_maze.frame_height([], terminal_size(80, 24)), 0)
+
+    # the two lines that take the controls line's row in quest mode,
+    # measured across the widths a console is usually set to. The
+    # controls line is the one on screen between questions; the answer
+    # replaces it while the guide is speaking, and is the longer of the
+    # two, so a width where the controls line fits and the answer does
+    # not is a width where the frame changes height without changing
+    # its line count
+    WIDTHS = (60, 80, 88, 100, 120)
+    CONTROLS_ROWS = {60: 2, 80: 1, 88: 1, 100: 1, 120: 1}
+    ANSWER_ROWS = {60: 2, 80: 2, 88: 2, 100: 2, 120: 1}
+
+    def answer(self):
+        # the longest thing the guide says, which is the answer a fresh
+        # quest gets: the first item is still in its box
+        return py_maze.GUIDE_LINE % (
+            'item 1 is still in its box, and the box is in the part of '
+            'the maze you can already reach')
+
+    def test_the_two_foot_lines_are_the_lengths_the_table_is_built_on(self):
+        # the premise of the two tests below, so a reworded controls
+        # line or guide answer is caught here rather than read as a
+        # table that still passes
+        self.assertEqual(len(py_maze.QUEST_CONTROLS_LINE), 79)
+        self.assertEqual(len(self.answer()), 104)
+
+    def test_the_quest_controls_line_across_the_usual_widths(self):
+        for columns in self.WIDTHS:
+            with self.subTest(columns=columns):
+                self.assertEqual(
+                    py_maze.frame_height([py_maze.QUEST_CONTROLS_LINE],
+                                         terminal_size(columns, 24)),
+                    self.CONTROLS_ROWS[columns])
+
+    def test_the_guide_answer_across_the_usual_widths(self):
+        for columns in self.WIDTHS:
+            with self.subTest(columns=columns):
+                self.assertEqual(
+                    py_maze.frame_height([self.answer()],
+                                         terminal_size(columns, 24)),
+                    self.ANSWER_ROWS[columns])
+
+    def test_fit_frame_gives_up_a_maze_row_wherever_the_foot_wraps(self):
+        # the whole point of measuring in rows: the frame is eighteen
+        # lines and the console eighteen rows deep, so a foot that
+        # wraps leaves room for one row of maze less. Where the foot
+        # fits a row the frame is handed back whole
+        for columns in self.WIDTHS:
+            for name, line, table in (
+                    ('controls', py_maze.QUEST_CONTROLS_LINE,
+                     self.CONTROLS_ROWS),
+                    ('answer', self.answer(), self.ANSWER_ROWS)):
+                frame = (['start'] + ['*' * 13 for _ in range(13)] +
+                         ['end', 'time 0:03   moves 4   items 0/3', '', line])
+                size = terminal_size(columns, len(frame))
+                fitted = py_maze.fit_frame(frame, size, focus=0)
+                given_up = table[columns] - 1
+
+                with self.subTest(columns=columns, line=name):
+                    self.assertEqual(len(fitted), len(frame) - given_up)
+                    self.assertEqual(py_maze.frame_height(fitted, size),
+                                     len(frame))
+                    self.assertEqual(fitted[0], 'start')
+                    self.assertEqual(fitted[-4:], frame[-4:])
+
+
 class TestFitFrame(unittest.TestCase):
     # a console shrunk under a running game is shorter than the frame
     # the maze was generated for, and a terminal has no row below its
@@ -2912,12 +3024,18 @@ class TestPlayScreenOnAScreenItFills(unittest.TestCase):
 class TestPlayScreenOnANarrowTerminal(unittest.TestCase):
     # CONTROLS_LINE is 66 characters and is the last line of the frame,
     # and fit_to_terminal measures only the maze against the terminal's
-    # columns, so any terminal narrower than that wraps it. On a screen
-    # the frame fills, the wrap lands on the bottom row and takes the
-    # screen up before a key has been pressed. Nothing in the lines of
-    # the frame says so, and 2.2.6 drew only the lines that changed, so
-    # the picture drifted a row further from the truth at every step and
-    # never repaired
+    # columns, so any terminal narrower than that wraps it. A frame
+    # carrying a wrapped line stands a row taller than it has lines, and
+    # on a screen the frame fills that is a row the screen does not
+    # have: 2.2.6 drew the frame anyway and the write of its last line
+    # took the screen up before a key had been pressed, every step
+    # drifting the picture a row further from the truth.
+    #
+    # fit_frame measures the frame in screen rows now rather than in
+    # lines, so the row the wrap needs is paid for out of the maze
+    # window the way a reserve already is. Nothing scrolls, the start
+    # marker keeps the first row of the screen, and what the narrow
+    # terminal costs is one row of maze
 
     COLUMNS = 60
 
@@ -2937,39 +3055,53 @@ class TestPlayScreenOnANarrowTerminal(unittest.TestCase):
         return session, session.screen(height=rows, width=self.COLUMNS,
                                        text=session.played())
 
-    def carried(self, session):
-        # what a frame whose last line wraps leaves on a screen it fills:
-        # the frame less its first line, which the wrap took off the
-        # top, the controls line cut at the last column it had room for,
-        # and its tail on the row the wrap carried it onto.
-        # It is the frame a row out of place rather than a frame with
-        # rows of older ones in it, which is all the room a screen too
-        # narrow for the frame leaves
+    def fitted(self, session):
+        # what a frame whose last line wraps leaves on a screen it
+        # fills: the frame cut by the row the wrap needs, read back as
+        # the rows the screen carries it on. The whole of the frame is
+        # there, start marker and foot together, one row of maze short
         #
         # Returns:
         #     list: The rows the screen should be holding
 
-        frame = session.game.frame()
-        return frame[1:-1] + [py_maze.CONTROLS_LINE[:self.COLUMNS],
-                              py_maze.CONTROLS_LINE[self.COLUMNS:]]
+        game = session.game
+        size = terminal_size(self.COLUMNS, session.rows())
+        lines = py_maze.fit_frame(game.frame(), size, focus=game.player_y)
+
+        return lines[:-1] + [lines[-1][:self.COLUMNS],
+                             lines[-1][self.COLUMNS:]]
 
     def test_the_controls_line_is_wider_than_the_terminal(self):
         # the premise of every test below it, so a change to either
         # number is caught here rather than read as a passing redraw
         self.assertGreater(len(py_maze.CONTROLS_LINE), self.COLUMNS)
 
-    def test_the_first_frame_is_taken_up_a_row_by_its_own_last_line(self):
+    def test_the_first_frame_gives_up_a_maze_row_to_its_wrapped_foot(self):
         session, screen = self.walk([])
+        frame = session.game.frame()
 
-        self.assertEqual(screen.scrolls, 1)
-        self.assertEqual(screen.lines(), self.carried(session))
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines()[0], frame[0])
+        self.assertEqual(screen.lines(), self.fitted(session))
+
+    def test_the_frame_as_cut_is_exactly_as_tall_as_the_screen(self):
+        # the row the wrap costs is given up once and no more: the
+        # frame is cut to the rows there are rather than below them
+        session, _ = self.walk([])
+        size = terminal_size(self.COLUMNS, session.rows())
+        lines = py_maze.fit_frame(session.game.frame(), size,
+                                  focus=session.game.player_y)
+
+        self.assertEqual(py_maze.frame_height(lines, size), session.rows())
+        self.assertEqual(len(lines), len(session.game.frame()) - 1)
 
     def test_the_screen_still_holds_the_frame_after_a_route(self):
-        # every frame is drawn whole here, so each one puts the picture
-        # back before its own last line takes it up a row again
+        # every frame is drawn whole here, since a frame carrying a
+        # wrapped line cannot be repaired a changed line at a time
         session, screen = self.walk(TestMazeGame.ROUTE[:-1])
 
-        self.assertEqual(screen.lines(), self.carried(session))
+        self.assertEqual(screen.scrolls, 0)
+        self.assertEqual(screen.lines(), self.fitted(session))
 
     def test_no_row_of_an_older_frame_is_left_on_the_maze(self):
         session, screen = self.walk(TestMazeGame.ROUTE[:-1])
@@ -2977,14 +3109,19 @@ class TestPlayScreenOnANarrowTerminal(unittest.TestCase):
         drawn = py_maze.maze_lines(
             game.maze, [(py_maze.PLAYER_MARKER,
                          {(game.player_x, game.player_y)})])
+        window = screen.lines()[1:len(game.maze)]
 
-        self.assertEqual(screen.lines()[:len(drawn)], drawn)
+        # a row of maze paid for the wrap, so what is on screen is a
+        # window one row short of the maze - and every row of it is a
+        # row of the maze as it stands now, in order and unbroken
+        self.assertEqual(len(window), len(drawn) - 1)
+        self.assertIn('\n'.join(window), '\n'.join(drawn))
 
     def test_a_hint_leaves_no_marker_behind(self):
         session, screen = self.walk(['h'])
 
         self.assertNotIn(py_maze.HINT_MARKER,
-                         ''.join(screen.lines()[:len(session.game.maze)]))
+                         ''.join(screen.lines()[1:len(session.game.maze)]))
 
 
 class TestRenderAcrossAResize(unittest.TestCase):
@@ -3079,6 +3216,96 @@ class TestRenderAcrossAResize(unittest.TestCase):
 
         self.assertTrue(drawn)
         self.assertNotIn(py_maze.CONTROLS_LINE, drawn)
+
+
+class TestRenderAfterAWrappingFrame(unittest.TestCase):
+    # the frame after a wrapping one need not wrap itself. In quest mode
+    # the guide's answer is 104 characters and the controls line that
+    # takes its row back is 79, so at 100 columns the answer wraps and
+    # its replacement does not: the answer's frame took the screen up a
+    # row, and the frame bringing the controls line back was drawn a
+    # changed line at a time onto rows that had all moved. What that
+    # left on screen was two tallies, one of them stale and frozen, and
+    # the answer stranded on the blank spacer's row - the spacer never
+    # changes from one frame to the next, so the diff never wrote it and
+    # never cleared it, and asking again repaired none of it.
+    #
+    # The doubt is carried a frame further than the wrap, since it is
+    # the frame already on screen whose rows moved and the frame
+    # replacing it cannot tell that from its own lines
+
+    SIZE = terminal_size(100, 40)
+    WRAPPING = 'a' * (SIZE.columns + 4)
+    FITTING = 'b' * (SIZE.columns - 4)
+
+    def setUp(self):
+        self.game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE))
+
+    def render(self, controls):
+        # draw one frame whose controls line is the text given, standing
+        # in for the guide's answer and the line that replaces it
+        #
+        # Returns:
+        #     str: Everything drawing that frame cost
+
+        stream = io.StringIO()
+        with mock.patch.object(py_maze.game, 'terminal_size',
+                               return_value=self.SIZE), \
+                mock.patch.object(py_maze.game, 'ansi_enabled',
+                                  return_value=True), \
+                mock.patch.object(self.game, 'controls',
+                                  return_value=controls), \
+                mock.patch.object(self.game, 'clear_screen'):
+            self.game.render(stream)
+
+        return stream.getvalue()
+
+    def rows(self):
+        # Returns:
+        #     list: Every row of the frame there is to draw
+        return list(range(1, len(self.game.frame()) + 1))
+
+    def test_the_two_stand_in_lines_straddle_the_last_column(self):
+        # the premise: one of them wraps on this console and the other
+        # does not, which is the pair the fault needs
+        self.assertGreater(len(self.WRAPPING), self.SIZE.columns)
+        self.assertLessEqual(len(self.FITTING), self.SIZE.columns)
+
+    def test_a_frame_that_wraps_is_drawn_whole(self):
+        drawn = self.render(self.WRAPPING)
+
+        self.assertEqual(cursor_rows(drawn)[:-1], self.rows())
+
+    def test_the_frame_after_a_wrapping_one_is_drawn_whole_as_well(self):
+        # the fault: this frame does not wrap, so nothing in its own
+        # lines says the rows beneath it have moved
+        self.render(self.WRAPPING)
+        drawn = self.render(self.FITTING)
+
+        self.assertEqual(cursor_rows(drawn)[:-1], self.rows())
+
+    def test_the_frame_after_that_is_drawn_a_changed_line_at_a_time(self):
+        # the doubt is carried one frame, not kept for good: a screen
+        # put back whole is a screen that can be repaired line by line
+        # again, which is what keeps a still controls line still
+        self.render(self.WRAPPING)
+        self.render(self.FITTING)
+        self.game.move_player(0, 1)
+        drawn = self.render(self.FITTING)
+
+        # the maze row the player left, the row it stepped onto, and the
+        # tally that counted the step
+        self.assertEqual(cursor_rows(drawn)[:-1], [2, 3, 8])
+
+    def test_a_wrapping_frame_that_changed_nothing_still_writes_nothing(self):
+        # the wrap does its damage as the frame is written, so a frame
+        # with nothing to say leaves the screen where it is - and the
+        # doubt stands, because nothing has been written over it
+        self.render(self.WRAPPING)
+
+        self.assertEqual(self.render(self.WRAPPING), '')
+        self.assertEqual(cursor_rows(self.render(self.FITTING))[:-1],
+                         self.rows())
 
 
 class TestRenderOnAShortenedConsole(unittest.TestCase):
@@ -11568,6 +11795,18 @@ class TestPlaceQuest(unittest.TestCase):
 
         self.assertEqual(quest.guide, py_maze.solve_maze(grid)[1])
 
+    def test_a_quest_shortened_to_what_fitted_keeps_its_own_promise(self):
+        # the branch below, reached through the front door for once:
+        # patching nothing, laying a quest into a maze that has room
+        # for it, so the assertions here are the ones the shortening
+        # has to go on meeting
+        _, quest = self.quest()
+
+        self.assertEqual(sorted(quest.doors.values()),
+                         list(range(1, quest.stages + 1)))
+        self.assertEqual(sorted(quest.boxes.values()),
+                         sorted(quest.doors.values()))
+
     def test_nothing_is_laid_on_a_cell_a_pickup_is_already_on(self):
         grid = py_maze.MazeGenerator(9, 11, seed=2024).generate()
         collectibles = py_maze.place_collectibles(grid, 20,
@@ -11590,6 +11829,160 @@ class TestPlaceQuest(unittest.TestCase):
     def test_a_route_too_short_to_shut_leaves_no_quest(self):
         self.assertIsNone(py_maze.place_quest(
             grid_from_strings(["* *", "*  "]), 3))
+
+
+class TestPlaceQuestWithNoRoomForALaterBox(unittest.TestCase):
+    # place_quest has a branch for the stage it cannot hide a box for:
+    # it drops that door and every later one, leaving the stages that
+    # did fit rather than a chain with a break in it. Nothing reaches
+    # it by accident - over 6,021 quests laid across seeds 1 to 299,
+    # sizes 3x3 to 16x20 and 1, 3, 5 and 9 stages, box_spot never once
+    # answered None - so the condition is made here rather than hunted
+    # for, and the branch that decides whether a small maze gets a
+    # playable quest or an unfinishable one is finally executed
+
+    STAGES = 5
+
+    def shortened(self, cut, seed=2024, width=9, height=11):
+        # lay a quest whose box for one stage has nowhere to go
+        #
+        # box_spot is answered None on its `cut`th call rather than on a
+        # named stage, which is the same thing: place_quest walks the
+        # doors in stage order, so the nth call is stage n
+        #
+        # Args:
+        #     cut: The stage there is no room to hide a box for,
+        #         counted from 1
+        #
+        # Returns:
+        #     tuple: (the grid, the quest laid into it, the calls made)
+
+        grid = py_maze.MazeGenerator(width, height, seed=seed).generate()
+        real = py_maze.quest.box_spot
+        calls = []
+
+        def spot(*args):
+            calls.append(args)
+            return None if len(calls) == cut else real(*args)
+
+        with mock.patch.object(py_maze.quest, 'box_spot', side_effect=spot):
+            quest = py_maze.place_quest(grid, self.STAGES,
+                                        random.Random(seed))
+
+        return grid, quest, calls
+
+    def test_the_branch_is_not_reached_while_there_is_room(self):
+        # the premise: this maze has room for all five stages, so the
+        # shortening below is the patch's doing and not the maze's
+        _, quest, calls = self.shortened(cut=0)
+
+        self.assertEqual(quest.stages, self.STAGES)
+        self.assertEqual(len(calls), self.STAGES)
+
+    def test_it_gives_up_at_the_stage_it_cannot_hide_a_box_for(self):
+        # and asks for no later one: the chain ends there
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                _, _, calls = self.shortened(cut)
+
+                self.assertEqual(len(calls), cut)
+
+    def test_the_doors_left_are_numbered_from_one_with_no_gap(self):
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                _, quest, _ = self.shortened(cut)
+
+                self.assertEqual(sorted(quest.doors.values()),
+                                 list(range(1, cut)))
+
+    def test_every_door_left_has_the_box_that_opens_it(self):
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                _, quest, _ = self.shortened(cut)
+
+                self.assertEqual(sorted(quest.boxes.values()),
+                                 sorted(quest.doors.values()))
+                self.assertEqual(quest.stages, cut - 1)
+
+    def test_a_door_and_a_box_still_never_share_a_cell(self):
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                _, quest, _ = self.shortened(cut)
+
+                self.assertEqual(set(quest.doors) & set(quest.boxes), set())
+
+    def test_the_shortened_quest_can_still_be_walked_to_the_end(self):
+        # what the docstring promises, and the only thing that says the
+        # dropped doors left a chain rather than a break in one
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                grid, quest, _ = self.shortened(cut)
+
+                self.assertTrue(finish_quest(grid, quest))
+
+    def test_the_exit_is_still_shut_until_a_door_is_opened(self):
+        # a quest shortened to nothing worth playing would pass every
+        # assertion above it and gate nothing at all
+        for cut in range(2, self.STAGES + 1):
+            with self.subTest(cut=cut):
+                grid, quest, _ = self.shortened(cut)
+                reached = py_maze.reachable(grid,
+                                            py_maze.find_entrance(grid),
+                                            quest.closed_doors())
+
+                self.assertNotIn(py_maze.find_exit(grid), reached)
+
+    def test_no_room_for_the_first_box_leaves_no_quest_at_all(self):
+        # every door goes, and a maze with no doors in it is a maze
+        # with nothing to do rather than a quest of nothing
+        _, quest, calls = self.shortened(cut=1)
+
+        self.assertIsNone(quest)
+        self.assertEqual(len(calls), 1)
+
+    def test_the_fallback_region_is_tried_before_the_stage_is_given_up(self):
+        # box_spot is asked for a spot in the part of the maze this
+        # stage opened, and where that is empty for the whole of what
+        # the player can reach. A stage is only dropped once both have
+        # come back with nothing, so the second argument is a region
+        # rather than an empty set every time it is asked
+        _, _, calls = self.shortened(cut=0)
+
+        for stage, (_, candidates, _) in enumerate(calls, start=1):
+            with self.subTest(stage=stage):
+                self.assertTrue(candidates)
+
+    def test_a_stage_that_opened_nothing_new_hides_its_box_anywhere(self):
+        # the fallback above the branch, which no real maze has reached
+        # either: where a stage opens no fresh cell to hide a box in,
+        # the box goes anywhere the player can already get to rather
+        # than the stage being dropped. reachable is held still so
+        # every stage opens exactly what the stage before it did, which
+        # is the only way the first half of that expression empties -
+        # so a non-empty candidate set here is the second half of it
+        grid = py_maze.MazeGenerator(9, 11, seed=2024).generate()
+        whole = py_maze.reachable(grid, py_maze.find_entrance(grid))
+        real = py_maze.quest.box_spot
+        asked = []
+
+        def spot(grid_, candidates, rng):
+            asked.append(set(candidates))
+            return real(grid_, candidates, rng)
+
+        with mock.patch.object(py_maze.quest, 'reachable',
+                               return_value=whole), \
+                mock.patch.object(py_maze.quest, 'box_spot',
+                                  side_effect=spot):
+            quest = py_maze.place_quest(grid, self.STAGES,
+                                        random.Random(2024))
+
+        # no stage was dropped, so every one of them found a spot
+        self.assertEqual(quest.stages, self.STAGES)
+        self.assertEqual(len(asked), self.STAGES)
+
+        for stage, candidates in enumerate(asked[1:], start=2):
+            with self.subTest(stage=stage):
+                self.assertTrue(candidates)
 
 
 class TestQuestInventory(unittest.TestCase):
@@ -12259,6 +12652,128 @@ class TestMainQuestMode(MainRunner, unittest.TestCase):
         laid = py_maze.place_quest(grid, 3, random.Random(2024))
 
         self.assertIs(py_maze.build_game(parsed, grid, (), laid).quest, laid)
+
+    def picture(self, name='maze.txt', seed=None):
+        # a save file holding a maze and no quest, with or without a
+        # seed line, which is the only maze whose content a seed can
+        # still decide: the grid is in the file and the chain is not
+        #
+        # Returns:
+        #     str: Path the picture was written to
+
+        header = [py_maze.SAVE_HEADER]
+        if seed is not None:
+            header.append('# seed: %d' % seed)
+        drawn = py_maze.maze_lines(
+            py_maze.MazeGenerator(6, 6, seed=2024).generate())
+
+        return self.write('%s\n%s\n' % ('\n'.join(header), '\n'.join(drawn)),
+                          name)
+
+    def chain(self, path, argv=()):
+        # Returns:
+        #     dict: The quest a loaded picture was played with, as the
+        #     JSON document records it
+        output, _ = self.run_main(['--load', path, '--mode', 'quest',
+                                   '--format', 'json'] + list(argv))
+
+        return json.loads(output)[py_maze.JSON_QUEST_KEY]
+
+    def test_a_picture_loaded_under_one_seed_lays_one_chain(self):
+        # the fault: the load branch passed no rng at all, so the chain
+        # came off the global random module and one command laid a
+        # different quest every time it was run
+        path = self.picture()
+        laid = [self.chain(path, ['--seed', '5']) for _ in range(3)]
+
+        self.assertEqual(laid[1:], laid[:-1])
+
+    def test_two_seeds_lay_two_different_chains(self):
+        # the other half of it: a seed that governs nothing would make
+        # the test above pass on a chain that was simply always the same
+        path = self.picture()
+
+        self.assertNotEqual(self.chain(path, ['--seed', '5']),
+                            self.chain(path, ['--seed', '6']))
+
+    def test_the_seed_the_file_records_lays_the_chain_with_no_option(self):
+        recorded = self.picture('recorded.txt', seed=11)
+
+        self.assertEqual(self.chain(recorded),
+                         self.chain(self.picture('again.txt', seed=11)))
+        self.assertEqual(self.chain(recorded),
+                         self.chain(recorded, ['--seed', '11']))
+
+    def test_the_option_beats_the_seed_the_file_records(self):
+        recorded = self.picture('recorded.txt', seed=11)
+
+        self.assertEqual(self.chain(recorded, ['--seed', '5']),
+                         self.chain(self.picture('plain.txt'), ['--seed', '5']))
+
+    def laid_from(self, path, argv=()):
+        # the generator build_maze hands the mode to lay its content
+        # from. Read off the call rather than out of the chain, so what
+        # the seed decides is asserted exactly instead of by how often
+        # two random chains happen to agree
+        #
+        # Returns:
+        #     random.Random: The generator the mode was given
+
+        parsed = py_maze.build_parser().parse_args(
+            ['--load', path, '--mode', 'quest', '-q'] + list(argv))
+        with mock.patch.object(py_maze.cli, 'mode_content',
+                               return_value=None) as laid:
+            py_maze.build_maze(parsed)
+
+        return laid.call_args[1]['rng']
+
+    def test_the_generator_is_seeded_from_the_option_where_there_is_one(self):
+        self.assertEqual(self.laid_from(self.picture(), ['--seed', '5']).
+                         getstate(), random.Random(5).getstate())
+
+    def test_the_generator_is_seeded_from_the_file_where_there_is_not(self):
+        self.assertEqual(
+            self.laid_from(self.picture('recorded.txt', seed=11)).getstate(),
+            random.Random(11).getstate())
+
+    def test_the_generator_is_fresh_where_neither_side_names_a_seed(self):
+        # a picture with no seed line, played with no --seed, has no
+        # seed to come from: Random(None) takes one from the operating
+        # system, so two of them do not start from the same state and
+        # the chain is a fresh one rather than the same one for everyone
+        first = self.laid_from(self.picture('one.txt'))
+        second = self.laid_from(self.picture('two.txt'))
+
+        self.assertNotEqual(first.getstate(), second.getstate())
+        self.assertNotEqual(first.getstate(), random.Random(None).getstate())
+
+
+class TestContentSeed(unittest.TestCase):
+    # which seed governs what a mode lays into a loaded maze. The grid
+    # comes out of the file and is never re-seeded; the chain laid over
+    # it is not in the file at all, so it is the one part of a loaded
+    # maze a seed can still decide
+
+    def test_a_seed_the_run_named_is_the_one_used(self):
+        self.assertEqual(py_maze.content_seed(5, None), 5)
+
+    def test_a_seed_the_run_named_beats_the_one_the_file_records(self):
+        self.assertEqual(py_maze.content_seed(5, 11), 5)
+
+    def test_the_file_is_read_where_the_run_named_nothing(self):
+        self.assertEqual(py_maze.content_seed(None, 11), 11)
+
+    def test_neither_side_naming_one_answers_none(self):
+        # None is what random.Random seeds itself from the operating
+        # system for, so it is fresh randomness rather than no seed
+        self.assertIsNone(py_maze.content_seed(None, None))
+
+    def test_a_seed_of_zero_is_a_seed(self):
+        # the trap in writing this with "or": 0 is a seed a run may be
+        # given and is false, so an "or" would silently fall through to
+        # the file's and then to fresh randomness
+        self.assertEqual(py_maze.content_seed(0, 11), 0)
+        self.assertEqual(py_maze.content_seed(None, 0), 0)
 
 
 class TestCarvingComparison(unittest.TestCase):

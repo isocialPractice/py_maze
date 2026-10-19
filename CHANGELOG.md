@@ -22,13 +22,80 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a6] - 2026-10-19
 
-Two corrections to the quest release below, found reviewing it and fixed
-after it was tagged, so neither is in `v1.0.0a5`.
+A play screen measured in the rows a console actually gives it. A frame is a
+list of lines; a console wraps a line longer than it is wide onto the row
+below, so eighteen lines can stand nineteen rows tall - and the fitting that
+cut the frame to the screen counted lines. On an 80 column console, where
+the quest controls line ran to 88 characters, the frame was handed a screen
+it was a row too tall for and the write of its last line scrolled the
+buffer: `start` went off the top before a key had been pressed, and it
+stayed off for the whole game.
+
+**The maze window pays for the wrap, the way it already pays for an
+ending.** `frame_height` reports the rows a frame occupies rather than the
+lines it holds, and `fit_frame` cuts against that. A frame whose foot wraps
+gives up one row of maze to carry it, which is the choice `fit_frame` was
+already making for every other row the screen could not spare. Nothing
+scrolls, and the start marker keeps the first row of the screen.
+
+**The doubt about where the rows are is carried one frame further than the
+wrap.** The rows that moved belong to the frame already on screen, and the
+frame replacing it cannot tell from its own lines: the guide's answer is 104
+characters and the controls line that takes its row back is 79, so at 100
+columns the answer wrapped and its replacement did not. What that left was
+two tallies, one stale and frozen, and the guide's answer stranded on the
+blank spacer's row - the spacer never changes, so the redraw never wrote it
+and never cleared it, and asking again repaired none of it. A frame
+following a wrapping one is now drawn whole as well.
+
+The fault predates quest mode. The plain game lost the marker at 60 columns
+for the same reason and by the same mechanism, its controls line being 66
+characters. What 1.0.0a5 changed was the reach of it, from a console
+narrower than 67 columns to the standard one.
+
+### Added
+
+- `frame_height(lines, size)`, the rows a frame occupies on a terminal,
+  counting a wrapped line as the rows it is carried onto and a frame with no
+  terminal behind it as the lines it holds. `fit_frame` measures against it
+  now, and it is public because a caller drawing its own frames needs the
+  same answer
+- `content_seed(given, recorded)`, the rule that settles which seed governs
+  what a mode lays into a loaded maze: the seed the run named, else the seed
+  the save file records, else `None` for the fresh randomness a seedless
+  picture gets
+- A `.gitattributes` naming one line ending for the whole repository,
+  `* text=auto eol=lf`, with `docs/development.md` saying which ending the
+  repository keeps and why
+
+### Changed
+
+- **`QUEST_CONTROLS_LINE` is 79 characters rather than 88**, naming its keys
+  without the word "Press" that the three quoted keys make obvious. At 88 it
+  wrapped the standard 80 column console, and a wrapped foot is a maze row
+  the frame has to give up, so a quest played at 80 columns showed one row
+  less of maze than a plain game did
 
 ### Fixed
 
+- **A play screen was fitted by its line count and drawn in screen rows.**
+  On a console whose rows the frame exactly filled, a foot that wrapped took
+  the screen up a row as it went out and the start marker went with it: gone
+  from the first frame at 80 by 18 in quest mode, and from the first guide
+  answer at 100 by 18. At 80 by 19, with one row to spare, nothing moved.
+  `fit_frame` gives up a maze row for every row a wrap needs now
+- **The frame after a wrapping one was repaired a changed line at a time.**
+  Only the lines that differed went out, onto rows that had all moved up by
+  one, which is what left a quest screen holding two tallies and a stranded
+  guide answer that asking again would not clear
+- **A quest laid into a loaded maze had no seed to come from.** `build_maze`
+  threads the generator's own randomness into `mode_content` for a generated
+  maze; the `--load` branch passed no `rng` at all, so `place_quest` fell
+  back to the global `random` module and `python -m py_maze --load maze.txt
+  --mode quest --seed 5` laid a different chain every run. A loaded picture
+  was the only maze in the project whose contents could not be reproduced
 - **A quest document loaded in a mode that plays no quest was still drawn
   and still saved.** `build_maze` took the chain off the document whatever
   `--mode` said, so `python -m py_maze --load quest.json` - the save command
@@ -47,6 +114,32 @@ after it was tagged, so neither is in `v1.0.0a5`.
   and whose `seed` was `None`, with no error raised anywhere. `SavedMaze`
   answers `__getnewargs__` with its own four arguments now, so a copied,
   deep-copied or unpickled maze is the maze that went in, quest included
+- **The repository held two line endings inside one release.** The 1.0.0a5
+  commit rewrote 23 tracked text files from LF to CRLF while the files it
+  did not open stayed LF, so `git show v1.0.0a5` reported 25,113 insertions
+  against a real 2,741 and the release could not be read without
+  `--ignore-cr-at-eol`. `.gitattributes` settles it on LF and the tree is
+  renormalized
+
+### Tests
+
+- The rows a frame occupies are pinned against a table of widths: the quest
+  controls line at 79 characters and the guide's longest answer at 104, each
+  over 60, 80, 88, 100 and 120 columns, asserting `fit_frame` gives up a
+  maze row wherever the foot wraps. Nothing in the suite measured rendered
+  height before, so the whole class of fault was invisible to it
+- The three narrow-terminal tests that pinned the scroll as the best a
+  60 column console could do now pin the frame keeping its start marker and
+  giving up a row of maze instead
+- The branch that shortens a quest it cannot hide a later box for is
+  driven directly, `box_spot` answered `None` at a chosen stage. Over 6,021
+  quests laid across seeds 1 to 299, sizes 3x3 to 16x20 and 1, 3, 5 and 9
+  stages it had never once run, nor had the fallback region above it. The
+  doors left are asserted numbered 1 to n with no gap, each with its box,
+  the exit still shut and the chain still walkable to the end
+- A picture loaded twice under one seed is asserted to get one chain, two
+  seeds two chains, and a picture with no seed on either side a fresh
+  generator each run
 
 ## [1.0.0a5] - 2026-10-17
 

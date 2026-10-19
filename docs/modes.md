@@ -29,9 +29,17 @@ player. What a mode adds is its own markers, and no two modes share one:
 | `$` | every mode | A collectible waiting to be picked up |
 | `?` | every mode | The cell a hint is lighting up |
 | `X` | `chase` | The chaser, drawn over the player on the step that catches them |
-| `+` | `quest` | A door, still shut |
+| `+` | `quest` | A door you cannot pass yet, shut until you carry the item that opens it |
 | `&` | `quest` | A box, with an item still in it |
 | `@` | `quest` | The guide, who says what the next errand is |
+
+A `+` is a door and not a corridor, and it is worth saying so plainly
+because the glyph does not. In most terminal fonts `+` is a lighter mark
+than the `*` beside it - four thin arms through the middle of its cell
+against a heavier six - so a cell holding one *looks* more passable than
+the wall it stands in, which is the opposite of what it means. The
+convention is the one this table states: a `+` is shut, and the way
+through it is the item.
 
 None of the three quest markers is a character a maze is ever saved as. A
 picture can draw a door and cannot say which item opens it, so a picture
@@ -148,7 +156,10 @@ The document records the doors, the boxes and the guide, so the maze loads
 back as the same quest with nothing collected. A text save of the same maze
 is the plain maze under it - the picture has no room to say which item opens
 which door - and loading that one with `--mode quest` lays a fresh chain
-into it instead.
+into it instead. That chain has a seed of its own: `--seed` where the run
+gives one, the seed the picture's header records where it does not, and
+fresh randomness where there is neither. [Saving and loading](saving.html)
+has the table.
 
 The mode on the loading run is what decides, so the second command above
 needs its `--mode quest`. Loading a quest document in any other mode plays

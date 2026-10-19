@@ -1,0 +1,18 @@
+# One line ending for the whole repository.
+#
+# Without this file the ending of a tracked text file is whatever the run
+# that last wrote it happened to use, and the repository drifted into
+# holding both: the 1.0.0a5 commit rewrote 23 files from LF to CRLF while
+# the files it did not open stayed LF, and a release diff then reported
+# 25,113 insertions against a real 2,741. A diff nobody can read without
+# --ignore-cr-at-eol is a release nobody can review.
+#
+# LF is the choice because this package is published to PyPI and its
+# sources are read on every platform. Git checks the same bytes out on
+# Windows, where every editor and every tool in the toolchain reads LF
+# without complaint.
+* text=auto eol=lf
+
+# the two images, which git must copy byte for byte. text=auto detects
+# them on its own; naming them is cheaper than relying on that
+*.gif binary

@@ -119,7 +119,7 @@ is the plain maze under it. [Game modes](modes.md) has all three.
 | `?` | Frontier, and a hint | `FRONTIER_MARKER`, `HINT_MARKER` |
 | `$` | Collectible | `COLLECTIBLE_MARKER` |
 | `X` | The chaser, in chase mode | `CHASER_MARKER` |
-| `+` | A door still shut, in quest mode | `DOOR_MARKER` |
+| `+` | A door you cannot pass yet, in quest mode | `DOOR_MARKER` |
 | `&` | A box with an item in it, in quest mode | `BOX_MARKER` |
 | `@` | The guide, in quest mode | `GUIDE_MARKER` |
 

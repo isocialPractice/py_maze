@@ -28,112 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the quest foot wraps a console it was fitted to
-
-#### Resolve Issues
-
-- [ ] Wrapped Foot 1
-  - **Issue**: On a real Windows console whose rows the frame exactly
-    fills, quest mode loses the `start` marker off the top of the screen.
-    At 80 by 18 it is gone from the first frame, before the guide is ever
-    asked: `QUEST_CONTROLS_LINE` is 88 characters, so an 80 column console
-    carries it onto a nineteenth row that an eighteen row console does not
-    have, and the write scrolls the buffer. At 100 by 18 the first frame is
-    clean and the first guide answer breaks it, the answer being 104
-    characters where the controls line is 88 - and there the damage
-    persists: the screen is left holding two tallies, one stale and frozen,
-    with the guide's answer stranded on the blank spacer's row above the
-    controls line, because the spacer never changes and so is never
-    rewritten. Asking again does not repair it. `fit_frame` cuts the frame
-    by comparing `len(lines)` against `size.lines`, which counts a wrapped
-    line as one row. The plain game does the same thing at 60 columns, so
-    the fault predates quest mode; the 88 character controls line is what
-    brought it to the standard 80 column console. Measured with
-    `.tmp/ui-ux/drive_1_0_0a5.py` reading the screen buffer back, 4 of 35
-    checks failing, all four on those two consoles
-  - **Goal**: Resolve to [wrapped-foot.prompt.md](.claude/prompts/wrapped-foot.prompt.md)
-  - From: Gameplay Enhancements `->` New Game Modes
-
-#### Found Issues
-
-- [ ] Pin the frame's rendered height in the suite
-  - **Issue**: Nothing in the suite measures how many console rows a frame
-    occupies, as opposed to how many lines it holds, so the whole class of
-    fault above is invisible to it. `TerminalScreen` models a screen that
-    never wraps
-  - **Goal**: Add the helper the fix introduces - the rows a frame occupies
-    given a terminal width - as a pure function, and test it against a
-    table of widths: the quest controls line at 88 characters over 60, 80,
-    88, 100 and 120 columns, and the guide's answer at 104 over the same,
-    asserting `fit_frame` gives up a maze row whenever the foot wraps
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-- [ ] A shut door is drawn lighter than the wall it stands in
-  - **Issue**: Rendered in Consolas at the console's default 8 by 16 cell
-    and inspected as pixels, `+` reads as a corridor junction rather than
-    as a shut door. It sits centred in its cell with four thin arms where
-    the `*` wall sits high with six, so the door is the *lighter* mark of
-    the two and a cell holding one scans as more passable than a wall,
-    which is the opposite of what it means. `&` and `@` are the closest
-    pair in the set, both being full-cell rounded masses, but they are
-    never adjacent in a maze and are told apart in place. Nothing is
-    mis-rendered: all four markers are ASCII and came back off the buffer
-    as themselves
-  - **Goal**: Either draw a shut door with a glyph that reads as heavy as a
-    wall, or name the convention where the player sees it - the controls
-    line already names the keys, and `docs/modes.md` has a markers table
-    that could say "a `+` is a door you cannot pass yet"
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-- [ ] Settle the repository on one line ending
-  - **Issue**: The `1.0.0a5` commit rewrote 23 tracked text files from LF to
-    CRLF while the files it did not open stay LF: `py_maze/chase.py`,
-    `grid.py`, `generation.py`, `solving.py`, `analysis.py`, `keys.py`,
-    `__main__.py` and `py_maze/algorithms/`. `docs/modes.md`, created by
-    that same commit, is LF, so the two endings now meet inside one
-    release. There is no `.gitattributes` to decide it, so the split is
-    whichever files a run happened to edit. The cost is already
-    paid: `git show v1.0.0a5` reports 25,113 insertions against a real
-    2,741, so the release cannot be read without `--ignore-cr-at-eol`, and
-    every later run that edits one of the remaining LF files moves the line
-    again
-  - **Goal**: Add a `.gitattributes` naming one ending for the repository -
-    `* text=auto eol=lf` is the usual choice for a package published to
-    PyPI - renormalize the tree in a single commit of its own so the
-    renormalization never sits inside a release diff, and say in
-    `docs/development.md` which ending the repository keeps
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-- [ ] Exercise the branch that shortens a quest that will not fit
-  - **Issue**: `place_quest` has a branch for the stage it cannot hide a box
-    for: it drops that door and every later one, leaving the stages that did
-    fit rather than a chain with a break in it. Nothing reaches it. Over
-    6,021 quests laid across seeds 1 to 299, sizes 3x3 to 16x20 and 1, 3, 5
-    and 9 stages, `box_spot` never once answered None, so neither that
-    branch nor the `fresh or region - ...` fallback above it (0 of 3,588
-    stages) has ever run - and `TestPlaceQuest` does not construct the
-    condition directly either. The branch that decides whether a small maze
-    gets a playable quest or an unfinishable one is the only part of the
-    placement no test and no run has executed
-  - **Goal**: Drive `place_quest` against a maze with no room to hide a
-    later box - a hand-written grid, or `box_spot` patched to answer None at
-    a chosen stage - and assert what the docstring promises: the doors left
-    are numbered 1 to n with no gap, every one of them has its box, and
-    `finish_quest` still walks it
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-- [ ] Give a quest laid into a loaded maze a seed to come from
-  - **Issue**: `build_maze` threads `generator.random` into `mode_content`
-    for a generated maze, so the chain a seed lays is the chain that seed
-    has always laid. The `--load` branch passes no `rng` at all, so
-    `place_quest` falls back to the global `random` module:
-    `python -m py_maze --load maze.txt --mode quest --seed 5` laid six
-    different chains in six runs of that one command. A loaded picture is
-    the only maze in the project whose contents cannot be reproduced
-  - **Goal**: Decide which seed governs content laid into a loaded maze -
-    `--seed` where the run gave one, the seed the file records where it did
-    not, fresh randomness where there is neither - say so beside the "it is
-    neither resized nor re-seeded here" comment that currently answers only
-    for the grid, and pin it with a test that loads one picture twice under
-    the same seed and gets the same chain
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2516,5 +2410,103 @@ No items are currently queued in this section.
   add the new names to `py_maze/__init__.py` and the tables in
   `docs/library.md`
   - From: Gameplay Enhancements `->` New Game Modes
+- [x] Wrapped Foot 1
+  - **Issue**: On a real Windows console whose rows the frame exactly
+    fills, quest mode loses the `start` marker off the top of the screen.
+    At 80 by 18 it is gone from the first frame, before the guide is ever
+    asked: `QUEST_CONTROLS_LINE` is 88 characters, so an 80 column console
+    carries it onto a nineteenth row that an eighteen row console does not
+    have, and the write scrolls the buffer. At 100 by 18 the first frame is
+    clean and the first guide answer breaks it, the answer being 104
+    characters where the controls line is 88 - and there the damage
+    persists: the screen is left holding two tallies, one stale and frozen,
+    with the guide's answer stranded on the blank spacer's row above the
+    controls line, because the spacer never changes and so is never
+    rewritten. Asking again does not repair it. `fit_frame` cuts the frame
+    by comparing `len(lines)` against `size.lines`, which counts a wrapped
+    line as one row. The plain game does the same thing at 60 columns, so
+    the fault predates quest mode; the 88 character controls line is what
+    brought it to the standard 80 column console. Measured with
+    `.tmp/ui-ux/drive_1_0_0a5.py` reading the screen buffer back, 4 of 35
+    checks failing, all four on those two consoles
+  - **Goal**: Resolve to [wrapped-foot.prompt.md](.claude/prompts/wrapped-foot.prompt.md)
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Pin the frame's rendered height in the suite
+  - **Issue**: Nothing in the suite measures how many console rows a frame
+    occupies, as opposed to how many lines it holds, so the whole class of
+    fault above is invisible to it. `TerminalScreen` models a screen that
+    never wraps
+  - **Goal**: Add the helper the fix introduces - the rows a frame occupies
+    given a terminal width - as a pure function, and test it against a
+    table of widths: the quest controls line at 88 characters over 60, 80,
+    88, 100 and 120 columns, and the guide's answer at 104 over the same,
+    asserting `fit_frame` gives up a maze row whenever the foot wraps
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] A shut door is drawn lighter than the wall it stands in
+  - **Issue**: Rendered in Consolas at the console's default 8 by 16 cell
+    and inspected as pixels, `+` reads as a corridor junction rather than
+    as a shut door. It sits centred in its cell with four thin arms where
+    the `*` wall sits high with six, so the door is the *lighter* mark of
+    the two and a cell holding one scans as more passable than a wall,
+    which is the opposite of what it means. `&` and `@` are the closest
+    pair in the set, both being full-cell rounded masses, but they are
+    never adjacent in a maze and are told apart in place. Nothing is
+    mis-rendered: all four markers are ASCII and came back off the buffer
+    as themselves
+  - **Goal**: Either draw a shut door with a glyph that reads as heavy as a
+    wall, or name the convention where the player sees it - the controls
+    line already names the keys, and `docs/modes.md` has a markers table
+    that could say "a `+` is a door you cannot pass yet"
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] Settle the repository on one line ending
+  - **Issue**: The `1.0.0a5` commit rewrote 23 tracked text files from LF to
+    CRLF while the files it did not open stay LF: `py_maze/chase.py`,
+    `grid.py`, `generation.py`, `solving.py`, `analysis.py`, `keys.py`,
+    `__main__.py` and `py_maze/algorithms/`. `docs/modes.md`, created by
+    that same commit, is LF, so the two endings now meet inside one
+    release. There is no `.gitattributes` to decide it, so the split is
+    whichever files a run happened to edit. The cost is already
+    paid: `git show v1.0.0a5` reports 25,113 insertions against a real
+    2,741, so the release cannot be read without `--ignore-cr-at-eol`, and
+    every later run that edits one of the remaining LF files moves the line
+    again
+  - **Goal**: Add a `.gitattributes` naming one ending for the repository -
+    `* text=auto eol=lf` is the usual choice for a package published to
+    PyPI - renormalize the tree in a single commit of its own so the
+    renormalization never sits inside a release diff, and say in
+    `docs/development.md` which ending the repository keeps
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] Exercise the branch that shortens a quest that will not fit
+  - **Issue**: `place_quest` has a branch for the stage it cannot hide a box
+    for: it drops that door and every later one, leaving the stages that did
+    fit rather than a chain with a break in it. Nothing reaches it. Over
+    6,021 quests laid across seeds 1 to 299, sizes 3x3 to 16x20 and 1, 3, 5
+    and 9 stages, `box_spot` never once answered None, so neither that
+    branch nor the `fresh or region - ...` fallback above it (0 of 3,588
+    stages) has ever run - and `TestPlaceQuest` does not construct the
+    condition directly either. The branch that decides whether a small maze
+    gets a playable quest or an unfinishable one is the only part of the
+    placement no test and no run has executed
+  - **Goal**: Drive `place_quest` against a maze with no room to hide a
+    later box - a hand-written grid, or `box_spot` patched to answer None at
+    a chosen stage - and assert what the docstring promises: the doors left
+    are numbered 1 to n with no gap, every one of them has its box, and
+    `finish_quest` still walks it
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] Give a quest laid into a loaded maze a seed to come from
+  - **Issue**: `build_maze` threads `generator.random` into `mode_content`
+    for a generated maze, so the chain a seed lays is the chain that seed
+    has always laid. The `--load` branch passes no `rng` at all, so
+    `place_quest` falls back to the global `random` module:
+    `python -m py_maze --load maze.txt --mode quest --seed 5` laid six
+    different chains in six runs of that one command. A loaded picture is
+    the only maze in the project whose contents cannot be reproduced
+  - **Goal**: Decide which seed governs content laid into a loaded maze -
+    `--seed` where the run gave one, the seed the file records where it did
+    not, fresh randomness where there is neither - say so beside the "it is
+    neither resized nor re-seeded here" comment that currently answers only
+    for the grid, and pin it with a test that loads one picture twice under
+    the same seed and gets the same chain
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
 
 </details>

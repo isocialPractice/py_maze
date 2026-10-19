@@ -122,3 +122,13 @@ What is still missing is a measurement against a real console rather than
 against the suite's model of one. That is queued in `TODO.md` under **UI/UX
 and Screen Drawing** rather than here, being a verification that has not been
 written rather than a defect that has been understood.
+
+**1.0.0a6 finished the narrow-terminal half of it.** Drawing the whole frame
+put the picture back; it did not stop the frame being a row too tall for the
+screen, because the fitting counted lines and the console draws rows. So the
+wrap kept taking the screen up as the last line went out, every frame paying
+for a full rewrite and a hardware scroll. `fit_frame` measures the frame with
+`frame_height` now and gives up a maze row for every row a wrap needs, and
+the frame following a wrapping one is drawn whole as well - the rows that
+moved belong to the frame already on screen, which the frame replacing it
+cannot tell from its own lines.

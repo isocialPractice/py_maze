@@ -203,9 +203,11 @@ The two are covered in full under
 
 ## Quest Mode
 
-`--mode quest` is the same maze with the way on shut. A door (`+`) stays
-closed until the matching item is carried, and the item is in a box (`&`)
-hidden in the part of the maze that can already be reached:
+`--mode quest` is the same maze with the way on shut. A door (`+`) is a
+cell you cannot pass yet rather than a corridor, whatever the glyph looks
+like beside a `*` wall: it stays closed until the matching item is carried,
+and the item is in a box (`&`) hidden in the part of the maze that can
+already be reached:
 
 ```
 start
@@ -217,7 +219,7 @@ start
 end
 time 0:07   moves 3   items 0/1
 
-Use arrow keys or WASD to move. Press 'h' for a hint, 'n' to ask the guide, 'q' to quit.
+Use arrow keys or WASD to move. 'h' for a hint, 'n' for the guide, 'q' to quit.
 ```
 
 Walking onto the box opens it. Walking into the door before that costs

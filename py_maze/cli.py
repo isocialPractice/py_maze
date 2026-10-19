@@ -55,6 +55,7 @@ __all__ = [
     'chase_point',
     'chase_speed',
     'collectible_count',
+    'content_seed',
     'difficulty_summary',
     'is_quiet',
     'main',
@@ -599,6 +600,35 @@ def check_ends(grid, path):
         "which need %d characters" % (where, MIN_GRID_WIDTH))
 
 
+def content_seed(given, recorded):
+    """Settle which seed governs what a mode lays into a loaded maze.
+
+    A generated maze and everything laid over it come from one seed, so
+    the maze a seed makes is the maze that seed has always made. A
+    loaded maze is in the file already and is never re-seeded - but the
+    chain a mode lays over it is not in the file, and until 1.0.0a6 it
+    came from the global :mod:`random`, so one command laid a different
+    quest every time it was run.
+
+    The order is the one a reader would guess: a seed the run named
+    beats a seed the file remembers, and the file's beats nothing.
+
+    Args:
+        given: Seed the run was given with ``--seed``, or None
+        recorded: Seed the save file records, or None for a plain
+            picture and for a document that saved none
+
+    Returns:
+        The seed to lay the content from, or None where neither the run
+        nor the file names one. None is what :class:`random.Random`
+        seeds itself from the operating system for, so a loaded picture
+        played with no seed anywhere still gets a fresh quest rather
+        than the same one every time
+    """
+
+    return given if given is not None else recorded
+
+
 def build_maze(args):
     """Settle on the maze this run plays: loaded from a file, or generated.
 
@@ -631,7 +661,14 @@ def build_maze(args):
         # the maze comes from the file exactly as it was saved, so it is
         # neither resized nor re-seeded here. A file with no py_maze save
         # header is a plain picture, read with the characters the two
-        # character options say it is drawn with
+        # character options say it is drawn with.
+        #
+        # What a mode lays into that maze is a different question, and
+        # it does have a seed: --seed where the run gave one, the seed
+        # the file records where it did not, and fresh randomness where
+        # there is neither. The grid is in the file and the chain laid
+        # over it is not, so the chain is the only part of a loaded
+        # maze a seed can still decide
         loaded = read_save(args.load,
                            picture_chars(args.wall_char, args.open_char))
 
@@ -649,7 +686,13 @@ def build_maze(args):
         if args.mode in MODE_CONTENT:
             content = loaded.quest
             if content is None:
+                # Random(None) seeds itself from the operating system,
+                # so the three cases are one expression: a seed either
+                # side of it reproduces the chain, and no seed anywhere
+                # lays a fresh one the way a generated maze would
                 content = mode_content(args.mode, loaded.grid,
+                                       rng=random.Random(content_seed(
+                                           args.seed, loaded.seed)),
                                        collectibles=loaded.collectibles,
                                        quest_stages=args.quest_stages)
 

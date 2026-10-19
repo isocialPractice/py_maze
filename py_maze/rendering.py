@@ -53,6 +53,7 @@ __all__ = [
     'fit_to_terminal',
     'format_duration',
     'frame_diff',
+    'frame_height',
     'frame_text',
     'frame_wraps',
     'maze_lines',
@@ -517,6 +518,37 @@ def frame_wraps(lines, size):
     return any(len(line) > size.columns for line in lines)
 
 
+def frame_height(lines, size):
+    """Report the rows of the screen a frame actually occupies.
+
+    A frame is a list of lines and a screen is a grid of rows, and the
+    two are the same count only while every line fits on one row. A
+    console carries a line longer than it is wide onto the row below, so
+    a frame of eighteen lines whose last line runs to 88 characters
+    occupies nineteen rows of an 80 column console. Fitting such a frame
+    by its line count hands it a screen it is one row too tall for, and
+    the write of its last line scrolls the buffer.
+
+    Args:
+        lines: The lines of the frame
+        size: The terminal the frame is drawn on, or None when output is
+            piped or redirected and there is no terminal to wrap against
+
+    Returns:
+        int: Rows the frame occupies, counting a line that wraps as the
+        several rows it is carried onto. The line count itself where
+        there is no terminal to measure against, since nothing wraps
+        what is piped to a file
+    """
+
+    if size is None or size.columns < 1:
+        return len(lines)
+
+    # an empty line still occupies the row it is on, and ceiling
+    # division of a length by a width is the rows it is carried onto
+    return sum(max(1, -(-len(line) // size.columns)) for line in lines)
+
+
 def solution_overlay(path):
     """Build the overlay that draws a solution path over a maze.
 
@@ -884,6 +916,15 @@ def fit_frame(lines, size, focus=None, reserve=0):
     the window follows the row given as the focus, so the row being
     played on is on screen however little of the maze is.
 
+    The frame is measured in screen rows rather than in lines, by
+    :func:`frame_height`. A line longer than the console is wide is
+    carried onto the row below it, so a frame of eighteen lines whose
+    controls line runs to 88 characters stands nineteen rows tall on an
+    80 column console and has to give up a maze row for the one it
+    wrapped onto. Counting lines instead hands such a frame a screen it
+    is a row too tall for, and the write of its last line scrolls the
+    buffer and takes the start marker off the top.
+
     Args:
         lines: The lines of the frame, as :meth:`MazeGame.frame` builds
             them: the start marker, then the maze, then the foot
@@ -912,22 +953,37 @@ def fit_frame(lines, size, focus=None, reserve=0):
         return lines
 
     rows = max(size.lines - reserve, 0)
-    if len(lines) <= rows:
+    if frame_height(lines, size) <= rows:
         return lines
 
     foot = lines[len(lines) - FRAME_FOOT_ROWS:]
-    room = rows - FRAME_HEAD_ROWS - FRAME_FOOT_ROWS
+    head = lines[:FRAME_HEAD_ROWS]
+    maze = lines[FRAME_HEAD_ROWS:len(lines) - FRAME_FOOT_ROWS]
+
+    # the head and the foot are kept whole, so the rows left for the
+    # maze are the ones they do not occupy - measured as rows rather
+    # than as lines, since a controls line that wraps is paid for out of
+    # the maze window the way the reserve already is
+    room = rows - frame_height(head, size) - frame_height(foot, size)
+
+    # every row of a maze is as wide as every other, so a maze row that
+    # wraps costs the same rows as the rest of them and the window is
+    # however many of them the rows left will carry
+    if room >= 1 and maze:
+        room //= frame_height(maze[:1], size)
 
     if room < 1:
         # nothing of the maze can be drawn, and the start marker names
         # the top of a maze that is not there, so the foot is the whole
         # of it. The blank spacer is the first thing given up once even
         # that does not fit, and what is left is taken from the bottom up
-        kept = foot if rows >= len(foot) else [line for line in foot if line]
-        return kept[max(len(kept) - rows, 0):]
+        kept = (foot if rows >= frame_height(foot, size)
+                else [line for line in foot if line])
 
-    head = lines[:FRAME_HEAD_ROWS]
-    maze = lines[FRAME_HEAD_ROWS:len(lines) - FRAME_FOOT_ROWS]
+        while kept and frame_height(kept, size) > rows:
+            kept = kept[1:]
+
+        return kept
 
     # the window is centred on the focus and then pushed back inside the
     # maze, so a player near either end of it reads a full window rather

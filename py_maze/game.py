@@ -65,11 +65,15 @@ EXIT_PROMPT = "Press any key to exit..."
 
 # the keys the player has, printed under the maze, and the longer line
 # a quest maze gets: the guide is a second key and a second kind of
-# hint, so a mode that has one says so where the other keys are listed
+# hint, so a mode that has one says so where the other keys are listed.
+# The quest line names its keys without the word "Press" to keep inside
+# 80 columns: at 88 characters it wrapped the standard console, and a
+# wrapped foot is a maze row the frame has to give up to carry it, so a
+# quest played there showed one row less of maze than a plain game did
 CONTROLS_LINE = ("Use arrow keys or WASD to move. "
                  "Press 'h' for a hint, 'q' to quit.")
-QUEST_CONTROLS_LINE = ("Use arrow keys or WASD to move. Press 'h' for a "
-                       "hint, 'n' to ask the guide, 'q' to quit.")
+QUEST_CONTROLS_LINE = ("Use arrow keys or WASD to move. "
+                       "'h' for a hint, 'n' for the guide, 'q' to quit.")
 
 # how the guide's answer is written where the controls line usually
 # sits. It takes the controls line's row rather than a row of its own,
@@ -190,6 +194,14 @@ class MazeGame:
         # has moved every line of that frame off the row it was written
         # to, and nothing in the lines themselves says so
         self.drawn_size = None
+
+        # whether a line of the frame on screen wrapped onto the row
+        # below it. The frame after a wrapping one need not wrap itself
+        # - the guide's answer is longer than the controls line that
+        # replaces it - so the doubt about where the rows are has to be
+        # carried from the one frame to the next rather than read off
+        # the frame being drawn
+        self.drawn_wrapped = False
 
         # the lines printed under the frame by the last ending that
         # went out, which sit on rows the frame gave up. An ending
@@ -528,6 +540,15 @@ class MazeGame:
         to find, and a frame drawn whole puts the picture back wherever
         it drifted to.
 
+        A wrap is carried one frame further than it happens on. The
+        rows that moved are the ones of the frame already on screen, and
+        the frame replacing it need not be over-long itself: the guide's
+        answer is longer than the controls line that takes its row back,
+        so the answer wraps and its replacement does not. The frame
+        after a wrapping one is therefore drawn whole as well, which is
+        what stops a guide answer being left stranded on the blank
+        spacer's row with the tally frozen above it.
+
         The same measurement cuts the frame to the console it is being
         drawn on, since a console shrunk under a running game is shorter
         than the frame the maze was generated for and has no row below
@@ -559,6 +580,7 @@ class MazeGame:
             self.clear_screen(stream)
             self.drawn = True
             self.drawn_lines = lines
+            self.drawn_wrapped = False
             stream.write(frame_text(lines, home=homed))
             stream.flush()
             return
@@ -591,8 +613,14 @@ class MazeGame:
         # a frame that wraps takes the screen up a row every time it is
         # written, so it is the writing rather than the wrapping that
         # does the damage: a frame with nothing to say still says
-        # nothing, and a still screen on a narrow terminal stays still
-        if resized or (text and frame_wraps(lines, size)):
+        # nothing, and a still screen on a narrow terminal stays still.
+        # The frame after a wrapping one is drawn whole as well, since
+        # it is the frame on screen rather than the one being written
+        # whose rows have moved, and a frame that does not wrap itself
+        # cannot tell that from its own lines
+        wraps = frame_wraps(lines, size)
+
+        if resized or (text and (wraps or self.drawn_wrapped)):
             text = frame_diff(self.drawn_lines[:len(lines)], lines,
                               whole=True)
 
@@ -606,6 +634,11 @@ class MazeGame:
 
         if not text and not wiped:
             return
+
+        # a frame nothing was written for left the screen exactly as the
+        # one before it, so the doubt about where its rows are stands
+        # until something is written over it
+        self.drawn_wrapped = wraps
 
         # a redraw that wrote anything parks the cursor under the frame,
         # which is where what follows the frame is printed from, so a
