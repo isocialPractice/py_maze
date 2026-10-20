@@ -28,6 +28,80 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the cut window, the stale quit row and the door glyph
+
+#### Found Issues
+
+- [ ] A cut window is drawn as though it were the whole maze
+  - **Issue**: `fit_frame` gives up a maze row to a wrapped foot and keeps
+    the head and foot whole, so `start` is printed directly above the first
+    row drawn and `end` directly below the last whether or not those are
+    the maze's own edges. Read off real consoles at 60x18 plain, seed 2024:
+    with the player at the top the screen held maze rows 0 to 11 and `end`
+    sat under `*         * *`, an interior corridor row, with the bottom
+    wall and the exit gap in it off screen; after 19 moves to the foot the
+    screen held rows 1 to 12, the exit came back and `start` sat over
+    `* *     *   *` with the entrance off screen instead. Both markers sit
+    flush against a maze row either way, so nothing says the maze was cut.
+    The same shows at 100x18 in quest mode while the guide answers: the
+    answer's second row costs the bottom wall, and the exit leaves the
+    screen for as long as the answer is up
+  - **Goal**: Resolve to [cut-window-markers.prompt.md](.claude/prompts/cut-window-markers.prompt.md)
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [ ] The ending leaves the tail of a wrapped controls line below it
+  - **Issue**: `MazeGame.render` calls
+    `wipe_rows(len(lines), len(self.drawn_lines), size)` with two line
+    counts, and `wipe_rows` addresses screen rows with them. A frame
+    carrying a wrapped line stands one row taller than it has lines, so the
+    wipe stops a row short of the old frame's last row and what was there
+    survives. On a 60x18 console, quitting left row 17 of the screen
+    holding ` quit.` below `Moves: 4`. It reproduces without a console in
+    the suite's own `TerminalScreen`; the reason 1108 tests miss it is that
+    `TestPlayScreenOnANarrowTerminal` replays `session.played()`, which
+    leaves the ending out
+  - **Goal**: Resolve to [wipe-rows-counts-lines.prompt.md](.claude/prompts/wipe-rows-counts-lines.prompt.md)
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [ ] A shut door has nothing on screen to say it is shut
+  - **Issue**: the documentation this turn added to `docs/modes.md`,
+    `docs/playing.md` and `docs/CHEATSHEET.md` is not on the console. Read
+    back at 80x18, the pre-play screen carries the maze, `seed: 2024` and
+    the play prompt, and every play frame carries the maze, the tally and
+    the controls line. None of the five name a marker, so a player meeting
+    `+` for the first time has only the glyph, and the glyph is lighter
+    than the `*` beside it - four thin arms centred in the cell against a
+    heavier six - so the cell scans as more passable than a wall
+  - **Goal**: draw a shut door as `#` rather than `+`. It is ASCII, it is
+    not taken (`*`, ` `, `o`, `.`, `~`, `?`, `$`, `X`, `+`, `&`, `@` are),
+    it is the one common ASCII glyph that reads heavier than the asterisk
+    wall, and it needs no room on the controls line, which this turn just
+    shortened to fit 80 columns. Change `DOOR_MARKER` in
+    `py_maze/rendering.py` and the three doc tables with it
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [ ] Drop "Press" from the plain controls line too
+  - **Issue**: `QUEST_CONTROLS_LINE` lost the word this turn and
+    `CONTROLS_LINE` kept it, so the two modes now word the same instruction
+    two ways. The quest line reads fine alone - `'h' for a hint, 'n' for
+    the guide, 'q' to quit.` is an ordinary verbless list after a complete
+    sentence - so the asymmetry is the whole of the cost, and it is smaller
+    than the maze row it bought
+  - **Goal**: cutting `Press ` from `CONTROLS_LINE` leaves
+    `Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.` at 60
+    characters exactly, which fits a 60 column console on one row. That
+    makes the two lines parallel and stops the plain game giving up a maze
+    row at 60 columns, which is the cost the first item here is about
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [ ] The guide's answer breaks inside a word when it wraps
+  - **Issue**: at 100 columns the longest answer is 104 characters and the
+    console carries the overflow onto the row below at the column rather
+    than at a space, so the screen read back as
+    `...the part of the maze you can already r` then `each`. The sentence
+    is still followable, but the break falls in the worst place it could
+  - **Goal**: wrap the guide's answer on a space before it is printed,
+    reusing whatever the win banner already does for a narrow terminal if
+    that fits; the frame is measured with `frame_height` either way, so the
+    rows it costs do not change
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
