@@ -22,6 +22,20 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Documentation
+
+- The line-ending anecdote now names the figures the commands beside it
+  report. `.gitattributes`, `docs/development.md` and the `1.0.0a6` entry
+  below all said the 1.0.0a5 commit rewrote 23 files from LF to CRLF and
+  that a real 2,741 insertions hid inside its 25,113: `git show v1.0.0a5`
+  rewrote 22 tracked files and created 2 more already in CRLF, and
+  `git show --ignore-cr-at-eol v1.0.0a5` reports 2,746. The 23 was the
+  renormalization's own count - 1.0.0a6 did flip 23 files back to LF - and
+  the 2,741 came from `--ignore-all-space` rather than from the flag the
+  sentence names
+
 ## [1.0.0a6] - 2026-10-19
 
 A play screen measured in the rows a console actually gives it. A frame is a
@@ -115,9 +129,9 @@ narrower than 67 columns to the standard one.
   answers `__getnewargs__` with its own four arguments now, so a copied,
   deep-copied or unpickled maze is the maze that went in, quest included
 - **The repository held two line endings inside one release.** The 1.0.0a5
-  commit rewrote 23 tracked text files from LF to CRLF while the files it
+  commit rewrote 22 tracked text files from LF to CRLF while the files it
   did not open stayed LF, so `git show v1.0.0a5` reported 25,113 insertions
-  against a real 2,741 and the release could not be read without
+  against a real 2,746 and the release could not be read without
   `--ignore-cr-at-eol`. `.gitattributes` settles it on LF and the tree is
   renormalized
 

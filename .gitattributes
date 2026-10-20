@@ -2,9 +2,9 @@
 #
 # Without this file the ending of a tracked text file is whatever the run
 # that last wrote it happened to use, and the repository drifted into
-# holding both: the 1.0.0a5 commit rewrote 23 files from LF to CRLF while
+# holding both: the 1.0.0a5 commit rewrote 22 files from LF to CRLF while
 # the files it did not open stayed LF, and a release diff then reported
-# 25,113 insertions against a real 2,741. A diff nobody can read without
+# 25,113 insertions against a real 2,746. A diff nobody can read without
 # --ignore-cr-at-eol is a release nobody can review.
 #
 # LF is the choice because this package is published to PyPI and its

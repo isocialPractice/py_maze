@@ -101,6 +101,82 @@ into a `## Complete` section at the bottom of this file.
     that fits; the frame is measured with `frame_height` either way, so the
     rows it costs do not change
   - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [ ] Two more line counts are still read as screen rows
+  - **Issue**: the same confusion the item above it describes, at the two
+    call sites it does not name, both in `py_maze/game.py`.
+    `print_ending` reserves `len(self.printed_ending) + 1` rows for an
+    ending whose lines can wrap - the 41 character win banner wraps below
+    42 columns - and `MazeGame.render` parks the cursor at
+    `ANSI_ROW % (len(lines) + 1)`, which lands on a wrapping frame's last
+    row rather than below it. `MazeGame.ending`'s docstring states the
+    premise outright: "The rows an ending needs are the lines it has",
+    which is the sentence `frame_height` was added to disprove. Nothing
+    misbehaves today: the park sits one row high by exactly the rows the
+    frame wrapped, which hands the ending back the rows its own wrap
+    costs, and no console from 20 to 88 columns over five heights scrolls.
+    They cancel, and neither is written as though it were relying on the
+    other
+  - **Goal**: measure both in rows while the wipe above is being
+    converted, so the three sites agree:
+    `reserve=frame_height(self.printed_ending, terminal_size()) + 1` and
+    a park row taken from `frame_height(lines, size)`. Reword the `ending`
+    docstring, and assert the pair on a console narrow enough to wrap the
+    banner but not the controls line, which is the case the cancellation
+    does not cover
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+
+#### Resolve Issues
+
+- [ ] Wrapped Foot 2
+  - **Issue**: the frame still outgrows the console it was fitted to, and
+    now the maze pays for it on every frame rather than once. `fit_frame`
+    measures in rows; `fit_to_terminal`, which is the call that decides how
+    tall a maze to carve, still reserves `RENDER_ROW_OVERHEAD` - the
+    constant is 4, and its own comment calls it "lines a play screen
+    carries below the maze". At 60 columns the 66 character
+    `CONTROLS_LINE` occupies 2 rows, so the foot is 5 rows and the reserve
+    is one short. On a 60x18 console a default run asks for 21x11, is
+    handed 21x6, and builds an 18 line frame that stands 19 rows tall:
+    `fit_frame` then returns 17 lines, hiding a maze row from the first
+    frame with no resize anywhere in it. The same holds at 60x24 (21x9
+    carved, 25 rows for 24). Quest mode is no better, its 79 character
+    line wrapping at 60 as well. The scroll `Wrapped Foot 1` set out to
+    stop is stopped, but by cutting the window rather than by carving a
+    maze that fits, so a player who never resized anything still never
+    sees the whole maze
+  - **Goal**: give `fit_to_terminal` the rows the foot will actually
+    occupy instead of the line count, so the maze carved for a console is
+    one the console can show whole. The reserve depends on the controls
+    line, which depends on the mode, and `fit_to_terminal(width, height,
+    size, stream)` takes no mode - so this needs an interface decision
+    (pass the foot's lines, or the mode, or ask the mode for its line) and
+    is why the review turn queued it rather than fixing it.
+    `RENDER_ROW_OVERHEAD` and its comment move with it, and the cut-window
+    item above is the fallback for the widths where no reserve can make a
+    maze fit
+  - From: Gameplay Enhancements `->` New Game Modes
+- [ ] Loaded Chain Seed 1
+  - **Issue**: the chain is reproducible now and the seed the run reports
+    still is not the one it came from. `build_maze` lays the content from
+    `content_seed(args.seed, loaded.seed)` and returns `loaded.seed` as the
+    seed to report, so the two disagree whenever a file records one seed
+    and the run names another. Write a picture carrying `# seed: 11`, then
+    `python -m py_maze --load picture.txt --mode quest --seed 5`: the run
+    prints `seed: 11`, and loading that same picture again with
+    `--seed 11` - which is what the printed line invites - lays a
+    different quest from the one just played. `docs/saving.md` carries both
+    halves without connecting them: the new table says `--seed N` beats the
+    file, and the paragraph under it says a loaded maze "reports the seed
+    its file records, so a maze that turned out to be worth keeping can
+    still be traced back"
+  - **Goal**: make the reported seed name what the run can be reproduced
+    from. Either report the content seed where it differs from the file's,
+    or report both and say which is which - the file's seed does identify
+    the grid, so dropping it is not the answer. Whatever is chosen,
+    `docs/saving.md` says it beside the table, and a test loads a picture
+    with a recorded seed under a different `--seed` and asserts the
+    reported line reproduces the chain that was played
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
 
 ## Fixes and Hardening
 
@@ -2567,7 +2643,8 @@ No items are currently queued in this section.
     are numbered 1 to n with no gap, every one of them has its box, and
     `finish_quest` still walks it
   - From: UI/UX Override - the quest foot wraps a console it was fitted to
-- [x] Give a quest laid into a loaded maze a seed to come from
+- [x] **Loaded Chain Seed**: Give a quest laid into a loaded maze a
+  seed to come from
   - **Issue**: `build_maze` threads `generator.random` into `mode_content`
     for a generated maze, so the chain a seed lays is the chain that seed
     has always laid. The `--load` branch passes no `rng` at all, so

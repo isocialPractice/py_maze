@@ -144,8 +144,8 @@ stores, and every editor and tool in this project's toolchain reads LF
 without complaint.
 
 The rule exists because the repository once held both. A release that
-rewrote 23 files from LF to CRLF, while the files it did not open stayed LF,
-reported 25,113 insertions against a real 2,741 - a diff that could not be
+rewrote 22 files from LF to CRLF, while the files it did not open stayed LF,
+reported 25,113 insertions against a real 2,746 - a diff that could not be
 read without `--ignore-cr-at-eol`, and a release that could not be reviewed.
 
 The renormalization itself is in `v1.0.0a6`, alongside that release's own
