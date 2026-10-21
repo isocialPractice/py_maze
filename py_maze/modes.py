@@ -30,7 +30,7 @@ why :func:`py_maze.build_maze` can ask for it without naming a mode.
 """
 
 from .chase import DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, Chaser
-from .game import MazeGame
+from .game import CONTROLS_LINE, QUEST_CONTROLS_LINE, MazeGame
 from .grid import find_entrance
 from .quest import DEFAULT_QUEST_STAGES, place_quest
 
@@ -39,6 +39,7 @@ __all__ = [
     'DEFAULT_MODE',
     'MODES',
     'MODE_CONTENT',
+    'MODE_CONTROLS',
     'MODE_NOTES',
     'MODE_OPTIONS',
     'PLAIN_MODE',
@@ -46,6 +47,7 @@ __all__ = [
     'chase_game',
     'game_mode',
     'mode_content',
+    'mode_controls',
     'plain_game',
     'quest_content',
     'quest_game',
@@ -173,6 +175,16 @@ MODE_NOTES = {
     QUEST_MODE: 'the way on is shut until you find what opens it',
 }
 
+# the controls line each mode prints under the maze, for the modes that
+# print something other than the plain one. A game answers the same
+# question itself in MazeGame.controls, and this is the mode's answer
+# to it: a maze is carved for a console before there is a game to ask,
+# and how many rows the foot of the screen occupies is what decides how
+# tall a maze the console can show whole
+MODE_CONTROLS = {
+    QUEST_MODE: QUEST_CONTROLS_LINE,
+}
+
 # the options belonging to each mode, for a help text that says so. A
 # mode with no options of its own is left out rather than listed empty
 MODE_OPTIONS = {
@@ -204,6 +216,32 @@ def game_mode(name):
         raise ValueError(
             "no maze mode called '%s', there is %s"
             % (name, ", ".join(sorted(MODES))))
+
+
+def mode_controls(name):
+    """Report the controls line the named mode prints under the maze.
+
+    A mode is looked up here rather than branched on, exactly as
+    :func:`game_mode` looks one up, so the step that carves a maze for
+    a console never has to know which mode lists which keys.
+
+    Args:
+        name: One of the keys of :data:`MODES`
+
+    Returns:
+        str: The line that mode lists its keys on, which is
+        :data:`py_maze.CONTROLS_LINE` for every mode adding no key of
+        its own
+
+    Raises:
+        ValueError: If no mode goes by that name
+    """
+
+    # an unknown mode is as wrong here as it is in game_mode, and is
+    # worth the same message rather than a quiet default line
+    game_mode(name)
+
+    return MODE_CONTROLS.get(name, CONTROLS_LINE)
 
 
 def mode_content(name, grid, **settings):

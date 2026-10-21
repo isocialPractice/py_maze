@@ -22,7 +22,134 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a7] - 2026-10-21
+
+The rest of the line count taken out of the play screen, and a window that
+says it is one.
+
+1.0.0a6 converted `fit_frame` to measure a frame in screen rows. Five other
+places were still reading a line count as a row: the wipe that clears the
+rows a shorter frame gave up, the rows an ending is reserved, the two cursor
+parks under a frame, and the reserve the maze itself is carved against.
+
+**The wipe is the one a player saw.** Quitting a plain game on a 60 column
+console left row 17 of the screen holding ` quit.` under `Moves: 4` - the
+second row of the wrapped controls line, left behind when the frame was
+redrawn shorter to make room for the ending. The suite's 1108 tests missed
+it because every narrow-terminal test replays the frames the player was
+looking at and stops before the ending, which is the only thing that prints
+far enough down to show it.
+
+**The two parks cancelled, which is why nothing else showed.** A park sat
+one row high by exactly the rows the frame wrapped, and that handed the
+ending back the rows its own wrap cost. Neither site was written as though
+it were relying on the other, and the cancellation runs out wherever the
+frame and the ending wrap by different amounts - from 37 to 59 columns the
+frame wraps and the ending does not.
+
+**A maze is now carved against the rows its foot will occupy.** The reserve
+was the frame's five lines, and those five lines stand six rows tall on a
+console too narrow for the controls line. So a default run on a 60 by 18
+console asked for 21x11, was handed 21x6, and built a frame that stood 19
+rows tall: `fit_frame` then cut a maze row out of the very first frame, with
+no resize anywhere in it. The reserve counts rows now, and the controls line
+it counts is the mode's - the plain line and the quest line differ by a row
+of maze at some widths, and `fit_to_terminal` takes no mode, so
+`mode_controls` is what answers for one.
+
+**Where a window is still cut, it says so.** `start` and `end` are the only
+labels on a play screen and a player reads them as naming the two ends of
+the maze. The head and the foot of the frame are kept whole, so a cut window
+printed those same two words against whichever interior rows it stopped at -
+and the exit is the gap in the bottom wall, which could be off screen for
+the whole of a game at 80 by 18, the standard console, with nothing saying
+anything was missing. An edge the window does not reach is named with the
+rows between the two instead: `end 3 rows below`, `start 2 rows above`. A
+frame that fits is returned untouched.
+
+### Added
+
+- `cut_marker(marker, rows, where)`, and the `CUT_FORMAT`, `CUT_ABOVE` and
+  `CUT_BELOW` constants behind it: an edge marker that names the maze rows a
+  cut window stops short of. `fit_frame` already computes the two distances,
+  so this is a change to what is printed on two rows that were being printed
+  anyway
+- `wrap_on_spaces(text, size)`, which pads a line out to the end of the row
+  it wraps on so a console breaks it at a space rather than inside a word.
+  The guide's answer at 100 columns read back as `...you can already r` with
+  `each` on the row below. The line stays one line of the frame - the foot
+  is a fixed number of lines and the maze window is measured off it - and
+  the padding is refused outright where it would cost a row
+- `mode_controls(name)` and `MODE_CONTROLS`, the controls line a mode will
+  print, answered before there is a game to ask. It is the fact that decides
+  how many rows the foot of the play screen occupies, and a maze is carved
+  for a console before the game exists
+- `frame_text` and `frame_diff` take a `size`, so the row they park the
+  cursor on is below the frame's height rather than below its line count.
+  Both default to the line count, which is the height of a frame nothing
+  wrapped
+- `fit_to_terminal` takes a `controls` line, with the same default: the five
+  lines of the frame, counted as five rows
+
+### Changed
+
+- **A shut door is drawn `#` rather than `+`.** Nothing on the play screen
+  names a marker - the screen carries the maze, the tally and the controls
+  line, with no room for a legend - so a player meeting a door for the first
+  time has only the glyph to read, and `+` is the lighter mark of the two:
+  four thin arms centred in the cell against the `*` wall's heavier six, so
+  the cell scanned as more passable than the wall it stood in. `#` reads
+  heavier than `*`, which is the way round that matches what a door means.
+  It is also the character a save file opens a comment with, which costs
+  nothing: a door never sits on the first column of a maze row, so the only
+  `#` a reader meets inside a grid is refused as the unexpected character it
+  always was
+- **`CONTROLS_LINE` is 60 characters rather than 66**, naming its keys
+  without the word "Press" that the two quoted keys make obvious.
+  `QUEST_CONTROLS_LINE` lost the word in 1.0.0a6 and this one kept it, so
+  the two modes worded the same instruction two ways. At 60 characters it
+  fits a 60 column console exactly, so the narrowest console anyone still
+  runs stops giving up a maze row to carry it
+- **A loaded maze reports the seed its chain can be reproduced from.** The
+  grid of a loaded maze is in the file and only the chain laid over it can
+  still be seeded, so a run naming `--seed` played a chain the file's own
+  seed does not reproduce - and the file's seed was the only one reported.
+  A second line, `content seed: N`, is written where the two part. The
+  file's seed does identify the grid, so it is still the first line
+
+### Fixed
+
+- **The wipe that clears the rows a shorter frame gave up was counted in
+  lines.** `MazeGame.render` passed two line counts to `wipe_rows`, which
+  addresses screen rows with them, so on a console carrying a wrapped line
+  the wipe stopped a row short of the old frame's last row and whatever was
+  there survived. On a 60 by 18 console, quitting left ` quit.` on row 17,
+  below `Moves: 4`, with nothing above it
+- **An ending was reserved the rows its line count claimed.** The win banner
+  runs to 41 characters and wraps below 42 columns, and `MazeGame.ending`'s
+  docstring stated the premise outright - "The rows an ending needs are the
+  lines it has" - which is the sentence `frame_height` was added to disprove
+- **Two cursor parks under a frame were a line count as well**, one in
+  `MazeGame.render` and one inside `frame_diff`, which is the one that fires
+  whenever a redraw wrote anything. The two wrongs cancelled against the
+  reserve above at most widths; from 37 to 59 columns they do not, and the
+  ending was printed over the row the controls line had been carried onto
+- **A maze was carved against a reserve that counted lines**, so a console
+  wide enough for the mode being played was still handed a maze a window had
+  to be cut out of. A default run at 60 by 18 asked for 21x11, got 21x6, and
+  lost a maze row from its first frame; 60 by 24 did the same, carving 21x9
+  and building 25 rows for 24
+- **A cut window was drawn as though it were the whole maze.** Read off real
+  consoles at 60 by 18, seed 2024: with the player at the top the screen
+  held maze rows 0 to 11 and `end` sat under an interior corridor row, the
+  bottom wall and the exit gap in it off screen; walked 19 moves to the foot
+  the screen held rows 1 to 12, the exit came back and `start` sat over
+  another interior row with the entrance off screen instead. The same showed
+  at 100 by 18 in quest mode: the guide's answer costs the bottom wall, and
+  the exit left the screen for as long as the answer was up
+- **The guide's answer broke inside a word when it wrapped.** At 100 columns
+  the longest answer is 104 characters and the console carried the overflow
+  at the column rather than at a space
 
 ### Documentation
 
@@ -35,6 +162,15 @@ when one is written.
   renormalization's own count - 1.0.0a6 did flip 23 files back to LF - and
   the 2,741 came from `--ignore-all-space` rather than from the flag the
   sentence names
+- `docs/playing.md` shows what a cut window reads like and says where a
+  wrapped line breaks; `docs/options.md` shows the reserve a narrow terminal
+  pays and says the line is the mode's; `docs/saving.md` shows the two seeds
+  a loaded run reports and which of them `--seed` takes back. The door glyph
+  is updated in `docs/modes.md`, `docs/playing.md`, `docs/options.md`,
+  `docs/save-format.md`, `docs/CHEATSHEET.md` and `README.md`, with
+  `docs/modes.md` saying why the mark is the heavier one
+- `KNOWN_BUGS.md` records what was left of the line count after 1.0.0a6 and
+  what the five sites now measure
 
 ## [1.0.0a6] - 2026-10-19
 

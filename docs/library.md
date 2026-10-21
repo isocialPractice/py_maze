@@ -383,11 +383,13 @@ yield in reading order, left to right and then down the rows.
 | `stats_lines(stats)` | What `--stats` prints under a maze, in the status line's style |
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
-| `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it |
+| `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it, the mode's controls line included |
 | `fit_frame(lines, size, focus, reserve)` | Cut a play screen to the rows the terminal has, around a row to keep and any kept back |
+| `cut_marker(marker, rows, where)` | An edge marker that names the maze rows the window stops short of |
+| `wrap_on_spaces(text, size)` | Pad a line so the console breaks it at a space rather than inside a word |
 | `wipe_rows(first, last, size)` | Clear a run of rows a shorter frame gave up, stopping at the bottom of the screen |
-| `frame_text(lines, home, stream)` | A whole frame as the one string that draws it |
-| `frame_diff(previous, current, whole)` | The same for the lines that changed, or every row when `whole` |
+| `frame_text(lines, home, stream, size)` | A whole frame as the one string that draws it |
+| `frame_diff(previous, current, whole, size)` | The same for the lines that changed, or every row when `whole` |
 | `frame_wraps(lines, size)` | Whether a frame runs past the terminal's last column |
 | `frame_height(lines, size)` | The screen rows a frame occupies, counting a wrapped line as the rows it is carried onto |
 | `can_display(text, stream)` | Whether a destination draws the text as written, the encoding and the screen buffer cell both asked |
@@ -400,6 +402,13 @@ constants, so a caller need not repeat the characters: `WALL_MARKER`,
 `OPEN_MARKER`, `PLAYER_MARKER`, `SOLUTION_MARKER`, `VISITED_MARKER`,
 `FRONTIER_MARKER`, `HINT_MARKER`, `COLLECTIBLE_MARKER`, `CHASER_MARKER`,
 `DOOR_MARKER`, `BOX_MARKER` and `GUIDE_MARKER`.
+
+The two labels around the maze are not overlays. `start` and `end` name the
+ends of the maze, and `fit_frame` draws a window onto the maze whenever the
+console cannot hold all of it, so an edge the window stops short of is named
+with the rows past it instead: `cut_marker('end', 3, CUT_BELOW)` reads
+`end 3 rows below`. `CUT_FORMAT` is the form it is written in, and
+`CUT_ABOVE` and `CUT_BELOW` are the two sides.
 
 **Save files** (`py_maze.saves`)
 
@@ -472,9 +481,11 @@ of setting a mode up:
 | `MODE_NOTES` | What each one plays like, in the words the help text uses |
 | `MODE_OPTIONS` | The options belonging to each mode, for a mode that has any |
 | `MODE_CONTENT` | What each mode lays into the maze itself, for the modes that lay anything |
+| `MODE_CONTROLS` | The controls line each mode prints, for the modes that print another one |
 | `DEFAULT_MODE`, `PLAIN_MODE`, `CHASE_MODE`, `QUEST_MODE` | The mode a bare run plays, and the names of the three there are |
 | `game_mode(name)` | The building function a name stands for, or `ValueError` |
 | `mode_content(name, grid, ...)` | Lay whatever that mode puts in the maze, and `None` for a mode that puts nothing |
+| `mode_controls(name)` | The controls line that mode prints, and `CONTROLS_LINE` for a mode adding no key of its own |
 | `plain_game(grid, collectibles, ...)` | The walk from the entrance to the exit |
 | `chase_game(grid, collectibles, chase_point, chase_speed)` | The same walk, with a chaser behind it |
 | `quest_game(grid, collectibles, content, quest_stages)` | The same walk, with the way on shut until what opens it is found |
@@ -534,6 +545,12 @@ Some of a mode is in the maze rather than in the game. Quest mode's doors
 and boxes are laid into the grid before a word is drawn, written into a JSON
 document beside the collectibles and read back out of one, so `MODE_CONTENT`
 is where a mode says what it puts there and `mode_content` is what lays it.
+
+`mode_controls` answers the other question asked before there is a game:
+which controls line the mode will print. The line is the longest line of the
+play screen, so how many rows it occupies decides how tall a maze a console
+can show whole, and `fit_to_terminal` takes it as its `controls` argument.
+A game answers the same question for itself with `MazeGame.controls`.
 `place_quest` is the call behind quest mode's entry, and `Quest` is the
 inventory the player fills:
 

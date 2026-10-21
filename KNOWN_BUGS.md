@@ -132,3 +132,21 @@ for a full rewrite and a hardware scroll. `fit_frame` measures the frame with
 the frame following a wrapping one is drawn whole as well - the rows that
 moved belong to the frame already on screen, which the frame replacing it
 cannot tell from its own lines.
+
+**1.0.0a7 took the rest of the line count out.** `fit_frame` was converted
+and the four other places reading a line count as a screen row were not: the
+wipe that clears the rows a shorter frame gave up, the rows an ending is
+reserved, and the two cursor parks under a frame. The wipe is what a player
+saw - quitting a game on a 60 column console left the second row of the
+controls line under the summary, with nothing above it. The parks cancelled
+against each other at most widths, which is why nothing else showed. All
+five measure rows now.
+
+The maze a run carves is sized against those rows as well, so a console wide
+enough for the mode being played is handed a maze it can show whole instead
+of one `fit_frame` cuts a window out of on every frame. The controls line
+itself lost the word "Press" in the same version, bringing it to 60
+characters - a 60 column console exactly - so the narrowest console anyone
+still runs stops paying a maze row for the wrap. Where a window is still cut,
+the `start` and `end` markers name the maze rows off screen past them rather
+than sitting against an interior row as though the maze ended there.

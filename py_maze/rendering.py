@@ -27,6 +27,9 @@ __all__ = [
     'BOX_MARKER',
     'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
+    'CUT_ABOVE',
+    'CUT_BELOW',
+    'CUT_FORMAT',
     'DOOR_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
@@ -48,6 +51,7 @@ __all__ = [
     'can_encode',
     'clear_screen',
     'collectible_overlay',
+    'cut_marker',
     'fit_dimension',
     'fit_frame',
     'fit_to_terminal',
@@ -65,6 +69,7 @@ __all__ = [
     'summary_lines',
     'terminal_size',
     'wipe_rows',
+    'wrap_on_spaces',
 ]
 
 # characters the maze itself is drawn with
@@ -84,10 +89,35 @@ CHASER_MARKER = 'X'
 # item in it, and the character who says what the next errand is. None of
 # them is a character a maze is saved as - a picture says there is a door
 # and cannot say which item opens it - so all three are drawn on screen
-# and refused by the save format, as the player and the solution are
-DOOR_MARKER = '+'
+# and refused by the save format, as the player and the solution are.
+#
+# The door is the one marker whose glyph has to argue against the wall
+# beside it. A shut door is impassable and nothing on the play screen
+# says so, so the glyph is the whole of the telling: '+' draws four thin
+# arms centred in the cell against the asterisk's heavier six, and a
+# cell that reads lighter than a wall reads as more passable than one.
+# '#' is the one common ASCII glyph that reads heavier than '*', and it
+# needs no room on the controls line to explain itself. It is also the
+# character a save file opens a comment with, which costs nothing: a
+# door never sits on the first column of a maze row, so the only '#' a
+# reader meets inside a grid is still refused as the unexpected
+# character it always was
+DOOR_MARKER = '#'
 BOX_MARKER = '&'
 GUIDE_MARKER = '@'
+
+# how a frame's edge marker reads when the window it drew does not
+# reach that edge of the maze. `start` and `end` are the only labels on
+# a play screen and a player reads them as naming the two ends of the
+# maze, because on a console with rows to spare that is what they name.
+# A console the frame fills is cut to a window, and the head and foot
+# are kept whole, so the markers sit flush against an interior row and
+# say the maze ends where the window does - with the exit nowhere on
+# screen for the whole of a game. Naming the rows that are off screen
+# costs no rows of its own and is true at every width
+CUT_FORMAT = '%s %d row%s %s'
+CUT_ABOVE = 'above'
+CUT_BELOW = 'below'
 
 # seconds each frame of the animated solver stays on screen
 FRAME_DELAY = 0.05
@@ -99,8 +129,12 @@ FRAME_HEAD_ROWS = 1
 # the blank spacer and the controls line
 FRAME_FOOT_ROWS = 4
 
-# lines a play screen carries around the maze itself, which is what the
-# rows left for the maze are counted from
+# lines a play screen carries around the maze itself. They are the
+# rows those lines occupy only while each of them fits on a row of its
+# own, and the controls line is the one that reaches: a console
+# narrower than it carries it onto a second row, which the maze is what
+# pays for. So this is the floor :func:`fit_to_terminal` reserves, and
+# the controls line it is handed is what raises it
 RENDER_ROW_OVERHEAD = FRAME_HEAD_ROWS + FRAME_FOOT_ROWS
 
 # ANSI escape sequences: wipe the screen and put the cursor back at the
@@ -405,7 +439,7 @@ def clear_screen(stream=None):
     os.system('cls' if sys.platform == 'win32' else 'clear')
 
 
-def frame_text(lines, home=None, stream=None):
+def frame_text(lines, home=None, stream=None, size=None):
     """Join the lines of a screen into the one string that draws it.
 
     Args:
@@ -416,6 +450,11 @@ def frame_text(lines, home=None, stream=None):
             escape sequences
         stream: The stream the frame is headed for, used to work out
             the default for home
+        size: The terminal the frame is drawn on, for the row the
+            cursor is parked on: a frame carrying a wrapped line stands
+            taller than it has lines, so the row below it is below its
+            height rather than below its line count. None parks on the
+            line count, which is the row below a frame nothing wrapped
 
     Returns:
         str: The whole frame, ready to be written in a single call so
@@ -442,10 +481,10 @@ def frame_text(lines, home=None, stream=None):
     # would look for it
     body = (ANSI_CLEAR_LINE + '\n').join(lines) + ANSI_CLEAR_LINE
 
-    return ANSI_HOME + body + ANSI_ROW % (len(lines) + 1)
+    return ANSI_HOME + body + ANSI_ROW % (frame_height(lines, size) + 1)
 
 
-def frame_diff(previous, current, whole=False):
+def frame_diff(previous, current, whole=False, size=None):
     """Build the writes that turn the frame on screen into the next one.
 
     Only the lines that differ are written, each addressed by the row it
@@ -463,6 +502,13 @@ def frame_diff(previous, current, whole=False):
             that draws the whole frame instead: every row is addressed
             and written, so the picture is put back wherever it drifted
             to rather than being repaired a changed line at a time
+        size: The terminal the frame is drawn on, for the row the
+            cursor is parked on. A frame carrying a wrapped line stands
+            taller than it has lines, so the row below it is below its
+            height rather than below its line count - and the end of a
+            game is printed from where this leaves the cursor. None
+            parks on the line count, which is the row below a frame
+            nothing wrapped
 
     Returns:
         str: The escapes and the text that turn the one frame into the
@@ -481,14 +527,18 @@ def frame_diff(previous, current, whole=False):
         writes.append(ANSI_ROW % row + line + ANSI_CLEAR_LINE)
 
     # a frame shorter than the one it replaces would leave the tail of
-    # the older one on screen, so every row it no longer covers is wiped
+    # the older one on screen, so every row it no longer covers is
+    # wiped. Both ends are line counts, and the one caller that can
+    # hand over frames of different lengths - MazeGame.render - cuts
+    # `previous` to the length of `current` before it gets here and
+    # wipes what a shrunken console took itself, in rows
     for row in range(len(current) + 1, len(previous) + 1):
         writes.append(ANSI_ROW % row + ANSI_CLEAR_LINE)
 
     if not writes:
         return ''
 
-    return ''.join(writes) + ANSI_ROW % (len(current) + 1)
+    return ''.join(writes) + ANSI_ROW % (frame_height(current, size) + 1)
 
 
 def frame_wraps(lines, size):
@@ -547,6 +597,89 @@ def frame_height(lines, size):
     # an empty line still occupies the row it is on, and ceiling
     # division of a length by a width is the rows it is carried onto
     return sum(max(1, -(-len(line) // size.columns)) for line in lines)
+
+
+def cut_marker(marker, rows, where):
+    """Qualify an edge marker the window drawn does not reach.
+
+    Args:
+        marker: The marker line as the frame built it, ``start`` for
+            the head of the frame and ``end`` for the first line of
+            its foot
+        rows: Maze rows between the window's edge and the maze's own
+        where: Which side of the window those rows lie on,
+            :data:`CUT_ABOVE` or :data:`CUT_BELOW`
+
+    Returns:
+        str: The marker with the distance to the edge it names after
+        it, in the singular for one row
+    """
+
+    return CUT_FORMAT % (marker, rows, '' if rows == 1 else 's', where)
+
+
+def wrap_on_spaces(text, size):
+    """Move the breaks a console makes in a line onto its spaces.
+
+    A console wraps on the column rather than on the word, so a line
+    longer than the screen is wide is carried onto the row below
+    wherever its last column happens to fall. The guide's answer is the
+    line that reaches: at 104 characters on a 100 column console it
+    read back as ``...the part of the maze you can already r`` with
+    ``each`` on the row under it.
+
+    The line stays one line. A frame's foot is a fixed number of lines
+    and :func:`fit_frame` reads the maze window off it, so a second
+    line here would be a maze row read as part of the foot. What can be
+    moved is where the break lands: padding each row out to its last
+    column with spaces leaves the next word to start the row below,
+    which is what the console would have done had it been counting
+    words.
+
+    Args:
+        text: The line as the frame built it
+        size: The terminal it is drawn on, or None when output is piped
+            or redirected and there is nothing wrapping it
+
+    Returns:
+        str: The line, padded at the breaks a console would otherwise
+        make inside a word. The line itself where it fits on one row,
+        where there is no terminal to wrap it against, or where the
+        padding would cost a row - a line whose words leave more rows
+        than the console's own break needs is a maze row given up to
+        tidy a break, which is the worse trade
+    """
+
+    if size is None or size.columns < 1 or len(text) <= size.columns:
+        return text
+
+    width = size.columns
+    rows = []
+    rest = text
+
+    while len(rest) > width:
+        # the last space that still leaves the row above it full. A
+        # space on the column after the row's last is the break the
+        # console was going to make anyway, so it counts as one here
+        cut = rest.rfind(' ', 0, width + 1)
+
+        if cut <= 0:
+            # a word longer than the row has no space to break on, so
+            # the console's own break inside it is the only one there
+            # is: the row is filled and what is left carries on below
+            rows.append(rest[:width])
+            rest = rest[width:]
+            continue
+
+        rows.append(rest[:cut].ljust(width))
+        rest = rest[cut + 1:]
+
+    padded = ''.join(rows) + rest
+
+    if frame_height([padded], size) > frame_height([text], size):
+        return text
+
+    return padded
 
 
 def solution_overlay(path):
@@ -830,8 +963,17 @@ def terminal_size():
     return shutil.get_terminal_size()
 
 
-def fit_to_terminal(width, height, size=None, stream=None):
+def fit_to_terminal(width, height, size=None, stream=None, controls=None):
     """Shrink a maze so its render fits the current terminal.
+
+    This is the call that decides how tall a maze to carve, so the rows
+    it reserves for the frame are the difference between a maze a
+    console can show whole and one :func:`fit_frame` has to cut a
+    window out of on every frame. The lines of the frame are a fixed
+    count and the rows they occupy are not: the controls line is the
+    one long enough to be carried onto a second row, and a maze carved
+    without counting that row is a row too tall for the console it was
+    carved for, with no resize anywhere in it.
 
     Args:
         width: Requested width in cells
@@ -839,6 +981,11 @@ def fit_to_terminal(width, height, size=None, stream=None):
         size: Terminal size to measure against, or None to measure the
             terminal on standard output
         stream: Where warnings are written, defaulting to sys.stderr
+        controls: The controls line the play screen will carry under
+            the maze, for a caller that knows which mode is about to be
+            played - :func:`py_maze.mode_controls` is what answers
+            that. None reserves :data:`RENDER_ROW_OVERHEAD`, the rows a
+            frame occupies while none of its lines wrap
 
     Returns:
         tuple: (width, height) in cells, capped to what fits on screen.
@@ -855,9 +1002,20 @@ def fit_to_terminal(width, height, size=None, stream=None):
 
     width, width_warning = fit_dimension(
         width, size.columns, "width", "columns")
-    # the maze shares its rows with the markers and the controls line
+
+    # the maze shares its rows with the markers and the controls line,
+    # and a controls line too long for the console takes a second row
+    # of them. The rest of the foot does not reach: the status line
+    # runs to 31 characters with an inventory on it, and a console
+    # narrow enough to wrap that has been told already that the maze
+    # will not fit - which is the width the window fit_frame cuts is
+    # the fallback for
+    reserve = RENDER_ROW_OVERHEAD
+    if controls is not None:
+        reserve += frame_height([controls], size) - 1
+
     height, height_warning = fit_dimension(
-        height, size.lines - RENDER_ROW_OVERHEAD, "height", "rows")
+        height, size.lines - reserve, "height", "rows")
 
     for warning in (width_warning, height_warning):
         if warning:
@@ -880,7 +1038,10 @@ def wipe_rows(first, last, size=None):
     off it.
 
     Args:
-        first: First row to clear, counted from 0 as a frame's lines are
+        first: First row to clear, counted from 0 as a frame's rows
+            are - which is what :func:`frame_height` measures, and is
+            a row more than the frame's line count for every line it
+            wrapped
         last: The row after the last one cleared
         size: The terminal the rows are on, or None when output is piped
             and there is no bottom of the screen to stop at
@@ -916,6 +1077,16 @@ def fit_frame(lines, size, focus=None, reserve=0):
     the window follows the row given as the focus, so the row being
     played on is on screen however little of the maze is.
 
+    A window says that it is one. The head and the foot are kept whole,
+    so an uncut frame prints ``start`` directly above the maze's first
+    row and ``end`` directly below its last, and a cut one would print
+    the same two words against whichever interior rows the window
+    happened to stop at - with the exit, which is the gap in the bottom
+    wall, nowhere on screen and nothing saying so. An edge the window
+    does not reach is named with the rows between the two instead, by
+    :func:`cut_marker`. A frame that fits is returned untouched, so
+    every console with rows to spare reads exactly as it always did.
+
     The frame is measured in screen rows rather than in lines, by
     :func:`frame_height`. A line longer than the console is wide is
     carried onto the row below it, so a frame of eighteen lines whose
@@ -941,9 +1112,10 @@ def fit_frame(lines, size, focus=None, reserve=0):
             the screen together
 
     Returns:
-        list: The lines that fit, never more than the screen has rows.
-        The frame itself whenever it already fits; the foot alone on a
-        terminal with no room for even one row of maze, the tally and
+        list: The lines that fit, never more than the screen has rows,
+        with either edge marker naming the rows of maze off screen past
+        it. The frame itself whenever it already fits; the foot alone on
+        a terminal with no room for even one row of maze, the tally and
         the controls line being what is left worth reading there, and
         the blank spacer between them the first thing given up when even
         the foot does not fit
@@ -960,11 +1132,25 @@ def fit_frame(lines, size, focus=None, reserve=0):
     head = lines[:FRAME_HEAD_ROWS]
     maze = lines[FRAME_HEAD_ROWS:len(lines) - FRAME_FOOT_ROWS]
 
+    # an edge the window does not reach is said so on the marker that
+    # names it, and a qualified marker is the wider line of the two: on
+    # a console narrow enough it is carried onto a row the bare word did
+    # not need. So the rows left for the maze are counted from the
+    # widest either marker can become - the whole maze but one row lying
+    # off screen - rather than from what is written once the window
+    # turns out to reach an edge after all. Counting the bare words
+    # would hand the maze a row the markers then take back, and the
+    # frame would stand a row taller than the screen it was fitted to
+    reach = max(len(maze) - 1, 1)
+    widest_head = [cut_marker(head[0], reach, CUT_ABOVE)] + head[1:]
+    widest_foot = [cut_marker(foot[0], reach, CUT_BELOW)] + foot[1:]
+
     # the head and the foot are kept whole, so the rows left for the
     # maze are the ones they do not occupy - measured as rows rather
     # than as lines, since a controls line that wraps is paid for out of
     # the maze window the way the reserve already is
-    room = rows - frame_height(head, size) - frame_height(foot, size)
+    room = (rows - frame_height(widest_head, size)
+            - frame_height(widest_foot, size))
 
     # every row of a maze is as wide as every other, so a maze row that
     # wraps costs the same rows as the rest of them and the window is
@@ -990,5 +1176,16 @@ def fit_frame(lines, size, focus=None, reserve=0):
     # than one hanging half off the maze
     top = 0 if focus is None else focus - room // 2
     top = max(0, min(top, len(maze) - room))
+
+    # the markers name the two ends of the maze, so an end the window
+    # stops short of is named with the rows between the two. An edge the
+    # window does reach is the edge the marker always meant and is left
+    # as the frame wrote it, which is every console with rows to spare
+    below = len(maze) - top - room
+
+    if top > 0:
+        head = [cut_marker(head[0], top, CUT_ABOVE)] + head[1:]
+    if below > 0:
+        foot = [cut_marker(foot[0], below, CUT_BELOW)] + foot[1:]
 
     return head + maze[top:top + room] + foot

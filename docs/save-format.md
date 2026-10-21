@@ -138,7 +138,7 @@ code, mapping each character to the boolean it becomes.
 
 The markers py_maze draws over a maze on screen are **not** part of a save
 file: the player `o`, the solution `.`, the hint, the search frontier, the
-cells already visited, the chaser `X` and quest mode's door `+`, box `&`
+cells already visited, the chaser `X` and quest mode's door `#`, box `&`
 and guide `@` are all drawn over the grid at the moment of drawing and are
 never written to a file. Pasting a solved maze back into one is refused,
 which is the point of a fixed character set.

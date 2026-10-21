@@ -140,7 +140,7 @@ python -m py_maze --mode chase
 antagonist behind it: nothing follows you at first, and once you have walked
 far enough in a chaser appears at the entrance and comes after you, drawn
 with an `X` and turning when you turn. `quest` shuts the way on instead: a
-door (`+`) stays closed until you are carrying what opens it, and that is in
+door (`#`) stays closed until you are carrying what opens it, and that is in
 a box (`&`) somewhere behind you, with a guide (`@`) in the maze to say what
 is next. All three, and the options belonging to each, are in
 [game modes](docs/modes.md).

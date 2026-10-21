@@ -29,17 +29,21 @@ player. What a mode adds is its own markers, and no two modes share one:
 | `$` | every mode | A collectible waiting to be picked up |
 | `?` | every mode | The cell a hint is lighting up |
 | `X` | `chase` | The chaser, drawn over the player on the step that catches them |
-| `+` | `quest` | A door you cannot pass yet, shut until you carry the item that opens it |
+| `#` | `quest` | A door you cannot pass yet, shut until you carry the item that opens it |
 | `&` | `quest` | A box, with an item still in it |
 | `@` | `quest` | The guide, who says what the next errand is |
 
-A `+` is a door and not a corridor, and it is worth saying so plainly
-because the glyph does not. In most terminal fonts `+` is a lighter mark
-than the `*` beside it - four thin arms through the middle of its cell
-against a heavier six - so a cell holding one *looks* more passable than
-the wall it stands in, which is the opposite of what it means. The
-convention is the one this table states: a `+` is shut, and the way
-through it is the item.
+A `#` is a door and not a corridor, and the glyph is chosen to say so.
+Nothing on the play screen names a marker - the screen carries the maze,
+the tally and the controls line, and no room to spare for a legend - so
+a player meeting a door for the first time has only the character to
+read. Up to 1.0.0a6 that character was `+`, which in most terminal fonts
+is the lighter mark of the two: four thin arms through the middle of its
+cell against the `*`'s heavier six, so a cell holding one *looked* more
+passable than the wall it stood in, which is the opposite of what it
+means. `#` reads heavier than `*` instead, which is the way round that
+matches it. The convention is still the one this table states: a `#` is
+shut, and the way through it is the item.
 
 None of the three quest markers is a character a maze is ever saved as. A
 picture can draw a door and cannot say which item opens it, so a picture
@@ -82,7 +86,7 @@ it was not expecting.
 
 ## Quest Mode
 
-The maze is the same and the way on is shut. A **door**, drawn `+`, stays
+The maze is the same and the way on is shut. A **door**, drawn `#`, stays
 closed until the matching item is carried; the item is in a **box**, drawn
 `&`, somewhere in the part of the maze the player can already reach. Opening
 door one reaches the part of the maze box two is hidden in, and so on, so a

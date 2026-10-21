@@ -23,7 +23,7 @@ from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
 from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
 from .modes import (DEFAULT_MODE, MODE_CONTENT, MODE_NOTES, MODE_OPTIONS,
-                    MODES, game_mode, mode_content)
+                    MODES, game_mode, mode_content, mode_controls)
 from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES,
                     MIN_QUEST_STAGES)
 from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DOOR_MARKER,
@@ -636,14 +636,25 @@ def build_maze(args):
         args: Parsed command-line arguments
 
     Returns:
-        tuple: (grid, collectibles, seed, dead_ends_before, content).
-        The seed is None for a loaded maze whose save file does not
-        record one, ``dead_ends_before`` is the dead ends the maze had
-        before ``--braid`` opened a share of them - None where nothing
-        was braided, which is every loaded maze and every run that
-        asked for no braid - and ``content`` is whatever the mode laid
-        into the maze, which is a :class:`py_maze.Quest` for quest mode
-        and None for every other
+        tuple: (grid, collectibles, seed, dead_ends_before, content,
+        chain_seed). The seed is the maze's own - None for a loaded
+        maze whose save file does not record one - ``dead_ends_before``
+        is the dead ends the maze had before ``--braid`` opened a share
+        of them, None where nothing was braided, which is every loaded
+        maze and every run that asked for no braid, ``content`` is
+        whatever the mode laid into the maze, a :class:`py_maze.Quest`
+        for quest mode and None for every other, and ``chain_seed`` is
+        the seed that content was laid from.
+
+        The last two seeds are one number for a generated maze, which
+        lays its content from the generator the seed built. They part
+        over a loaded maze: the grid is in the file and only the chain
+        over it can still be seeded, so a run naming ``--seed`` plays a
+        chain the file's own seed does not reproduce.
+        ``chain_seed`` is None where nothing was laid from a seed at
+        all - a mode that puts nothing in a maze, a document played
+        back with the chain it was saved with, and a picture played
+        with no seed on either side, whose chain is fresh randomness
 
     Raises:
         OSError: If a maze was to be loaded and the file cannot be read
@@ -683,6 +694,14 @@ def build_maze(args):
         # nothing whatever the file carried: what is drawn over a loaded
         # maze is always what is in play on it
         content = None
+
+        # the seed the chain was laid from, kept so the run can report
+        # what it is reproducible from rather than only what the file
+        # remembers. A document played back with its own chain was laid
+        # from no seed here at all, and neither was a mode that puts
+        # nothing in a maze
+        chain_seed = None
+
         if args.mode in MODE_CONTENT:
             content = loaded.quest
             if content is None:
@@ -690,19 +709,25 @@ def build_maze(args):
                 # so the three cases are one expression: a seed either
                 # side of it reproduces the chain, and no seed anywhere
                 # lays a fresh one the way a generated maze would
+                chain_seed = content_seed(args.seed, loaded.seed)
                 content = mode_content(args.mode, loaded.grid,
-                                       rng=random.Random(content_seed(
-                                           args.seed, loaded.seed)),
+                                       rng=random.Random(chain_seed),
                                        collectibles=loaded.collectibles,
                                        quest_stages=args.quest_stages)
 
         # a loaded maze is whatever the file drew, so there is no before
         # to compare it against: --braid does not apply to one
-        return (loaded.grid, loaded.collectibles, loaded.seed, None, content)
+        return (loaded.grid, loaded.collectibles, loaded.seed, None, content,
+                chain_seed)
 
     # use the difficulty preset and any width and height overrides,
-    # capped to whatever the terminal can actually show
-    width, height = fit_to_terminal(*resolve_dimensions(args))
+    # capped to whatever the terminal can actually show. The mode is
+    # what decides the controls line, and the controls line is what
+    # decides how many rows the foot of the play screen occupies, so
+    # the maze carved here is one this console can show whole in this
+    # mode rather than one a window has to be cut out of
+    width, height = fit_to_terminal(*resolve_dimensions(args),
+                                    controls=mode_controls(args.mode))
 
     # a seed is always chosen, and always reported, so any maze that was
     # worth keeping can be generated again with --seed
@@ -742,7 +767,10 @@ def build_maze(args):
                            collectibles=collectibles,
                            quest_stages=args.quest_stages)
 
-    return maze_grid, collectibles, seed, dead_ends_before, content
+    # the content came from the generator the seed built, so the maze
+    # and everything laid over it are the one seed's work and the run
+    # has a single number to report
+    return maze_grid, collectibles, seed, dead_ends_before, content, seed
 
 
 def build_game(args, grid, collectibles=(), content=None):
@@ -795,8 +823,8 @@ def main():
     quiet = is_quiet(args)
 
     try:
-        (maze_grid, collectibles, seed, dead_ends_before,
-         content) = build_maze(args)
+        (maze_grid, collectibles, seed, dead_ends_before, content,
+         chain_seed) = build_maze(args)
     except SaveFileError as error:
         fail(error, EXIT_SAVE_FILE)
     except OSError as error:
@@ -865,6 +893,17 @@ def main():
         if not quiet:
             if seed is not None:
                 print("seed: %s" % seed)
+
+            # the maze's seed identifies the grid, and the grid of a
+            # loaded maze is in the file whatever seed the run names.
+            # What a seed still decides there is the chain laid over
+            # it, so the two part whenever the run names one and the
+            # file remembers another - and reporting the file's alone
+            # named a seed that reproduces the picture and not the
+            # quest that was just played on it
+            if chain_seed is not None and chain_seed != seed:
+                print("content seed: %s" % chain_seed)
+
             if args.save:
                 print("saved: %s" % args.save)
             print()

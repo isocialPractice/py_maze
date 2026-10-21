@@ -16,9 +16,10 @@ from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
 from .rendering import (ANSI_ROW, CHASER_MARKER, COLLECTIBLE_MARKER,
                         HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_display,
-                        clear_screen, fit_frame, frame_diff, frame_text,
-                        frame_wraps, maze_lines, quest_overlay, status_line,
-                        summary_lines, terminal_size, wipe_rows)
+                        clear_screen, fit_frame, frame_diff, frame_height,
+                        frame_text, frame_wraps, maze_lines, quest_overlay,
+                        status_line, summary_lines, terminal_size, wipe_rows,
+                        wrap_on_spaces)
 from .solving import solve_maze
 
 __all__ = [
@@ -66,12 +67,19 @@ EXIT_PROMPT = "Press any key to exit..."
 # the keys the player has, printed under the maze, and the longer line
 # a quest maze gets: the guide is a second key and a second kind of
 # hint, so a mode that has one says so where the other keys are listed.
-# The quest line names its keys without the word "Press" to keep inside
-# 80 columns: at 88 characters it wrapped the standard console, and a
+#
+# Both lines name their keys without the word "Press", and both are the
+# shorter for it. The quest line needed the room to keep inside 80
+# columns: at 88 characters it wrapped the standard console, and a
 # wrapped foot is a maze row the frame has to give up to carry it, so a
-# quest played there showed one row less of maze than a plain game did
+# quest played there showed one row less of maze than a plain game did.
+# The plain line kept the word for a version and read the same
+# instruction a second way, which is the asymmetry a player sees when
+# they change mode. Cutting it brings the line to 60 characters, which
+# is a 60 column console exactly, so the narrowest console anyone still
+# runs stops giving up a maze row as well
 CONTROLS_LINE = ("Use arrow keys or WASD to move. "
-                 "Press 'h' for a hint, 'q' to quit.")
+                 "'h' for a hint, 'q' to quit.")
 QUEST_CONTROLS_LINE = ("Use arrow keys or WASD to move. "
                        "'h' for a hint, 'n' for the guide, 'q' to quit.")
 
@@ -387,9 +395,13 @@ class MazeGame:
     def ending(self, banner, prompt=None):
         """Build what is printed under the frame once the game is over.
 
-        The rows an ending needs are the lines it has, which is what
-        lets the frame be cut to make room for them, so it is built as
-        lines rather than printed a piece at a time.
+        It is built as lines rather than printed a piece at a time,
+        which is what lets the frame be cut to make room for it: the
+        rows it needs are measured off those lines by
+        :func:`py_maze.frame_height`, so a banner wider than the
+        console - the win banner runs to 41 characters and wraps below
+        42 columns - is reserved the rows it is carried onto rather
+        than the one line it is.
 
         Args:
             banner: The line printed above the tallies
@@ -442,10 +454,18 @@ class MazeGame:
         self.printed_ending = list(printed) + list(lines)
 
         if ansi_enabled():
+            # the console as it stands before the redraw. The earlier
+            # ending was printed against this one, and the rows the
+            # frame is about to give up are counted from it
+            size = terminal_size()
+
             # where the earlier ending's rows start, read before the
-            # redraw moves the foot of the frame up past them
-            under = len(self.drawn_lines)
-            self.render(reserve=len(self.printed_ending) + 1)
+            # redraw moves the foot of the frame up past them. It is a
+            # screen row, so it is measured as rows: a frame carrying a
+            # wrapped line stands a row taller than it has lines, and
+            # the rows below it have moved down by that much
+            under = frame_height(self.drawn_lines, size)
+            self.render(reserve=frame_height(self.printed_ending, size) + 1)
 
             if printed:
                 # those rows are below the frame, so the redraw's own
@@ -466,10 +486,16 @@ class MazeGame:
                 # the earlier ending's to wipe: starting at the row it
                 # was printed on would clear the foot of the screen off
                 # the frame just drawn
-                first = max(under, len(self.drawn_lines))
+                #
+                # The console is measured again rather than reused: the
+                # redraw is where a resize is noticed, and the frame it
+                # has just drawn was fitted to whatever it found there
+                size = terminal_size()
+                first = max(under, frame_height(self.drawn_lines, size))
                 sys.stdout.write(
-                    wipe_rows(first, under + len(printed), terminal_size()) +
-                    ANSI_ROW % (len(self.drawn_lines) + 1))
+                    wipe_rows(first, under + frame_height(printed, size),
+                              size) +
+                    ANSI_ROW % (frame_height(self.drawn_lines, size) + 1))
 
             lines = self.printed_ending
 
@@ -596,6 +622,19 @@ class MazeGame:
         resized = size != self.drawn_size
         self.drawn_size = size
 
+        # the last line of the frame is the only one long enough to be
+        # carried onto the row below - the guide's answer runs to 104
+        # characters - and a console breaks it on the column rather
+        # than on the word. Padding it to the end of the row moves the
+        # break onto a space; the rows it occupies are unchanged, so
+        # the frame below is fitted exactly as it was.
+        #
+        # A terminal that cannot be drawn on by row is written whole
+        # for every frame and is not measured at all, so there is no
+        # width there to pad against - and output with no terminal
+        # behind it is not wrapped by anything
+        lines[-1] = wrap_on_spaces(lines[-1], size)
+
         # the frame is cut to the console it is being drawn on rather
         # than to the one the maze was generated for. A console shrunk
         # under a running game has no row to carry the overflow onto,
@@ -608,7 +647,7 @@ class MazeGame:
         # went with them: there is nothing left there to wipe, and a
         # wipe addressed past the last row would land on the last row
         # and take the controls line off it
-        text = frame_diff(self.drawn_lines[:len(lines)], lines)
+        text = frame_diff(self.drawn_lines[:len(lines)], lines, size=size)
 
         # a frame that wraps takes the screen up a row every time it is
         # written, so it is the writing rather than the wrapping that
@@ -622,13 +661,21 @@ class MazeGame:
 
         if resized or (text and (wraps or self.drawn_wrapped)):
             text = frame_diff(self.drawn_lines[:len(lines)], lines,
-                              whole=True)
+                              whole=True, size=size)
 
         # rows kept back for an ending are rows the last frame drew on,
         # and what it left there is still on the screen for whatever is
         # printed over it to show through. Rows a shrunken console took
-        # went with the console and are not there to wipe
-        wiped = wipe_rows(len(lines), len(self.drawn_lines), size)
+        # went with the console and are not there to wipe.
+        #
+        # Both ends are measured in screen rows rather than in lines,
+        # since that is what wipe_rows addresses. A frame carrying a
+        # wrapped line stands a row taller than it has lines, so a wipe
+        # counted in lines stops short of the old frame's last row and
+        # the tail of the line that wrapped survives under whatever is
+        # printed next
+        wiped = wipe_rows(frame_height(lines, size),
+                          frame_height(self.drawn_lines, size), size)
 
         self.drawn_lines = lines
 
@@ -643,7 +690,8 @@ class MazeGame:
         # a redraw that wrote anything parks the cursor under the frame,
         # which is where what follows the frame is printed from, so a
         # wipe with no redraw behind it parks the cursor itself
-        stream.write(wiped + (text or ANSI_ROW % (len(lines) + 1)))
+        stream.write(wiped + (text or ANSI_ROW % (frame_height(lines, size)
+                                                   + 1)))
         stream.flush()
 
     def clear_screen(self, stream=None):

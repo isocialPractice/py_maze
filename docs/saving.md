@@ -77,6 +77,31 @@ end
 seed: 2024
 ```
 
+Where the chain came from somewhere else, a second line says so. The two
+seeds answer two different questions - `seed:` is the grid in the file, and
+`content seed:` is the chain laid over it - and only the second is the one
+`--seed` reproduces:
+
+```bash
+python -m py_maze --load picture.txt --mode quest --seed 5
+```
+
+```
+Loading maze...
+
+start
+...
+end
+seed: 11
+content seed: 5
+```
+
+The line is there only when the two part, which is a loaded maze the run
+named a seed of its own for. A generated maze, and a loaded one played with
+no `--seed`, have a single seed between them and report the one line they
+always did. So does a document played back with the chain it was saved with:
+nothing was laid from a seed at all, so there is no second number to give.
+
 A file that is not a maze this build can read is refused rather than guessed
 at, with a message naming what was wrong:
 

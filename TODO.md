@@ -28,156 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the cut window, the stale quit row and the door glyph
-
-#### Found Issues
-
-- [ ] A cut window is drawn as though it were the whole maze
-  - **Issue**: `fit_frame` gives up a maze row to a wrapped foot and keeps
-    the head and foot whole, so `start` is printed directly above the first
-    row drawn and `end` directly below the last whether or not those are
-    the maze's own edges. Read off real consoles at 60x18 plain, seed 2024:
-    with the player at the top the screen held maze rows 0 to 11 and `end`
-    sat under `*         * *`, an interior corridor row, with the bottom
-    wall and the exit gap in it off screen; after 19 moves to the foot the
-    screen held rows 1 to 12, the exit came back and `start` sat over
-    `* *     *   *` with the entrance off screen instead. Both markers sit
-    flush against a maze row either way, so nothing says the maze was cut.
-    The same shows at 100x18 in quest mode while the guide answers: the
-    answer's second row costs the bottom wall, and the exit leaves the
-    screen for as long as the answer is up
-  - **Goal**: Resolve to [cut-window-markers.prompt.md](.claude/prompts/cut-window-markers.prompt.md)
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-- [ ] The ending leaves the tail of a wrapped controls line below it
-  - **Issue**: `MazeGame.render` calls
-    `wipe_rows(len(lines), len(self.drawn_lines), size)` with two line
-    counts, and `wipe_rows` addresses screen rows with them. A frame
-    carrying a wrapped line stands one row taller than it has lines, so the
-    wipe stops a row short of the old frame's last row and what was there
-    survives. On a 60x18 console, quitting left row 17 of the screen
-    holding ` quit.` below `Moves: 4`. It reproduces without a console in
-    the suite's own `TerminalScreen`; the reason 1108 tests miss it is that
-    `TestPlayScreenOnANarrowTerminal` replays `session.played()`, which
-    leaves the ending out
-  - **Goal**: Resolve to [wipe-rows-counts-lines.prompt.md](.claude/prompts/wipe-rows-counts-lines.prompt.md)
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-- [ ] A shut door has nothing on screen to say it is shut
-  - **Issue**: the documentation this turn added to `docs/modes.md`,
-    `docs/playing.md` and `docs/CHEATSHEET.md` is not on the console. Read
-    back at 80x18, the pre-play screen carries the maze, `seed: 2024` and
-    the play prompt, and every play frame carries the maze, the tally and
-    the controls line. None of the five name a marker, so a player meeting
-    `+` for the first time has only the glyph, and the glyph is lighter
-    than the `*` beside it - four thin arms centred in the cell against a
-    heavier six - so the cell scans as more passable than a wall
-  - **Goal**: draw a shut door as `#` rather than `+`. It is ASCII, it is
-    not taken (`*`, ` `, `o`, `.`, `~`, `?`, `$`, `X`, `+`, `&`, `@` are),
-    it is the one common ASCII glyph that reads heavier than the asterisk
-    wall, and it needs no room on the controls line, which this turn just
-    shortened to fit 80 columns. Change `DOOR_MARKER` in
-    `py_maze/rendering.py` and the three doc tables with it
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-- [ ] Drop "Press" from the plain controls line too
-  - **Issue**: `QUEST_CONTROLS_LINE` lost the word this turn and
-    `CONTROLS_LINE` kept it, so the two modes now word the same instruction
-    two ways. The quest line reads fine alone - `'h' for a hint, 'n' for
-    the guide, 'q' to quit.` is an ordinary verbless list after a complete
-    sentence - so the asymmetry is the whole of the cost, and it is smaller
-    than the maze row it bought
-  - **Goal**: cutting `Press ` from `CONTROLS_LINE` leaves
-    `Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.` at 60
-    characters exactly, which fits a 60 column console on one row. That
-    makes the two lines parallel and stops the plain game giving up a maze
-    row at 60 columns, which is the cost the first item here is about
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-- [ ] The guide's answer breaks inside a word when it wraps
-  - **Issue**: at 100 columns the longest answer is 104 characters and the
-    console carries the overflow onto the row below at the column rather
-    than at a space, so the screen read back as
-    `...the part of the maze you can already r` then `each`. The sentence
-    is still followable, but the break falls in the worst place it could
-  - **Goal**: wrap the guide's answer on a space before it is printed,
-    reusing whatever the win banner already does for a narrow terminal if
-    that fits; the frame is measured with `frame_height` either way, so the
-    rows it costs do not change
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-- [ ] Two more line counts are still read as screen rows
-  - **Issue**: the same confusion the item above it describes, at the two
-    call sites it does not name, both in `py_maze/game.py`.
-    `print_ending` reserves `len(self.printed_ending) + 1` rows for an
-    ending whose lines can wrap - the 41 character win banner wraps below
-    42 columns - and `MazeGame.render` parks the cursor at
-    `ANSI_ROW % (len(lines) + 1)`, which lands on a wrapping frame's last
-    row rather than below it. `MazeGame.ending`'s docstring states the
-    premise outright: "The rows an ending needs are the lines it has",
-    which is the sentence `frame_height` was added to disprove. Nothing
-    misbehaves today: the park sits one row high by exactly the rows the
-    frame wrapped, which hands the ending back the rows its own wrap
-    costs, and no console from 20 to 88 columns over five heights scrolls.
-    They cancel, and neither is written as though it were relying on the
-    other
-  - **Goal**: measure both in rows while the wipe above is being
-    converted, so the three sites agree:
-    `reserve=frame_height(self.printed_ending, terminal_size()) + 1` and
-    a park row taken from `frame_height(lines, size)`. Reword the `ending`
-    docstring, and assert the pair on a console narrow enough to wrap the
-    banner but not the controls line, which is the case the cancellation
-    does not cover
-  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
-
-#### Resolve Issues
-
-- [ ] Wrapped Foot 2
-  - **Issue**: the frame still outgrows the console it was fitted to, and
-    now the maze pays for it on every frame rather than once. `fit_frame`
-    measures in rows; `fit_to_terminal`, which is the call that decides how
-    tall a maze to carve, still reserves `RENDER_ROW_OVERHEAD` - the
-    constant is 4, and its own comment calls it "lines a play screen
-    carries below the maze". At 60 columns the 66 character
-    `CONTROLS_LINE` occupies 2 rows, so the foot is 5 rows and the reserve
-    is one short. On a 60x18 console a default run asks for 21x11, is
-    handed 21x6, and builds an 18 line frame that stands 19 rows tall:
-    `fit_frame` then returns 17 lines, hiding a maze row from the first
-    frame with no resize anywhere in it. The same holds at 60x24 (21x9
-    carved, 25 rows for 24). Quest mode is no better, its 79 character
-    line wrapping at 60 as well. The scroll `Wrapped Foot 1` set out to
-    stop is stopped, but by cutting the window rather than by carving a
-    maze that fits, so a player who never resized anything still never
-    sees the whole maze
-  - **Goal**: give `fit_to_terminal` the rows the foot will actually
-    occupy instead of the line count, so the maze carved for a console is
-    one the console can show whole. The reserve depends on the controls
-    line, which depends on the mode, and `fit_to_terminal(width, height,
-    size, stream)` takes no mode - so this needs an interface decision
-    (pass the foot's lines, or the mode, or ask the mode for its line) and
-    is why the review turn queued it rather than fixing it.
-    `RENDER_ROW_OVERHEAD` and its comment move with it, and the cut-window
-    item above is the fallback for the widths where no reserve can make a
-    maze fit
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] Loaded Chain Seed 1
-  - **Issue**: the chain is reproducible now and the seed the run reports
-    still is not the one it came from. `build_maze` lays the content from
-    `content_seed(args.seed, loaded.seed)` and returns `loaded.seed` as the
-    seed to report, so the two disagree whenever a file records one seed
-    and the run names another. Write a picture carrying `# seed: 11`, then
-    `python -m py_maze --load picture.txt --mode quest --seed 5`: the run
-    prints `seed: 11`, and loading that same picture again with
-    `--seed 11` - which is what the printed line invites - lays a
-    different quest from the one just played. `docs/saving.md` carries both
-    halves without connecting them: the new table says `--seed N` beats the
-    file, and the paragraph under it says a loaded maze "reports the seed
-    its file records, so a maze that turned out to be worth keeping can
-    still be traced back"
-  - **Goal**: make the reported seed name what the run can be reproduced
-    from. Either report the content seed where it differs from the file's,
-    or report both and say which is which - the file's seed does identify
-    the grid, so dropping it is not the answer. Whatever is chosen,
-    `docs/saving.md` says it beside the table, and a test loads a picture
-    with a recorded seed under a different `--seed` and asserts the
-    reported line reproduces the chain that was played
-  - From: UI/UX Override - the quest foot wraps a console it was fitted to
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2658,6 +2508,148 @@ No items are currently queued in this section.
     neither resized nor re-seeded here" comment that currently answers only
     for the grid, and pin it with a test that loads one picture twice under
     the same seed and gets the same chain
+  - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] A cut window is drawn as though it were the whole maze
+  - **Issue**: `fit_frame` gives up a maze row to a wrapped foot and keeps
+    the head and foot whole, so `start` is printed directly above the first
+    row drawn and `end` directly below the last whether or not those are
+    the maze's own edges. Read off real consoles at 60x18 plain, seed 2024:
+    with the player at the top the screen held maze rows 0 to 11 and `end`
+    sat under `*         * *`, an interior corridor row, with the bottom
+    wall and the exit gap in it off screen; after 19 moves to the foot the
+    screen held rows 1 to 12, the exit came back and `start` sat over
+    `* *     *   *` with the entrance off screen instead. Both markers sit
+    flush against a maze row either way, so nothing says the maze was cut.
+    The same shows at 100x18 in quest mode while the guide answers: the
+    answer's second row costs the bottom wall, and the exit leaves the
+    screen for as long as the answer is up
+  - **Goal**: Resolve to [cut-window-markers.prompt.md](.claude/prompts/cut-window-markers.prompt.md)
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] The ending leaves the tail of a wrapped controls line below it
+  - **Issue**: `MazeGame.render` calls
+    `wipe_rows(len(lines), len(self.drawn_lines), size)` with two line
+    counts, and `wipe_rows` addresses screen rows with them. A frame
+    carrying a wrapped line stands one row taller than it has lines, so the
+    wipe stops a row short of the old frame's last row and what was there
+    survives. On a 60x18 console, quitting left row 17 of the screen
+    holding ` quit.` below `Moves: 4`. It reproduces without a console in
+    the suite's own `TerminalScreen`; the reason 1108 tests miss it is that
+    `TestPlayScreenOnANarrowTerminal` replays `session.played()`, which
+    leaves the ending out
+  - **Goal**: Resolve to [wipe-rows-counts-lines.prompt.md](.claude/prompts/wipe-rows-counts-lines.prompt.md)
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] A shut door has nothing on screen to say it is shut
+  - **Issue**: the documentation this turn added to `docs/modes.md`,
+    `docs/playing.md` and `docs/CHEATSHEET.md` is not on the console. Read
+    back at 80x18, the pre-play screen carries the maze, `seed: 2024` and
+    the play prompt, and every play frame carries the maze, the tally and
+    the controls line. None of the five name a marker, so a player meeting
+    `+` for the first time has only the glyph, and the glyph is lighter
+    than the `*` beside it - four thin arms centred in the cell against a
+    heavier six - so the cell scans as more passable than a wall
+  - **Goal**: draw a shut door as `#` rather than `+`. It is ASCII, it is
+    not taken (`*`, ` `, `o`, `.`, `~`, `?`, `$`, `X`, `+`, `&`, `@` are),
+    it is the one common ASCII glyph that reads heavier than the asterisk
+    wall, and it needs no room on the controls line, which this turn just
+    shortened to fit 80 columns. Change `DOOR_MARKER` in
+    `py_maze/rendering.py` and the three doc tables with it
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] Drop "Press" from the plain controls line too
+  - **Issue**: `QUEST_CONTROLS_LINE` lost the word this turn and
+    `CONTROLS_LINE` kept it, so the two modes now word the same instruction
+    two ways. The quest line reads fine alone - `'h' for a hint, 'n' for
+    the guide, 'q' to quit.` is an ordinary verbless list after a complete
+    sentence - so the asymmetry is the whole of the cost, and it is smaller
+    than the maze row it bought
+  - **Goal**: cutting `Press ` from `CONTROLS_LINE` leaves
+    `Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.` at 60
+    characters exactly, which fits a 60 column console on one row. That
+    makes the two lines parallel and stops the plain game giving up a maze
+    row at 60 columns, which is the cost the first item here is about
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] The guide's answer breaks inside a word when it wraps
+  - **Issue**: at 100 columns the longest answer is 104 characters and the
+    console carries the overflow onto the row below at the column rather
+    than at a space, so the screen read back as
+    `...the part of the maze you can already r` then `each`. The sentence
+    is still followable, but the break falls in the worst place it could
+  - **Goal**: wrap the guide's answer on a space before it is printed,
+    reusing whatever the win banner already does for a narrow terminal if
+    that fits; the frame is measured with `frame_height` either way, so the
+    rows it costs do not change
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] Two more line counts are still read as screen rows
+  - **Issue**: the same confusion the item above it describes, at the two
+    call sites it does not name, both in `py_maze/game.py`.
+    `print_ending` reserves `len(self.printed_ending) + 1` rows for an
+    ending whose lines can wrap - the 41 character win banner wraps below
+    42 columns - and `MazeGame.render` parks the cursor at
+    `ANSI_ROW % (len(lines) + 1)`, which lands on a wrapping frame's last
+    row rather than below it. `MazeGame.ending`'s docstring states the
+    premise outright: "The rows an ending needs are the lines it has",
+    which is the sentence `frame_height` was added to disprove. Nothing
+    misbehaves today: the park sits one row high by exactly the rows the
+    frame wrapped, which hands the ending back the rows its own wrap
+    costs, and no console from 20 to 88 columns over five heights scrolls.
+    They cancel, and neither is written as though it were relying on the
+    other
+  - **Goal**: measure both in rows while the wipe above is being
+    converted, so the three sites agree:
+    `reserve=frame_height(self.printed_ending, terminal_size()) + 1` and
+    a park row taken from `frame_height(lines, size)`. Reword the `ending`
+    docstring, and assert the pair on a console narrow enough to wrap the
+    banner but not the controls line, which is the case the cancellation
+    does not cover
+  - From: UI/UX Override - the cut window, the stale quit row and the door glyph
+- [x] Wrapped Foot 2
+  - **Issue**: the frame still outgrows the console it was fitted to, and
+    now the maze pays for it on every frame rather than once. `fit_frame`
+    measures in rows; `fit_to_terminal`, which is the call that decides how
+    tall a maze to carve, still reserves `RENDER_ROW_OVERHEAD` - the
+    constant is 4, and its own comment calls it "lines a play screen
+    carries below the maze". At 60 columns the 66 character
+    `CONTROLS_LINE` occupies 2 rows, so the foot is 5 rows and the reserve
+    is one short. On a 60x18 console a default run asks for 21x11, is
+    handed 21x6, and builds an 18 line frame that stands 19 rows tall:
+    `fit_frame` then returns 17 lines, hiding a maze row from the first
+    frame with no resize anywhere in it. The same holds at 60x24 (21x9
+    carved, 25 rows for 24). Quest mode is no better, its 79 character
+    line wrapping at 60 as well. The scroll `Wrapped Foot 1` set out to
+    stop is stopped, but by cutting the window rather than by carving a
+    maze that fits, so a player who never resized anything still never
+    sees the whole maze
+  - **Goal**: give `fit_to_terminal` the rows the foot will actually
+    occupy instead of the line count, so the maze carved for a console is
+    one the console can show whole. The reserve depends on the controls
+    line, which depends on the mode, and `fit_to_terminal(width, height,
+    size, stream)` takes no mode - so this needs an interface decision
+    (pass the foot's lines, or the mode, or ask the mode for its line) and
+    is why the review turn queued it rather than fixing it.
+    `RENDER_ROW_OVERHEAD` and its comment move with it, and the cut-window
+    item above is the fallback for the widths where no reserve can make a
+    maze fit
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] Loaded Chain Seed 1
+  - **Issue**: the chain is reproducible now and the seed the run reports
+    still is not the one it came from. `build_maze` lays the content from
+    `content_seed(args.seed, loaded.seed)` and returns `loaded.seed` as the
+    seed to report, so the two disagree whenever a file records one seed
+    and the run names another. Write a picture carrying `# seed: 11`, then
+    `python -m py_maze --load picture.txt --mode quest --seed 5`: the run
+    prints `seed: 11`, and loading that same picture again with
+    `--seed 11` - which is what the printed line invites - lays a
+    different quest from the one just played. `docs/saving.md` carries both
+    halves without connecting them: the new table says `--seed N` beats the
+    file, and the paragraph under it says a loaded maze "reports the seed
+    its file records, so a maze that turned out to be worth keeping can
+    still be traced back"
+  - **Goal**: make the reported seed name what the run can be reproduced
+    from. Either report the content seed where it differs from the file's,
+    or report both and say which is which - the file's seed does identify
+    the grid, so dropping it is not the answer. Whatever is chosen,
+    `docs/saving.md` says it beside the table, and a test loads a picture
+    with a recorded seed under a different `--seed` and asserts the
+    reported line reproduces the chain that was played
   - From: UI/UX Override - the quest foot wraps a console it was fitted to
 
 </details>

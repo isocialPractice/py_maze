@@ -128,6 +128,26 @@ Five rows are reserved for the `start` and `end` markers, the status line, the
 spacer and the controls line, which is why the height allowance is smaller
 than the terminal is tall.
 
+Those five lines stand six rows tall on a terminal too narrow for the
+controls line, which carries it onto the row below. The reserve counts the
+rows rather than the lines, so a narrow terminal gives up one more cell of
+height and the maze it carves is still one the terminal can show whole:
+
+```bash
+python -m py_maze -w 60 -H 60
+```
+
+**Output (on a 50 by 24 terminal):**
+
+```
+warning: --width 60 needs 121 columns but only 50 are available; using 24
+warning: --height 60 needs 121 rows but only 18 are available; using 8
+```
+
+The line is the mode's, so a quest reserves the rows its own longer line
+needs: the plain line is 60 characters and the quest one is 79, and there are
+widths where the two differ by a row of maze.
+
 Two limits apply to the capping:
 
 - Mazes are never capped below the 2 cell minimum. If the terminal cannot
@@ -212,7 +232,7 @@ py_maze: --chase-point: 'a34' is not a number, carrying on without it
 
 ### Quest Mode
 
-The way on is shut by a door, drawn `+`, and what opens it is in a box,
+The way on is shut by a door, drawn `#`, and what opens it is in a box,
 drawn `&`, hidden in the part of the maze the player can already reach.
 A guide, drawn `@`, waits just inside the entrance and says what the next
 errand is when `n` is pressed.

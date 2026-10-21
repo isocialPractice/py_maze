@@ -57,7 +57,7 @@ start
 end
 time 0:12   moves 8   collected 1/2
 
-Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
+Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.
 ```
 
 Only steps that moved the player are counted, so walking into a wall costs
@@ -155,7 +155,7 @@ start
 end
 time 0:09   moves 6
 
-Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
+Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.
 ```
 
 It walks the route the solver finds from itself to wherever the player is
@@ -203,9 +203,10 @@ The two are covered in full under
 
 ## Quest Mode
 
-`--mode quest` is the same maze with the way on shut. A door (`+`) is a
-cell you cannot pass yet rather than a corridor, whatever the glyph looks
-like beside a `*` wall: it stays closed until the matching item is carried,
+`--mode quest` is the same maze with the way on shut. A door (`#`) is a
+cell you cannot pass yet rather than a corridor, and it is drawn heavier
+than the `*` wall beside it to say so: it stays closed until the matching
+item is carried,
 and the item is in a box (`&`) hidden in the part of the maze that can
 already be reached:
 
@@ -213,7 +214,7 @@ already be reached:
 start
 * ***
 *o& *
-***+*
+***#*
 *   *
 *** *
 end
@@ -263,7 +264,7 @@ start
 end
 time 0:04   moves 1
 
-Use arrow keys or WASD to move. Press 'h' for a hint, 'q' to quit.
+Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.
 ```
 
 The path is solved from wherever the player is standing rather than from the
@@ -319,6 +320,27 @@ row being played on is on screen however little of the maze is. The `end`
 marker, the tally, the spacer and the controls line stay on the bottom four
 rows, where a player reads them.
 
+A window says that it is one. `start` and `end` are the only labels on the
+play screen and they name the two ends of the maze, so on a cut window they
+would be sitting against whichever interior rows the window happened to stop
+at - and the exit is the gap in the bottom wall, which can then be off screen
+for the whole of a game with nothing saying so. An edge the window does not
+reach is named with the rows between the two instead:
+
+```
+start 2 rows above
+*   *       *
+* *** ***** *
+*   * *   * *
+end 3 rows below
+time 0:12   moves 9
+
+Use arrow keys or WASD to move. 'h' for a hint, 'q' to quit.
+```
+
+Both markers read as the bare words on a console with rows to spare, which is
+every console that can hold the whole maze.
+
 Give the console its rows back and the frame grows into them again, since
 the terminal is measured every frame rather than once at the start.
 
@@ -331,11 +353,21 @@ up in the lines of a frame:
 
 - **The window is resized.** Shrinking a terminal pushes its content up, and
   nothing tells the game it happened.
-- **A line is wider than the screen.** The controls line is 66 characters and
-  no option makes it shorter, while only the maze is measured against the
-  terminal's columns, so a terminal narrower than that carries the line onto
-  the row below it. On a screen the frame fills, that row is the bottom one,
-  and the carry takes the whole screen up exactly as a newline would.
+- **A line is wider than the screen.** The controls line is 60 characters,
+  79 in quest mode, and no option makes either shorter, while only the maze
+  is measured against the terminal's columns. A terminal narrower than the
+  line carries it onto the row below it, and on a screen the frame fills that
+  row is the bottom one, where the carry takes the whole screen up exactly as
+  a newline would. The maze a run carves is sized with the rows that line
+  will actually occupy, so a console wide enough for the mode being played
+  gets a maze it can show whole; the window above is for the widths where no
+  reserve can make one fit.
+
+A line carried onto the row below is broken on a space rather than in the
+middle of a word. A console wraps on the column it runs out of, so the
+guide's answer in quest mode read as `...you can already r` with `each`
+underneath it; the line is padded out to the end of its row instead, which
+leaves the next word to start the row below and costs the maze nothing.
 
 So the terminal is measured once a frame. When its size has changed since the
 last frame, or when a line of the frame runs past its last column, the whole
