@@ -3622,6 +3622,25 @@ class TestRenderAcrossAResize(unittest.TestCase):
         self.assertIn(py_maze.wrap_on_spaces(py_maze.CONTROLS_LINE, narrow),
                       drawn)
 
+    def test_a_terminal_dragged_wider_wipes_the_row_its_wrap_was_on(self):
+        # a console narrower than the controls line carries the line
+        # onto the row below, and widening the console takes that row
+        # back: the frame standing on it is the shorter of the two, and
+        # the tail of the line is still on the row it gave up. The
+        # redraw addresses every row of the new frame and parks the
+        # cursor on the one below it, and a park clears nothing, so
+        # that tail outlives the resize and reads under whatever the
+        # end of the game prints there
+        narrow = terminal_size(len(py_maze.CONTROLS_LINE) - 1, 40)
+        self.render(narrow)
+        gave_up = py_maze.frame_height(self.game.frame(), narrow)
+        drawn = self.render(terminal_size(80, 40))
+
+        self.assertEqual(gave_up, len(self.game.frame()) + 1,
+                         'the narrow frame has to have wrapped a line')
+        self.assertIn(py_maze.ANSI_ROW % gave_up + py_maze.ANSI_CLEAR_LINE,
+                      drawn)
+
     def test_a_frame_that_wraps_and_changed_nothing_writes_nothing(self):
         # the wrap does its damage as the frame is written, so a frame
         # with nothing to say leaves the screen where it is rather than

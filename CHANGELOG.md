@@ -22,6 +22,23 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+One correction to the release below, found reviewing it and fixed after it
+was tagged, so it is not in `v1.0.0a7`.
+
+### Fixed
+
+- **A console dragged wider kept the tail of the line it had wrapped.**
+  `MazeGame.render` measures the frame it is drawing and the frame already
+  on screen in rows now, and measured both against the console it is
+  drawing on - but the frame on screen was wrapped by the console it went
+  out on. Widen a 50 column console to 120 and the older frame reads as
+  never having wrapped at all, so the wipe spans no rows and the row under
+  the redrawn frame keeps `'q' to quit.`, the tail of the padded controls
+  line, with the cursor parked on it and the end of the game printed from
+  there. The frame on screen is measured against the size it was drawn at
+
 ## [1.0.0a7] - 2026-10-21
 
 The rest of the line count taken out of the play screen, and a window that
@@ -101,9 +118,9 @@ frame that fits is returned untouched.
   the cell scanned as more passable than the wall it stood in. `#` reads
   heavier than `*`, which is the way round that matches what a door means.
   It is also the character a save file opens a comment with, which costs
-  nothing: a door never sits on the first column of a maze row, so the only
-  `#` a reader meets inside a grid is refused as the unexpected character it
-  always was
+  nothing: no marker is written to a file at all, `save_lines` drawing the
+  grid through `SAVE_CHARS` alone, so no `#` a reader meets inside a grid
+  came from a door
 - **`CONTROLS_LINE` is 60 characters rather than 66**, naming its keys
   without the word "Press" that the two quoted keys make obvious.
   `QUEST_CONTROLS_LINE` lost the word in 1.0.0a6 and this one kept it, so

@@ -620,6 +620,12 @@ class MazeGame:
 
         size = terminal_size()
         resized = size != self.drawn_size
+
+        # the console the frame on screen was drawn on. A line is
+        # wrapped by the terminal it went out on rather than by the one
+        # measured next, so the rows that frame is occupying were
+        # settled by this width and not by the one above
+        drawn_size = size if self.drawn_size is None else self.drawn_size
         self.drawn_size = size
 
         # the last line of the frame is the only one long enough to be
@@ -673,9 +679,15 @@ class MazeGame:
         # wrapped line stands a row taller than it has lines, so a wipe
         # counted in lines stops short of the old frame's last row and
         # the tail of the line that wrapped survives under whatever is
-        # printed next
+        # printed next.
+        #
+        # The frame on screen is measured against the console it was
+        # drawn on. A terminal dragged wider takes a wrap back, and the
+        # frame replacing it is the shorter of the two: measuring the
+        # older one at the new width says it never wrapped at all, and
+        # the row its wrap is still sitting on is a row nothing wipes
         wiped = wipe_rows(frame_height(lines, size),
-                          frame_height(self.drawn_lines, size), size)
+                          frame_height(self.drawn_lines, drawn_size), size)
 
         self.drawn_lines = lines
 
