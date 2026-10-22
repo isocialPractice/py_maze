@@ -28,6 +28,50 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - A Line Exactly As Wide As The Console
+
+#### Found Issues
+
+- [ ] A frame line exactly as wide as the console loses its last character
+  - **Issue**: On a console exactly as many columns wide as a frame line is
+    long, the line is drawn one character short, and the missing character
+    is always the last one. At 60 columns the plain controls line reads
+    `...'q' to quit` with no full stop; at 79 columns the quest line reads
+    the same way. Both are the width the line in question was shortened to
+    fit - 60 for `CONTROLS_LINE` in this turn, 79 for
+    `QUEST_CONTROLS_LINE` before it - so each line lands on the one width
+    that breaks it, while 59, 61, 78 and 80 columns are all correct. The
+    cause is `ANSI_CLEAR_LINE`: `frame_text` and `frame_diff` put it after
+    every line, and a console that has just had its last column written
+    leaves the cursor in the pending-wrap state on that column rather than
+    past it, so `\x1b[K` erases the character just written. Isolated from
+    the game with a plain `WriteConsoleW` into an allocated 60 column
+    console, 60 characters read back as 60, and 60 characters followed by
+    `\x1b[K` read back as 59 with a space in the last cell; a 60 character
+    ruler behaves the same, so it is the width and not the text. Read off
+    a real console at seed 2024, Windows 11 conhost, Consolas 8 by 16
+  - **Goal**: Resolve to [exact-width-line-loses-its-last-character.prompt.md](.claude/prompts/exact-width-line-loses-its-last-character.prompt.md)
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+- [ ] Teach the terminal model that a full row keeps its cursor on the edge
+  - **Issue**: The suite cannot see the fault above, so a fix for it cannot
+    be pinned. `TerminalScreen` models the cursor as moving past the last
+    column when a write fills the row - its `put` comment says "a line
+    filling it exactly wraps nothing" - and its `K` branch then truncates
+    the row to `self.column - 1`, which for a full row is the whole row. So
+    the model keeps the character a real console drops. The model is right
+    that a full row does not wrap and wrong that the cursor has left the
+    last column, and `\x1b[K` reads the cursor rather than the wrap
+  - **Goal**: Correct `TerminalScreen` so a write ending on the last column
+    leaves the cursor on it and a following `K` erases it, then assert a
+    frame whose last line is exactly `columns` long keeps its last
+    character at that width, at one column narrower where it wraps and one
+    wider where it does not; that a shorter line redrawn over a longer one
+    still has the tail cleared from beside it, which is what the escape is
+    there for; and `CONTROLS_LINE` at 60 columns and `QUEST_CONTROLS_LINE`
+    at 79 by name and by length, so shortening either line again moves the
+    test with it
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
