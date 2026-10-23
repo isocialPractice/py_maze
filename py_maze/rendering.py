@@ -60,6 +60,7 @@ __all__ = [
     'frame_height',
     'frame_text',
     'frame_wraps',
+    'line_fills_row',
     'maze_lines',
     'print_maze',
     'quest_overlay',
@@ -98,10 +99,18 @@ CHASER_MARKER = 'X'
 # cell that reads lighter than a wall reads as more passable than one.
 # '#' is the one common ASCII glyph that reads heavier than '*', and it
 # needs no room on the controls line to explain itself. It is also the
-# character a save file opens a comment with, which costs nothing: a
-# door never sits on the first column of a maze row, so the only '#' a
-# reader meets inside a grid is still refused as the unexpected
-# character it always was
+# character a save file opens a comment with, which costs nothing: no
+# marker reaches a file at all. save_lines draws the grid through
+# SAVE_CHARS and lays nothing over it but the collectibles, so a
+# reader never meets a '#' inside a grid in the first place.
+#
+# What makes it safe is that, and not the column a door sits on. A
+# door does reach column 0: a loaded picture whose route runs along
+# its left edge puts one there, and parse_save reads a line opening
+# with '#' as a comment whenever '#' is not one of the picture's own
+# characters, so such a row would be dropped rather than refused as
+# the unexpected character it is anywhere else on the line. That only
+# ever happens to a grid drawn on screen, which nothing reads back
 DOOR_MARKER = '#'
 BOX_MARKER = '&'
 GUIDE_MARKER = '@'
@@ -131,10 +140,10 @@ FRAME_FOOT_ROWS = 4
 
 # lines a play screen carries around the maze itself. They are the
 # rows those lines occupy only while each of them fits on a row of its
-# own, and the controls line is the one that reaches: a console
-# narrower than it carries it onto a second row, which the maze is what
-# pays for. So this is the floor :func:`fit_to_terminal` reserves, and
-# the controls line it is handed is what raises it
+# own, and two of them reach: the controls line and the status line. A
+# console narrower than either carries it onto a second row, which the
+# maze is what pays for. So this is the floor :func:`fit_to_terminal`
+# reserves, and the two lines it is handed are what raise it
 RENDER_ROW_OVERHEAD = FRAME_HEAD_ROWS + FRAME_FOOT_ROWS
 
 # ANSI escape sequences: wipe the screen and put the cursor back at the
@@ -439,6 +448,41 @@ def clear_screen(stream=None):
     os.system('cls' if sys.platform == 'win32' else 'clear')
 
 
+def line_fills_row(line, size):
+    """Report whether a line ends flush with the terminal's last column.
+
+    That is the one place :data:`ANSI_CLEAR_LINE` must not be written.
+    A console that has just had its last column written leaves the
+    cursor *on* that column with the wrap pending rather than past it,
+    and ``\\x1b[K`` erases from where the cursor stands - so the escape
+    that is there to clear the tail of a longer line erases the
+    character just written instead. A line that fills its row has no
+    tail beside it to clear, so there is nothing lost by leaving the
+    escape off and one character gained.
+
+    A wrapped line is measured by its final row, which is the only row
+    the escape ever follows: the rows above it are full by construction
+    and the whole string is written before the escape.
+
+    Args:
+        line: The line as it is written
+        size: The terminal the line is drawn on, or None when output is
+            piped or redirected and there is no last column to end
+            flush with
+
+    Returns:
+        bool: True when the line ends on the terminal's last column.
+        False for an empty line, which occupies its row without
+        writing to any column of it, and False where there is no
+        terminal to measure against
+    """
+
+    if size is None or size.columns < 1 or not line:
+        return False
+
+    return len(line) % size.columns == 0
+
+
 def frame_text(lines, home=None, stream=None, size=None):
     """Join the lines of a screen into the one string that draws it.
 
@@ -474,12 +518,16 @@ def frame_text(lines, home=None, stream=None, size=None):
         return ANSI_HOME
 
     # each line wipes whatever it lands on rather than the screen being
-    # wiped first, so there is no moment where the screen is empty. The
-    # last line ends without a newline: one written on the bottom row of
-    # the screen scrolls everything up a row, and every line of the
-    # frame is then sitting a row above where a redraw addressing rows
-    # would look for it
-    body = (ANSI_CLEAR_LINE + '\n').join(lines) + ANSI_CLEAR_LINE
+    # wiped first, so there is no moment where the screen is empty -
+    # except a line that fills its row to the last column, which has no
+    # tail beside it to wipe and whose own last character the wipe
+    # would take, per line_fills_row. The last line ends without a
+    # newline: one written on the bottom row of the screen scrolls
+    # everything up a row, and every line of the frame is then sitting
+    # a row above where a redraw addressing rows would look for it
+    body = '\n'.join(
+        line + ('' if line_fills_row(line, size) else ANSI_CLEAR_LINE)
+        for line in lines)
 
     return ANSI_HOME + body + ANSI_ROW % (frame_height(lines, size) + 1)
 
@@ -524,7 +572,12 @@ def frame_diff(previous, current, whole=False, size=None):
         if not whole and row <= len(previous) and previous[row - 1] == line:
             continue
 
-        writes.append(ANSI_ROW % row + line + ANSI_CLEAR_LINE)
+        # the wipe is left off a line that fills its row, which has no
+        # tail beside it to clear and would lose its own last character
+        # to the escape, per line_fills_row
+        writes.append(ANSI_ROW % row + line
+                      + ('' if line_fills_row(line, size)
+                         else ANSI_CLEAR_LINE))
 
     # a frame shorter than the one it replaces would leave the tail of
     # the older one on screen, so every row it no longer covers is
@@ -963,17 +1016,28 @@ def terminal_size():
     return shutil.get_terminal_size()
 
 
-def fit_to_terminal(width, height, size=None, stream=None, controls=None):
+def fit_to_terminal(width, height, size=None, stream=None, controls=None,
+                    status=None):
     """Shrink a maze so its render fits the current terminal.
 
     This is the call that decides how tall a maze to carve, so the rows
     it reserves for the frame are the difference between a maze a
     console can show whole and one :func:`fit_frame` has to cut a
     window out of on every frame. The lines of the frame are a fixed
-    count and the rows they occupy are not: the controls line is the
-    one long enough to be carried onto a second row, and a maze carved
-    without counting that row is a row too tall for the console it was
-    carved for, with no resize anywhere in it.
+    count and the rows they occupy are not: the foot of the play screen
+    is the part of it the console's width is measured against nowhere,
+    so its lines are the ones long enough to be carried onto a second
+    row, and a maze carved without counting those rows is a maze too
+    tall for the console it was carved for, with no resize anywhere in
+    it.
+
+    Both lines of the foot that can wrap are taken here. The maze rows
+    cannot: :func:`fit_dimension` caps them to the terminal's columns,
+    which is why an 80 column console draws maze rows 79 characters
+    wide against a 60 character controls line. The two lines the foot
+    has left are the end marker and a blank spacer, and neither is
+    wide enough to reach the edge of a console with room for a maze in
+    it.
 
     Args:
         width: Requested width in cells
@@ -984,13 +1048,18 @@ def fit_to_terminal(width, height, size=None, stream=None, controls=None):
         controls: The controls line the play screen will carry under
             the maze, for a caller that knows which mode is about to be
             played - :func:`py_maze.mode_controls` is what answers
-            that. None reserves :data:`RENDER_ROW_OVERHEAD`, the rows a
-            frame occupies while none of its lines wrap
+            that. None counts no row for it
+        status: The running tally the play screen will carry under the
+            maze, as the first frame will draw it -
+            :func:`py_maze.mode_status` is what builds one from the
+            mode and the options. None counts no row for it
 
     Returns:
         tuple: (width, height) in cells, capped to what fits on screen.
         The requested size is returned unchanged when output is not
-        going to a terminal
+        going to a terminal. Handing over neither line reserves
+        :data:`RENDER_ROW_OVERHEAD`, the rows a frame occupies while
+        none of its lines wrap
     """
 
     if size is None:
@@ -1003,16 +1072,17 @@ def fit_to_terminal(width, height, size=None, stream=None, controls=None):
     width, width_warning = fit_dimension(
         width, size.columns, "width", "columns")
 
-    # the maze shares its rows with the markers and the controls line,
-    # and a controls line too long for the console takes a second row
-    # of them. The rest of the foot does not reach: the status line
-    # runs to 31 characters with an inventory on it, and a console
-    # narrow enough to wrap that has been told already that the maze
-    # will not fit - which is the width the window fit_frame cuts is
-    # the fallback for
+    # the maze shares its rows with the markers, the status line and
+    # the controls line, and either of the two that is too long for the
+    # console takes a second row of them. The status line was ruled out
+    # here once, on a figure for the quest tally alone: status_line puts
+    # a collectible tally beside it, so --mode quest --collectibles 9
+    # draws 47 characters and wraps every console under 48 columns, and
+    # 20 to 39 columns carved a maze a row too tall for itself
     reserve = RENDER_ROW_OVERHEAD
-    if controls is not None:
-        reserve += frame_height([controls], size) - 1
+    for line in (status, controls):
+        if line is not None:
+            reserve += frame_height([line], size) - 1
 
     height, height_warning = fit_dimension(
         height, size.lines - reserve, "height", "rows")

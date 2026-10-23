@@ -23,7 +23,8 @@ from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
 from .grid import MIN_DIMENSION, MIN_GRID_WIDTH, has_ends
 from .keys import read_response
 from .modes import (DEFAULT_MODE, MODE_CONTENT, MODE_NOTES, MODE_OPTIONS,
-                    MODES, game_mode, mode_content, mode_controls)
+                    MODES, game_mode, mode_content, mode_controls,
+                    mode_status)
 from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES,
                     MIN_QUEST_STAGES)
 from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DOOR_MARKER,
@@ -721,13 +722,18 @@ def build_maze(args):
                 chain_seed)
 
     # use the difficulty preset and any width and height overrides,
-    # capped to whatever the terminal can actually show. The mode is
-    # what decides the controls line, and the controls line is what
-    # decides how many rows the foot of the play screen occupies, so
-    # the maze carved here is one this console can show whole in this
-    # mode rather than one a window has to be cut out of
-    width, height = fit_to_terminal(*resolve_dimensions(args),
-                                    controls=mode_controls(args.mode))
+    # capped to whatever the terminal can actually show. The foot of
+    # the play screen is what decides how many rows the frame occupies
+    # around the maze, and both of its lines that can wrap are settled
+    # before a maze is carved: the mode decides the controls line, and
+    # the mode with --collectibles decides how wide the tally beside it
+    # will be. So the maze carved here is one this console can show
+    # whole in this mode rather than one a window has to be cut out of
+    width, height = fit_to_terminal(
+        *resolve_dimensions(args),
+        controls=mode_controls(args.mode),
+        status=mode_status(args.mode, collectibles=args.collectibles,
+                           quest_stages=args.quest_stages))
 
     # a seed is always chosen, and always reported, so any maze that was
     # worth keeping can be generated again with --seed

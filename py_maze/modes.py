@@ -33,6 +33,7 @@ from .chase import DEFAULT_CHASE_POINT, DEFAULT_CHASE_SPEED, Chaser
 from .game import CONTROLS_LINE, QUEST_CONTROLS_LINE, MazeGame
 from .grid import find_entrance
 from .quest import DEFAULT_QUEST_STAGES, place_quest
+from .rendering import status_line
 
 __all__ = [
     'CHASE_MODE',
@@ -40,6 +41,7 @@ __all__ = [
     'MODES',
     'MODE_CONTENT',
     'MODE_CONTROLS',
+    'MODE_ITEMS',
     'MODE_NOTES',
     'MODE_OPTIONS',
     'PLAIN_MODE',
@@ -48,6 +50,7 @@ __all__ = [
     'game_mode',
     'mode_content',
     'mode_controls',
+    'mode_status',
     'plain_game',
     'quest_content',
     'quest_game',
@@ -185,6 +188,15 @@ MODE_CONTROLS = {
     QUEST_MODE: QUEST_CONTROLS_LINE,
 }
 
+# where each mode's play screen gets the inventory tally on its status
+# line: the setting naming how many items the mode lays, and what that
+# setting falls back to. A mode that puts no inventory on the screen is
+# left out rather than listed at nought, so the tally a maze is carved
+# against is the one that mode will actually draw and not a wider one
+MODE_ITEMS = {
+    QUEST_MODE: ('quest_stages', DEFAULT_QUEST_STAGES),
+}
+
 # the options belonging to each mode, for a help text that says so. A
 # mode with no options of its own is left out rather than listed empty
 MODE_OPTIONS = {
@@ -242,6 +254,53 @@ def mode_controls(name):
     game_mode(name)
 
     return MODE_CONTROLS.get(name, CONTROLS_LINE)
+
+
+def mode_status(name, collectibles=0, **settings):
+    """Report the running tally the named mode's play screen will carry.
+
+    The status line is the other line of the play screen's foot that
+    the console's width is never measured against, so a console too
+    narrow for it carries it onto a second row exactly as it does the
+    controls line - and a maze carved without counting that row is a
+    row too tall for the console it was carved for.
+
+    What the tally will say is not known before the game is played, but
+    what it is made of is: the collectible count is on it whenever the
+    maze holds a pickup and the inventory count whenever the mode lays
+    one, so both are settled by the options before a maze is carved.
+    The clock and the move count are the only parts that grow as the
+    game runs, and neither is a reason to give up a maze row before a
+    key has been pressed.
+
+    A mode is looked up here rather than branched on, exactly as
+    :func:`mode_controls` looks one up, so the step that carves a maze
+    for a console never has to know which mode fills an inventory.
+
+    Args:
+        name: One of the keys of :data:`MODES`
+        collectibles: Pickups the maze will hold, which is what
+            ``--collectibles`` asked for
+        **settings: Everything the modes read, handed to all of them
+            and read by the one it belongs to. :data:`MODE_ITEMS` is
+            where a mode says which of them names its item count
+
+    Returns:
+        str: The tally as the first frame will draw it, which is every
+        part of it a maze can be carved against
+
+    Raises:
+        ValueError: If no mode goes by that name
+    """
+
+    # an unknown mode is as wrong here as it is in game_mode, and is
+    # worth the same message rather than a quiet plain tally
+    game_mode(name)
+
+    setting, default = MODE_ITEMS.get(name, (None, 0))
+    items = settings.get(setting, default) if setting else default
+
+    return status_line(0, 0, 0, collectibles, 0, items)
 
 
 def mode_content(name, grid, **settings):

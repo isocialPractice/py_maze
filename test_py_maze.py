@@ -1762,14 +1762,14 @@ class TestFitDimension(unittest.TestCase):
 
 
 class TestFitToTerminal(unittest.TestCase):
-    def fit(self, width, height, columns, lines, controls=None):
+    def fit(self, width, height, columns, lines, controls=None, status=None):
         # Returns:
         #     tuple: (fitted width, fitted height, warning text)
 
         stream = io.StringIO()
         fitted = py_maze.fit_to_terminal(
             width, height, size=terminal_size(columns, lines), stream=stream,
-            controls=controls)
+            controls=controls, status=status)
 
         return fitted[0], fitted[1], stream.getvalue()
 
@@ -1861,32 +1861,95 @@ class TestFitToTerminal(unittest.TestCase):
 
         self.assertEqual(quest[1], plain[1] - 1)
 
+    def test_a_wrapped_status_line_is_a_row_the_maze_does_not_get(self):
+        # the defect Wrapped Foot 3 names. The status line was ruled
+        # out of the reserve on a figure for the quest tally alone, and
+        # status_line puts a collectible tally beside it, so a quest
+        # with pickups in it draws 47 characters and wraps every
+        # console under 48 columns
+        status = py_maze.mode_status(py_maze.QUEST_MODE, collectibles=9,
+                                     quest_stages=3)
+        self.assertEqual(len(status), 47)
+
+        counted = self.fit(5, 30, 40, 40, status=status)
+        assumed = self.fit(5, 30, 40, 40)
+
+        self.assertEqual(counted[1], assumed[1] - 1)
+        self.assertIn('only 34 are available', counted[2])
+        self.assertIn('only 35 are available', assumed[2])
+
+    def test_a_status_line_that_fits_reserves_what_it_always_did(self):
+        # every console the maze was carved for before is carved for
+        # exactly as it was
+        status = py_maze.mode_status(py_maze.QUEST_MODE, collectibles=9,
+                                     quest_stages=3)
+
+        self.assertEqual(self.fit(5, 30, len(status), 40, status=status),
+                         self.fit(5, 30, len(status), 40))
+
+    def test_both_lines_of_the_foot_are_counted_rather_than_one(self):
+        # a console too narrow for each of them gives up a row for
+        # each. The rows are what this asserts rather than the cells:
+        # fit_dimension halves the rows it is left, so two rows fewer
+        # is not always two cells fewer
+        status = py_maze.mode_status(py_maze.QUEST_MODE, collectibles=9,
+                                     quest_stages=3)
+        narrow = min(len(py_maze.CONTROLS_LINE), len(status)) - 1
+
+        for reserved, lines in (('35', ()),
+                                ('34', (py_maze.CONTROLS_LINE, None)),
+                                ('34', (None, status)),
+                                ('33', (py_maze.CONTROLS_LINE, status))):
+            with self.subTest(lines=lines):
+                self.assertIn(
+                    'only %s are available' % reserved,
+                    self.fit(5, 30, narrow, 40, *lines)[2])
+
     def test_a_maze_carved_for_a_console_is_one_it_can_show_whole(self):
-        # the defect Wrapped Foot 2 names, asserted end to end: carve a
-        # maze for a console, build the frame a play screen would draw
-        # on it, and the frame has to stand no taller than the console
-        # - so fit_frame has nothing to cut and the player sees the
-        # whole maze without resizing anything
-        for columns in (40, 50, 60, 70, 80, 88, 100):
+        # the defect Wrapped Foot 2 names and Wrapped Foot 3 reopened,
+        # asserted end to end: carve a maze for a console, build the
+        # frame a play screen would draw on it, and the frame has to
+        # stand no taller than the console - so fit_frame has nothing
+        # to cut and the player sees the whole maze without resizing
+        # anything.
+        #
+        # The tally carries both of its counts, which is the shape
+        # Wrapped Foot 3 came back on: a status line holding the quest
+        # tally alone is 31 characters and never reached a console the
+        # maze was carved for. The widths run down to 20, which is
+        # where the overflow was two rows rather than one
+        for columns in range(20, 101):
             for mode in sorted(py_maze.MODES):
                 for rows in (18, 24, 40):
                     size = terminal_size(columns, rows)
                     controls = py_maze.mode_controls(mode)
+                    status = py_maze.mode_status(mode, collectibles=9,
+                                                 quest_stages=3)
                     stream = io.StringIO()
                     width, height = py_maze.fit_to_terminal(
-                        9, 11, size=size, stream=stream, controls=controls)
+                        9, 11, size=size, stream=stream, controls=controls,
+                        status=status)
 
                     frame = (['start'] +
                              py_maze.maze_lines(py_maze.MazeGenerator(
                                  width, height, seed=2024).generate()) +
-                             ['end', 'time 0:03   moves 4   items 0/3', '',
-                              controls])
+                             ['end', status, '', controls])
 
                     with self.subTest(columns=columns, mode=mode, rows=rows):
                         self.assertLessEqual(
                             py_maze.frame_height(frame, size), rows,
                             'the frame is taller than the console it was '
                             'carved for')
+
+    def test_the_tally_the_maze_is_carved_against_holds_both_counts(self):
+        # the figure the status line was ruled out on was the quest
+        # tally alone, so the line this reserves for has to be the one
+        # a play screen will actually draw
+        status = py_maze.mode_status(py_maze.QUEST_MODE, collectibles=9,
+                                     quest_stages=3)
+
+        self.assertIn('collected 0/9', status)
+        self.assertIn('items 0/3', status)
 
 
 class TestTerminalSize(unittest.TestCase):
@@ -2752,6 +2815,7 @@ class TerminalScreen:
         self.rows = {}
         self.row = 1
         self.column = 1
+        self.pending = False
         self.wipes = 0
         self.scrolls = 0
 
@@ -2775,17 +2839,25 @@ class TerminalScreen:
         else:
             self.row += 1
         self.column = 1
+        self.pending = False
 
     def put(self, text):
         # write text where the cursor stands, padding the row out to
         # it. What will not fit on the row is carried onto the one
         # below, and text that ends on the last column leaves the
-        # cursor past it rather than on the row below: a terminal
-        # wraps on the character after the one that filled the row, so
-        # a line filling it exactly wraps nothing, and addressing a row
-        # next takes the cursor off the edge without ever wrapping
+        # cursor *on* that column with the wrap still pending: a
+        # terminal wraps on the character after the one that filled the
+        # row, so a line filling it exactly wraps nothing and the
+        # cursor has not left the edge either. The next character
+        # written is what finally carries the row over.
+        #
+        # Where the cursor stands is the whole of what `\x1b[K` reads,
+        # so modelling a full row as having moved the cursor past the
+        # edge is what made the screen keep a character a real console
+        # erases - the fault `exact-width` is about
         while text:
-            if self.width is not None and self.column > self.width:
+            if self.pending or (self.width is not None
+                                and self.column > self.width):
                 self.newline()
 
             room = (len(text) if self.width is None
@@ -2798,6 +2870,10 @@ class TerminalScreen:
             self.rows[self.row] = (line[:self.column - 1] + piece +
                                    line[self.column - 1 + len(piece):])
             self.column += len(piece)
+
+            if self.width is not None and self.column > self.width:
+                self.column = self.width
+                self.pending = True
 
     def put_lines(self, text):
         # write text that holds no escapes, a newline returning the
@@ -2824,15 +2900,23 @@ class TerminalScreen:
             position = match.end()
             first, second, final = match.groups()
 
+            # a pending wrap is the state of the one cell the cursor is
+            # on, so anything that moves the cursor or erases that cell
+            # ends it. That is every escape here: addressing a row
+            # takes the cursor off the edge, and erasing to the end of
+            # the row blanks the character the wrap was pending on
             if final == 'J' and first == '2':
                 self.rows = {}
                 self.wipes += 1
+                self.pending = False
             elif final == 'H':
                 self.row = self.clamp(int(first) if first else 1)
                 self.column = int(second) if second else 1
+                self.pending = False
             elif final == 'K':
                 self.rows[self.row] = self.rows.get(self.row,
                                                     '')[:self.column - 1]
+                self.pending = False
 
         self.put_lines(written[position:])
         return self
@@ -3140,6 +3224,30 @@ class TestTerminalScreenWidth(unittest.TestCase):
         self.assertEqual(screen.scrolls, 1)
         self.assertEqual(screen.lines(), ['abcde', 'fg'])
 
+    def test_a_filled_row_leaves_the_cursor_on_its_last_column(self):
+        # the model had the cursor move past the last column, which is
+        # the one thing `\x1b[K` reads, so a wipe after a full row left
+        # the row whole here and one character short on a real console
+        screen = TerminalScreen(height=2, width=5).feed('abcde')
+
+        self.assertEqual((screen.row, screen.column), (1, 5))
+        self.assertTrue(screen.pending)
+
+    def test_a_wipe_after_a_filled_row_erases_what_filled_it(self):
+        screen = TerminalScreen(height=2, width=5).feed(
+            'abcde' + py_maze.ANSI_CLEAR_LINE)
+
+        self.assertEqual(screen.lines(), ['abcd', ''])
+        self.assertEqual(screen.scrolls, 0)
+
+    def test_the_character_after_a_filled_row_is_what_carries_it_over(self):
+        # the wrap is pending rather than taken, so the next character
+        # written is what finally drops the cursor to the row below
+        screen = TerminalScreen(height=2, width=5).feed('abcde').feed('f')
+
+        self.assertEqual(screen.lines(), ['abcde', 'f'])
+        self.assertEqual(screen.scrolls, 0)
+
     def test_addressing_a_row_takes_the_cursor_off_a_filled_row(self):
         # a terminal wraps on the character after the one that filled the
         # row, and a redraw that addresses a row next never writes it
@@ -3148,12 +3256,195 @@ class TestTerminalScreenWidth(unittest.TestCase):
 
         self.assertEqual(screen.scrolls, 0)
         self.assertEqual(screen.lines(), ['abcde', 'x'])
+        self.assertFalse(screen.pending)
+
+    def test_a_wrapped_line_ending_flush_leaves_the_cursor_on_the_edge(self):
+        # a line twice the width of the screen fills its final row as
+        # well, so the wrap is pending there exactly as it is on a line
+        # that never wrapped at all
+        screen = TerminalScreen(height=3, width=5).feed('abcdefghij')
+
+        self.assertEqual((screen.row, screen.column), (2, 5))
+        self.assertTrue(screen.pending)
 
     def test_a_carried_line_is_written_over_what_the_row_below_held(self):
         screen = TerminalScreen(height=2, width=5).feed(
             py_maze.ANSI_ROW % 2 + 'zzzzz' + py_maze.ANSI_ROW % 1 + 'abcdefg')
 
         self.assertEqual(screen.lines(), ['abcde', 'fgzzz'])
+
+
+class TestLineFillsRow(unittest.TestCase):
+    # the one row ANSI_CLEAR_LINE must not be written on, measured on
+    # its own: a line ends flush with the last column when its length
+    # divides by the width, a wrapped line being measured by the final
+    # row it is carried onto
+
+    def test_a_line_as_long_as_the_width_fills_the_row(self):
+        self.assertTrue(py_maze.line_fills_row('x' * 60, terminal_size(60, 24)))
+
+    def test_a_line_short_of_the_width_leaves_room_beside_it(self):
+        self.assertFalse(
+            py_maze.line_fills_row('x' * 59, terminal_size(60, 24)))
+
+    def test_a_wrapped_line_is_measured_by_the_row_it_ends_on(self):
+        size = terminal_size(60, 24)
+
+        self.assertTrue(py_maze.line_fills_row('x' * 120, size))
+        self.assertFalse(py_maze.line_fills_row('x' * 121, size))
+
+    def test_an_empty_line_fills_nothing(self):
+        # it occupies its row without writing to any column of it, so
+        # the wipe is both wanted there and harmless: wiping a blank
+        # row is how a frame gives a row up
+        self.assertFalse(py_maze.line_fills_row('', terminal_size(60, 24)))
+
+    def test_a_stream_with_no_terminal_has_no_last_column(self):
+        self.assertFalse(py_maze.line_fills_row('x' * 60, None))
+
+    def test_a_terminal_measured_at_no_columns_fills_nothing(self):
+        # terminal_size can report a width of zero, and a modulus by it
+        # would raise rather than answer
+        self.assertFalse(py_maze.line_fills_row('x' * 60, terminal_size(0, 24)))
+
+
+class TestAFrameLineAsWideAsTheConsole(unittest.TestCase):
+    # ANSI_CLEAR_LINE follows every line of a frame so that a shorter
+    # line never leaves the tail of a longer one beside it. On the one
+    # row a line fills to the last column there is no tail to clear,
+    # and the escape is not harmless there: the console leaves the
+    # cursor on that column with the wrap still pending rather than
+    # past it, and `\x1b[K` erases from where the cursor stands, so it
+    # took the character just written.
+    #
+    # Read off a real console at 1.0.0a7: at 60 columns the plain
+    # controls line lost its full stop and at 79 the quest line lost
+    # its own, 59, 61, 78 and 80 columns all being correct. Those are
+    # the widths each line was shortened to fit, so each landed on the
+    # one width that broke it.
+
+    HEAD = 'head'
+
+    def drawn(self, line, columns):
+        # draw a two line frame on a console of a given width and read
+        # the second line back off it
+        #
+        # Args:
+        #     line: The last line of the frame, the one measured here
+        #     columns: Columns the console holds
+        #
+        # Returns:
+        #     str: The line as the console holds it, joined back up from
+        #     the rows it was carried onto
+
+        size = terminal_size(columns, 40)
+        screen = TerminalScreen(width=columns).feed(
+            py_maze.frame_text([self.HEAD, line], home=True, size=size))
+
+        return ''.join(row.ljust(columns)
+                       for row in screen.lines()[1:]).rstrip()
+
+    def test_a_line_as_wide_as_the_console_keeps_its_last_character(self):
+        for columns in (10, 20, 60, 79):
+            line = 'x' * (columns - 1) + 'z'
+
+            self.assertEqual(self.drawn(line, columns), line,
+                             'a %d character line on %d columns'
+                             % (columns, columns))
+
+    def test_it_keeps_it_at_one_column_narrower_where_the_line_wraps(self):
+        line = 'x' * 59 + 'z'
+
+        self.assertEqual(self.drawn(line, 59), line)
+
+    def test_it_keeps_it_at_one_column_wider_where_the_line_does_not(self):
+        line = 'x' * 59 + 'z'
+
+        self.assertEqual(self.drawn(line, 61), line)
+
+    def test_a_wrapped_line_ending_flush_keeps_its_last_character_too(self):
+        # the final row of a wrapped line is full as well when the
+        # length divides by the width, and it is the only row the
+        # escape ever follows
+        line = 'x' * 119 + 'z'
+
+        self.assertEqual(self.drawn(line, 60), line)
+
+    def test_the_controls_lines_survive_the_console_they_fit_exactly(self):
+        # by name and by length both, so shortening either line again
+        # moves the test with it rather than leaving it asserting a
+        # width nothing is drawn at any more
+        for name, columns in (('CONTROLS_LINE', 60),
+                              ('QUEST_CONTROLS_LINE', 79)):
+            line = getattr(py_maze, name)
+
+            self.assertEqual(len(line), columns,
+                             '%s is %d characters, not %d'
+                             % (name, len(line), columns))
+            self.assertEqual(self.drawn(line, columns), line,
+                             '%s on %d columns' % (name, columns))
+
+    def test_the_full_stop_is_the_character_each_of_them_was_losing(self):
+        for name in ('CONTROLS_LINE', 'QUEST_CONTROLS_LINE'):
+            line = getattr(py_maze, name)
+
+            self.assertTrue(line.endswith('.'), '%s ends mid sentence' % name)
+            self.assertTrue(self.drawn(line, len(line)).endswith('.'),
+                            '%s lost its full stop' % name)
+
+    def test_the_escape_is_left_off_only_the_line_that_fills_its_row(self):
+        size = terminal_size(60, 40)
+        full, short = 'x' * 60, 'y' * 10
+        frame = py_maze.frame_text([short, full], home=True, size=size)
+
+        self.assertIn(short + py_maze.ANSI_CLEAR_LINE, frame)
+        self.assertNotIn(full + py_maze.ANSI_CLEAR_LINE, frame)
+
+    def test_a_redrawn_shorter_line_still_clears_the_tail_beside_it(self):
+        # what the escape is there for in the first place, so leaving
+        # it off a filled row must not reach the case it was added for
+        size = terminal_size(60, 40)
+        longer, shorter = 'x' * 60, 'y' * 10
+        screen = TerminalScreen(width=60)
+
+        screen.feed(py_maze.frame_text([self.HEAD, longer], home=True,
+                                       size=size))
+        screen.feed(py_maze.frame_diff([self.HEAD, longer],
+                                       [self.HEAD, shorter], size=size))
+
+        self.assertEqual(screen.lines()[1], shorter)
+
+    def test_a_whole_frame_redrawn_over_a_filled_row_clears_it_as_well(self):
+        size = terminal_size(60, 40)
+        longer, shorter = 'x' * 60, 'y' * 10
+        screen = TerminalScreen(width=60)
+
+        screen.feed(py_maze.frame_text([self.HEAD, longer], home=True,
+                                       size=size))
+        screen.feed(py_maze.frame_text([self.HEAD, shorter], home=True,
+                                       size=size))
+
+        self.assertEqual(screen.lines()[1], shorter)
+
+    def test_a_filled_row_redrawn_over_a_shorter_line_is_whole(self):
+        # the other order, where the escape is the one being left off
+        size = terminal_size(60, 40)
+        longer, shorter = 'x' * 60, 'y' * 10
+        screen = TerminalScreen(width=60)
+
+        screen.feed(py_maze.frame_text([self.HEAD, shorter], home=True,
+                                       size=size))
+        screen.feed(py_maze.frame_diff([self.HEAD, shorter],
+                                       [self.HEAD, longer], size=size))
+
+        self.assertEqual(screen.lines()[1], longer)
+
+    def test_a_stream_with_no_terminal_still_wipes_every_line(self):
+        # there is no last column to end flush with, so nothing changes
+        # for output that has been redirected
+        frame = py_maze.frame_text([self.HEAD, 'x' * 60], home=True)
+
+        self.assertIn('x' * 60 + py_maze.ANSI_CLEAR_LINE, frame)
 
 
 class TestPlayScreenOnAScreenItFills(unittest.TestCase):
@@ -4561,6 +4852,63 @@ class TestModeOption(ParserRunner, unittest.TestCase):
             py_maze.mode_controls('labyrinth')
 
         self.assertIn('labyrinth', str(caught.exception))
+
+    def test_every_mode_names_the_status_line_its_game_first_draws(self):
+        # the other fact about a mode asked twice, and for the same
+        # reason: the tally is a line of the play screen's foot, the
+        # foot is measured against the console's width nowhere, and a
+        # maze carved without counting the rows it wraps onto is a row
+        # too tall for its console. The two have to agree
+        grid = py_maze.MazeGenerator(4, 4, seed=1).generate()
+        collectibles = {(1, 1)}
+
+        for name in sorted(py_maze.MODES):
+            with self.subTest(mode=name):
+                game = py_maze.game_mode(name)(
+                    grid, collectibles,
+                    quest=py_maze.place_quest(grid, py_maze.
+                                              DEFAULT_QUEST_STAGES,
+                                              random.Random(1)))
+
+                self.assertEqual(
+                    py_maze.mode_status(name, collectibles=len(collectibles)),
+                    game.status())
+
+    def test_a_mode_filling_no_inventory_gets_a_tally_without_one(self):
+        # the table lists the modes that fill one, the way MODE_CONTROLS
+        # lists the ones that print their own line
+        for name in sorted(set(py_maze.MODES) - set(py_maze.MODE_ITEMS)):
+            with self.subTest(mode=name):
+                self.assertEqual(py_maze.mode_status(name, collectibles=9),
+                                 py_maze.status_line(0, 0, 0, 9, 0, 0))
+                self.assertNotIn('items', py_maze.mode_status(name))
+
+    def test_quest_mode_puts_its_stages_on_the_tally(self):
+        self.assertIn('items 0/7', py_maze.mode_status(py_maze.QUEST_MODE,
+                                                       quest_stages=7))
+        self.assertIn('items 0/%d' % py_maze.DEFAULT_QUEST_STAGES,
+                      py_maze.mode_status(py_maze.QUEST_MODE))
+
+    def test_a_maze_with_no_pickups_in_it_gets_no_collectible_tally(self):
+        # over-reserving costs a maze row as surely as under-reserving
+        # costs a console one, so the tally is the mode's own and not
+        # the widest one there is
+        self.assertNotIn('collected', py_maze.mode_status(py_maze.QUEST_MODE))
+
+    def test_a_mode_no_status_line_answers_to_is_refused_by_name(self):
+        with self.assertRaises(ValueError) as caught:
+            py_maze.mode_status('labyrinth')
+
+        self.assertIn('labyrinth', str(caught.exception))
+
+    def test_the_settings_a_mode_reads_its_item_count_from_are_tabled(self):
+        # MODE_ITEMS names a setting, and a setting nothing passes is a
+        # count that silently falls back to its default forever
+        for name, (setting, _) in py_maze.MODE_ITEMS.items():
+            with self.subTest(mode=name):
+                self.assertIn(name, py_maze.MODES)
+                self.assertIn('--%s' % setting.replace('_', '-'),
+                              py_maze.build_parser().format_help())
 
     def test_every_option_a_mode_owns_is_an_option_the_parser_takes(self):
         help_text = py_maze.build_parser().format_help()
@@ -13027,6 +13375,68 @@ class TestQuestSaveFile(unittest.TestCase):
                 self.assertEqual(made.collectibles, {(1, 1)})
                 self.assertEqual(made.seed, 2024)
                 self.assertEqual(made.quest.doors, self.quest.doors)
+
+
+class TestADoorOnTheFirstColumn(unittest.TestCase):
+    # DOOR_MARKER is '#', which is also what a save file opens a
+    # comment with. The marker's comment used to rest that choice on a
+    # door never sitting on the first column of a maze row, so the only
+    # '#' a reader could meet inside a grid would be refused as the
+    # unexpected character it is - and a door does reach column 0.
+    #
+    # What makes the choice safe is that no marker reaches a file at
+    # all: save_lines draws the grid through SAVE_CHARS and lays
+    # nothing over it but the collectibles. Both halves are pinned
+    # here, the door that reaches column 0 and the file that never
+    # carries it.
+
+    # a loaded hand-drawn picture whose route runs along its left edge,
+    # which is what puts a door on the first column
+    PICTURE = ('* ***', '    *', ' ****', '     ', ' ****', '    *',
+               '*** *')
+
+    def setUp(self):
+        self.grid = grid_from_strings(self.PICTURE)
+        self.quest = py_maze.place_quest(self.grid, stages=1,
+                                         rng=random.Random(0))
+
+    def test_a_door_does_sit_on_the_first_column(self):
+        self.assertIsNotNone(self.quest, 'the picture has no way through')
+        self.assertEqual(sorted(self.quest.doors), [(0, 4)])
+
+    def test_it_draws_as_the_marker_in_column_nought_of_its_row(self):
+        drawn = py_maze.maze_lines(self.grid,
+                                   py_maze.quest_overlay(*self.quest.drawn()))
+
+        self.assertEqual(drawn[4][0], py_maze.DOOR_MARKER)
+
+    def test_a_row_opening_with_the_marker_would_read_as_a_comment(self):
+        # the refusal the old comment rested on does not reach column 0,
+        # which is why it is not what makes the marker safe
+        read = py_maze.parse_save(
+            '%s\n%s****\n*****\n' % (py_maze.SAVE_HEADER, py_maze.DOOR_MARKER))
+
+        self.assertEqual(len(read.grid), 1, 'the row was refused, not dropped')
+
+    def test_the_same_marker_is_refused_anywhere_else_on_the_line(self):
+        with self.assertRaises(py_maze.SaveFileError):
+            py_maze.parse_save(
+                '%s\n*%s***\n' % (py_maze.SAVE_HEADER, py_maze.DOOR_MARKER))
+
+    def test_the_saved_picture_carries_no_door_for_a_reader_to_meet(self):
+        # the reason that holds: save_lines never lays the quest over
+        # the grid, so the marker reaches no file whatever column the
+        # door is on. The picture itself does not round trip - its row
+        # of all spaces is skipped as a blank line, which save-format.md
+        # says - and what is asserted here is the drawing, not the trip
+        lines = py_maze.save_lines(self.grid, seed=2024)
+        drawn = lines[len(lines) - len(self.PICTURE):]
+
+        self.assertEqual(drawn, list(self.PICTURE))
+        self.assertNotIn(py_maze.DOOR_MARKER, '\n'.join(drawn))
+
+    def test_the_marker_is_none_of_the_characters_a_file_is_drawn_with(self):
+        self.assertNotIn(py_maze.DOOR_MARKER, py_maze.SAVE_CHARS)
 
 
 class TestMainQuestMode(MainRunner, unittest.TestCase):

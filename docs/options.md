@@ -148,6 +148,30 @@ The line is the mode's, so a quest reserves the rows its own longer line
 needs: the plain line is 60 characters and the quest one is 79, and there are
 widths where the two differ by a row of maze.
 
+The status line is counted the same way, and it is the other line of those
+five that can outrun the terminal. How wide it will be is settled before the
+maze is carved: a collectible tally is on it whenever `--collectibles` asks
+for any, and an inventory tally whenever the mode fills one, so
+`--mode quest --collectibles 9` draws 47 characters before a key has been
+pressed. On a terminal narrower than that it takes a second row, and the
+reserve is seven rows rather than six:
+
+```bash
+python -m py_maze -w 60 -H 60 --mode quest --collectibles 9
+```
+
+**Output (on a 40 by 24 terminal):**
+
+```
+warning: --width 60 needs 121 columns but only 40 are available; using 19
+warning: --height 60 needs 121 rows but only 17 are available; using 8
+```
+
+Only the maze rows are measured against the terminal's columns, which is why
+these two lines are the ones that wrap: `--width` caps a maze row to the
+columns there are, and nothing caps the foot. The `end` marker and the
+spacer never reach the edge of a terminal with room for a maze in it.
+
 Two limits apply to the capping:
 
 - Mazes are never capped below the 2 cell minimum. If the terminal cannot

@@ -383,7 +383,8 @@ yield in reading order, left to right and then down the rows.
 | `stats_lines(stats)` | What `--stats` prints under a maze, in the status line's style |
 | `format_duration(seconds)` | A length of time written the way a stopwatch would |
 | `terminal_size()` | The screen the maze will be drawn in |
-| `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it, the mode's controls line included |
+| `fit_to_terminal(...)`, `fit_dimension(...)` | Cap a maze to the space there is for it, the rows the play screen's foot occupies included |
+| `line_fills_row(line, size)` | Whether a line ends flush with the last column, where clearing to the end of the row would erase it |
 | `fit_frame(lines, size, focus, reserve)` | Cut a play screen to the rows the terminal has, around a row to keep and any kept back |
 | `cut_marker(marker, rows, where)` | An edge marker that names the maze rows the window stops short of |
 | `wrap_on_spaces(text, size)` | Pad a line so the console breaks it at a space rather than inside a word |
@@ -482,10 +483,12 @@ of setting a mode up:
 | `MODE_OPTIONS` | The options belonging to each mode, for a mode that has any |
 | `MODE_CONTENT` | What each mode lays into the maze itself, for the modes that lay anything |
 | `MODE_CONTROLS` | The controls line each mode prints, for the modes that print another one |
+| `MODE_ITEMS` | Where each mode reads its item count from, for the modes that fill an inventory |
 | `DEFAULT_MODE`, `PLAIN_MODE`, `CHASE_MODE`, `QUEST_MODE` | The mode a bare run plays, and the names of the three there are |
 | `game_mode(name)` | The building function a name stands for, or `ValueError` |
 | `mode_content(name, grid, ...)` | Lay whatever that mode puts in the maze, and `None` for a mode that puts nothing |
 | `mode_controls(name)` | The controls line that mode prints, and `CONTROLS_LINE` for a mode adding no key of its own |
+| `mode_status(name, collectibles, ...)` | The running tally that mode's first frame will draw, which is what a maze is carved against |
 | `plain_game(grid, collectibles, ...)` | The walk from the entrance to the exit |
 | `chase_game(grid, collectibles, chase_point, chase_speed)` | The same walk, with a chaser behind it |
 | `quest_game(grid, collectibles, content, quest_stages)` | The same walk, with the way on shut until what opens it is found |
@@ -546,11 +549,22 @@ and boxes are laid into the grid before a word is drawn, written into a JSON
 document beside the collectibles and read back out of one, so `MODE_CONTENT`
 is where a mode says what it puts there and `mode_content` is what lays it.
 
-`mode_controls` answers the other question asked before there is a game:
-which controls line the mode will print. The line is the longest line of the
-play screen, so how many rows it occupies decides how tall a maze a console
-can show whole, and `fit_to_terminal` takes it as its `controls` argument.
-A game answers the same question for itself with `MazeGame.controls`.
+`mode_controls` and `mode_status` answer the other two questions asked
+before there is a game: which controls line the mode will print, and what
+its first tally will say. Those are the two lines of the play screen's foot
+that can be longer than the console is wide, so how many rows they occupy
+decides how tall a maze the console can show whole, and `fit_to_terminal`
+takes them as its `controls` and `status` arguments. A game answers both
+questions for itself with `MazeGame.controls` and `MazeGame.status`.
+
+The foot is the part of the frame the console's width is measured against
+nowhere, which is why its lines are the ones that wrap. `fit_dimension`
+caps a maze row to the terminal's columns, so an 80 column console draws
+maze rows 79 characters wide against a 60 character controls line - the
+controls line is the longest line of the *foot*, not of the screen. The
+two lines the foot has left are the `end` marker and a blank spacer, and
+neither is wide enough to reach the edge of a console with room for a maze
+in it.
 `place_quest` is the call behind quest mode's entry, and `Quest` is the
 inventory the player fills:
 
@@ -602,11 +616,21 @@ waits however long it takes when the moment it is given is `None` itself, and
 itself, along
 with the `EXIT_OK`, `EXIT_USAGE`, `EXIT_SAVE_FILE`, `EXIT_FILE_ERROR` and
 `EXIT_NO_WAY_THROUGH` codes it exits with. `build_maze` hands back
-`(grid, collectibles, seed, dead_ends_before, content)`, the fourth being
-what `maze_stats` needs to report a braid and `None` for a run that braided
-nothing, and the last being whatever the mode laid into the maze - a `Quest`
-for quest mode and `None` for every other. `content_seed(given, recorded)`
-is the rule it lays that content from: the seed the run named, else the seed
-the save file records, else `None` for the fresh randomness a seedless
-picture gets. Those are the names that want a terminal. Everything above
-runs without one.
+`(grid, collectibles, seed, dead_ends_before, content, chain_seed)`. The
+fourth is what `maze_stats` needs to report a braid, and `None` where
+nothing was braided, which is every loaded maze and every run that asked
+for no braid. The fifth is whatever the mode laid into the maze - a `Quest`
+for quest mode and `None` for every other. The last is the seed that
+content was laid from.
+
+The two seeds are one number for a generated maze, which lays its content
+from the generator the seed built. They part over a loaded maze: the grid is
+in the file and only the chain over it can still be seeded, so a run naming
+`--seed` plays a chain the file's own seed does not reproduce. `chain_seed`
+is `None` where nothing was laid from a seed at all - a mode that puts
+nothing in a maze, a document played back with the chain it was saved with,
+and a picture played with no seed on either side, whose chain is fresh
+randomness. `content_seed(given, recorded)` is the rule it lays that content
+from: the seed the run named, else the seed the save file records, else
+`None` for the fresh randomness a seedless picture gets. Those are the names
+that want a terminal. Everything above runs without one.

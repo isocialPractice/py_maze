@@ -28,123 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - A Line Exactly As Wide As The Console
-
-#### Found Issues
-
-- [ ] A frame line exactly as wide as the console loses its last character
-  - **Issue**: On a console exactly as many columns wide as a frame line is
-    long, the line is drawn one character short, and the missing character
-    is always the last one. At 60 columns the plain controls line reads
-    `...'q' to quit` with no full stop; at 79 columns the quest line reads
-    the same way. Both are the width the line in question was shortened to
-    fit - 60 for `CONTROLS_LINE` in this turn, 79 for
-    `QUEST_CONTROLS_LINE` before it - so each line lands on the one width
-    that breaks it, while 59, 61, 78 and 80 columns are all correct. The
-    cause is `ANSI_CLEAR_LINE`: `frame_text` and `frame_diff` put it after
-    every line, and a console that has just had its last column written
-    leaves the cursor in the pending-wrap state on that column rather than
-    past it, so `\x1b[K` erases the character just written. Isolated from
-    the game with a plain `WriteConsoleW` into an allocated 60 column
-    console, 60 characters read back as 60, and 60 characters followed by
-    `\x1b[K` read back as 59 with a space in the last cell; a 60 character
-    ruler behaves the same, so it is the width and not the text. Read off
-    a real console at seed 2024, Windows 11 conhost, Consolas 8 by 16
-  - **Goal**: Resolve to [exact-width-line-loses-its-last-character.prompt.md](.claude/prompts/exact-width-line-loses-its-last-character.prompt.md)
-  - From: UI/UX Override - A Line Exactly As Wide As The Console
-- [ ] Teach the terminal model that a full row keeps its cursor on the edge
-  - **Issue**: The suite cannot see the fault above, so a fix for it cannot
-    be pinned. `TerminalScreen` models the cursor as moving past the last
-    column when a write fills the row - its `put` comment says "a line
-    filling it exactly wraps nothing" - and its `K` branch then truncates
-    the row to `self.column - 1`, which for a full row is the whole row. So
-    the model keeps the character a real console drops. The model is right
-    that a full row does not wrap and wrong that the cursor has left the
-    last column, and `\x1b[K` reads the cursor rather than the wrap
-  - **Goal**: Correct `TerminalScreen` so a write ending on the last column
-    leaves the cursor on it and a following `K` erases it, then assert a
-    frame whose last line is exactly `columns` long keeps its last
-    character at that width, at one column narrower where it wraps and one
-    wider where it does not; that a shorter line redrawn over a longer one
-    still has the tail cleared from beside it, which is what the escape is
-    there for; and `CONTROLS_LINE` at 60 columns and `QUEST_CONTROLS_LINE`
-    at 79 by name and by length, so shortening either line again moves the
-    test with it
-  - From: UI/UX Override - A Line Exactly As Wide As The Console
-- [ ] `docs/library.md` names the five-value shape `build_maze` no longer
-  hands back
-  - **Issue**: the page's terminal section still reads "`build_maze` hands
-    back `(grid, collectibles, seed, dead_ends_before, content)`, the fourth
-    being what `maze_stats` needs ... and the last being whatever the mode
-    laid into the maze". 1.0.0a7 added `chain_seed` as a sixth value, so a
-    library caller following the page writes
-    `grid, collectibles, seed, before, content = py_maze.build_maze(args)`
-    and gets `ValueError: too many values to unpack (expected 5)`. The
-    rendering and mode tables on the same page were updated for the release
-    and this paragraph was not. The new paragraph under the mode tables has
-    a second wrong figure in it: the controls line "is the longest line of
-    the play screen" holds only below 62 columns, since `fit_dimension`
-    caps a maze row to `size.columns` and an 80 column console draws maze
-    rows 79 characters wide against the line's 60
-  - **Goal**: name the six-value shape and say what `chain_seed` is, in the
-    words `build_maze`'s own docstring uses, and narrow the longest-line
-    claim to what it means - the longest line of the frame's foot, and the
-    only line of the frame that is measured against nothing, which is why
-    it is the one that wraps
-  - From: UI/UX Override - A Line Exactly As Wide As The Console
-- [ ] A door can sit on the first column, which is where a `#` is a comment
-  - **Issue**: the `DOOR_MARKER` comment in `py_maze/rendering.py` rests the
-    choice of `#` on "a door never sits on the first column of a maze row,
-    so the only `#` a reader meets inside a grid is still refused as the
-    unexpected character it always was". A loaded hand-drawn picture whose
-    route runs along its left edge puts one there: the 5 by 7 picture whose
-    rows are `* ***`, `    *`, ` ****`, `     `, ` ****`, `    *`, `*** *`
-    solves through `(0, 1)` to `(0, 5)`, and `place_quest(grid, stages=1,
-    rng=random.Random(0))` lays its door on `(0, 4)`, which draws as `#` in
-    column 0 of that row. `parse_save` reads `line.startswith('#')` as a
-    comment whenever `#` is not one of the picture's own characters, so that
-    row would be dropped rather than refused. What makes `#` safe is that no
-    marker reaches a file at all - `save_lines` draws the grid through
-    `SAVE_CHARS` - and not where a door sits. The same sentence in the
-    1.0.0a7 changelog entry was corrected in place by this review; the
-    source comment is what is left
-  - **Goal**: rest the comment on the reason that holds, or - if the column
-    claim is the one wanted - make `door_cells` refuse a cell in column 0
-    and assert it against that picture
-  - From: UI/UX Override - A Line Exactly As Wide As The Console
-
-#### Resolve Issues
-
-- [ ] Wrapped Foot 3
-  - **Issue**: the maze is still carved a row too tall, on the line the
-    reserve does not count. `fit_to_terminal` adds
-    `frame_height([controls], size) - 1` and rules the rest of the foot out
-    in its own comment - "the status line runs to 31 characters with an
-    inventory on it". 31 is the quest tally alone; `status_line` adds a
-    collectible tally beside it, so `--mode quest --collectibles 9` reads
-    `time 0:03   moves 4   collected 2/9   items 1/3` at 47 characters, and
-    59 once the clock passes an hour. `python -m py_maze --mode quest
-    --collectibles 9 --seed 2024` on a 39 by 24 console carves 9 by 8 and
-    builds a frame that stands 25 rows tall: `fit_frame` cuts it on the very
-    first frame, the `end` marker reads `end 1 row below`, and the exit is
-    off screen with no resize anywhere in it - which is the state
-    `Wrapped Foot 2` set out to stop. Swept over 20 to 120 columns: plain
-    and chase are a row over from 20 to 29 columns, quest from 20 to 39, and
-    two rows over with a long clock on the same consoles
-  - **Goal**: reserve the rows the whole foot occupies rather than the
-    controls line's alone, which is what `Wrapped Foot 2`'s goal asked for.
-    `--collectibles` and `--quest-stages` are both settled before a maze is
-    carved, so the tally is a line that can be built there -
-    `status_line(0, 0, 0, args.collectibles, 0, stages)` - and
-    `fit_to_terminal(width, height, size, stream, controls)` has to be
-    handed it, or handed the foot's lines instead of one of them, which is
-    the second interface decision this is queued for rather than fixed in a
-    review turn. The comment ruling the status line out goes with it, and
-    `test_a_maze_carved_for_a_console_is_one_it_can_show_whole` asserts the
-    same end-to-end property with a status line carrying both tallies and
-    with the widths carried down to 20
-  - From: Gameplay Enhancements `->` New Game Modes
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2768,5 +2651,114 @@ No items are currently queued in this section.
     with a recorded seed under a different `--seed` and asserts the
     reported line reproduces the chain that was played
   - From: UI/UX Override - the quest foot wraps a console it was fitted to
+- [x] A frame line exactly as wide as the console loses its last character
+  - **Issue**: On a console exactly as many columns wide as a frame line is
+    long, the line is drawn one character short, and the missing character
+    is always the last one. At 60 columns the plain controls line reads
+    `...'q' to quit` with no full stop; at 79 columns the quest line reads
+    the same way. Both are the width the line in question was shortened to
+    fit - 60 for `CONTROLS_LINE` in this turn, 79 for
+    `QUEST_CONTROLS_LINE` before it - so each line lands on the one width
+    that breaks it, while 59, 61, 78 and 80 columns are all correct. The
+    cause is `ANSI_CLEAR_LINE`: `frame_text` and `frame_diff` put it after
+    every line, and a console that has just had its last column written
+    leaves the cursor in the pending-wrap state on that column rather than
+    past it, so `\x1b[K` erases the character just written. Isolated from
+    the game with a plain `WriteConsoleW` into an allocated 60 column
+    console, 60 characters read back as 60, and 60 characters followed by
+    `\x1b[K` read back as 59 with a space in the last cell; a 60 character
+    ruler behaves the same, so it is the width and not the text. Read off
+    a real console at seed 2024, Windows 11 conhost, Consolas 8 by 16
+  - **Goal**: Resolve to [exact-width-line-loses-its-last-character.prompt.md](.claude/prompts/exact-width-line-loses-its-last-character.prompt.md)
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+- [x] Teach the terminal model that a full row keeps its cursor on the edge
+  - **Issue**: The suite cannot see the fault above, so a fix for it cannot
+    be pinned. `TerminalScreen` models the cursor as moving past the last
+    column when a write fills the row - its `put` comment says "a line
+    filling it exactly wraps nothing" - and its `K` branch then truncates
+    the row to `self.column - 1`, which for a full row is the whole row. So
+    the model keeps the character a real console drops. The model is right
+    that a full row does not wrap and wrong that the cursor has left the
+    last column, and `\x1b[K` reads the cursor rather than the wrap
+  - **Goal**: Correct `TerminalScreen` so a write ending on the last column
+    leaves the cursor on it and a following `K` erases it, then assert a
+    frame whose last line is exactly `columns` long keeps its last
+    character at that width, at one column narrower where it wraps and one
+    wider where it does not; that a shorter line redrawn over a longer one
+    still has the tail cleared from beside it, which is what the escape is
+    there for; and `CONTROLS_LINE` at 60 columns and `QUEST_CONTROLS_LINE`
+    at 79 by name and by length, so shortening either line again moves the
+    test with it
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+- [x] `docs/library.md` names the five-value shape `build_maze` no longer
+  hands back
+  - **Issue**: the page's terminal section still reads "`build_maze` hands
+    back `(grid, collectibles, seed, dead_ends_before, content)`, the fourth
+    being what `maze_stats` needs ... and the last being whatever the mode
+    laid into the maze". 1.0.0a7 added `chain_seed` as a sixth value, so a
+    library caller following the page writes
+    `grid, collectibles, seed, before, content = py_maze.build_maze(args)`
+    and gets `ValueError: too many values to unpack (expected 5)`. The
+    rendering and mode tables on the same page were updated for the release
+    and this paragraph was not. The new paragraph under the mode tables has
+    a second wrong figure in it: the controls line "is the longest line of
+    the play screen" holds only below 62 columns, since `fit_dimension`
+    caps a maze row to `size.columns` and an 80 column console draws maze
+    rows 79 characters wide against the line's 60
+  - **Goal**: name the six-value shape and say what `chain_seed` is, in the
+    words `build_maze`'s own docstring uses, and narrow the longest-line
+    claim to what it means - the longest line of the frame's foot, and the
+    only line of the frame that is measured against nothing, which is why
+    it is the one that wraps
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+- [x] A door can sit on the first column, which is where a `#` is a comment
+  - **Issue**: the `DOOR_MARKER` comment in `py_maze/rendering.py` rests the
+    choice of `#` on "a door never sits on the first column of a maze row,
+    so the only `#` a reader meets inside a grid is still refused as the
+    unexpected character it always was". A loaded hand-drawn picture whose
+    route runs along its left edge puts one there: the 5 by 7 picture whose
+    rows are `* ***`, `    *`, ` ****`, `     `, ` ****`, `    *`, `*** *`
+    solves through `(0, 1)` to `(0, 5)`, and `place_quest(grid, stages=1,
+    rng=random.Random(0))` lays its door on `(0, 4)`, which draws as `#` in
+    column 0 of that row. `parse_save` reads `line.startswith('#')` as a
+    comment whenever `#` is not one of the picture's own characters, so that
+    row would be dropped rather than refused. What makes `#` safe is that no
+    marker reaches a file at all - `save_lines` draws the grid through
+    `SAVE_CHARS` - and not where a door sits. The same sentence in the
+    1.0.0a7 changelog entry was corrected in place by this review; the
+    source comment is what is left
+  - **Goal**: rest the comment on the reason that holds, or - if the column
+    claim is the one wanted - make `door_cells` refuse a cell in column 0
+    and assert it against that picture
+  - From: UI/UX Override - A Line Exactly As Wide As The Console
+- [x] Wrapped Foot 3
+  - **Issue**: the maze is still carved a row too tall, on the line the
+    reserve does not count. `fit_to_terminal` adds
+    `frame_height([controls], size) - 1` and rules the rest of the foot out
+    in its own comment - "the status line runs to 31 characters with an
+    inventory on it". 31 is the quest tally alone; `status_line` adds a
+    collectible tally beside it, so `--mode quest --collectibles 9` reads
+    `time 0:03   moves 4   collected 2/9   items 1/3` at 47 characters, and
+    59 once the clock passes an hour. `python -m py_maze --mode quest
+    --collectibles 9 --seed 2024` on a 39 by 24 console carves 9 by 8 and
+    builds a frame that stands 25 rows tall: `fit_frame` cuts it on the very
+    first frame, the `end` marker reads `end 1 row below`, and the exit is
+    off screen with no resize anywhere in it - which is the state
+    `Wrapped Foot 2` set out to stop. Swept over 20 to 120 columns: plain
+    and chase are a row over from 20 to 29 columns, quest from 20 to 39, and
+    two rows over with a long clock on the same consoles
+  - **Goal**: reserve the rows the whole foot occupies rather than the
+    controls line's alone, which is what `Wrapped Foot 2`'s goal asked for.
+    `--collectibles` and `--quest-stages` are both settled before a maze is
+    carved, so the tally is a line that can be built there -
+    `status_line(0, 0, 0, args.collectibles, 0, stages)` - and
+    `fit_to_terminal(width, height, size, stream, controls)` has to be
+    handed it, or handed the foot's lines instead of one of them, which is
+    the second interface decision this is queued for rather than fixed in a
+    review turn. The comment ruling the status line out goes with it, and
+    `test_a_maze_carved_for_a_console_is_one_it_can_show_whole` asserts the
+    same end-to-end property with a status line carrying both tallies and
+    with the widths carried down to 20
+  - From: Gameplay Enhancements `->` New Game Modes
 
 </details>

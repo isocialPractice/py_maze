@@ -22,13 +22,85 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a8] - 2026-10-23
 
-One correction to the release below, found reviewing it and fixed after it
-was tagged, so it is not in `v1.0.0a7`.
+The two lines of the play screen's foot measured against the console they
+are drawn on, rather than against a figure nobody checked.
+
+Both faults here are the same mistake in two places. The foot of the play
+screen is the part of the frame the console's width is measured against
+nowhere - `fit_dimension` caps a maze row to the terminal's columns, so an
+80 column console draws maze rows 79 characters wide against a 60 character
+controls line - and both of the foot's long lines had a figure attached to
+them that the line had since outgrown.
+
+**A line exactly as wide as the console lost its last character.** At 60
+columns the plain controls line read `... 'q' to quit` with no full stop,
+and at 79 columns the quest line read the same way; 59, 61, 78 and 80
+columns were all correct. Those are the widths each line had been shortened
+to fit, so each landed on the one width that broke it. `ANSI_CLEAR_LINE`
+followed every line of a frame so that a shorter line never left the tail
+of a longer one beside it, and on the row a line fills to the last column
+there is nothing to clear and the escape is not harmless: a console that
+has just had its last column written leaves the cursor *on* that column
+with the wrap pending rather than past it, and `\x1b[K` erases from where
+the cursor stands.
+
+**The suite could not see it, and that is the half worth recording.**
+`TerminalScreen` modelled the cursor as moving past the last column when a
+write filled the row, and its `K` branch then truncated the row to
+`self.column - 1`, which for a full row is the whole row - so the model
+kept the character the console drops. The model holds a pending wrap now,
+so a write ending on the last column leaves the cursor on it and a
+following `K` erases it, which is what the fix is measured against.
+
+**A maze was still carved a row too tall, on the line the reserve did not
+count.** `fit_to_terminal` reserved the rows the controls line occupies and
+ruled the rest of the foot out in its own comment - "the status line runs
+to 31 characters with an inventory on it". 31 is the quest tally alone;
+`status_line` puts a collectible tally beside it, so
+`--mode quest --collectibles 9` draws 47 characters, and 50 once the clock
+passes an hour. Swept over 20 to 120 columns, plain and chase carved a row
+over from 20 to 29 columns and quest from 20 to 39, two rows over on the
+narrowest of them. `python -m py_maze --mode quest --collectibles 9 --seed
+2024` on a 39 by 24 console carved 9 by 8 and built a frame standing 25
+rows tall, with the exit off screen and no resize anywhere in it.
+
+### Added
+
+- `line_fills_row(line, size)`: whether a line ends flush with the
+  terminal's last column, which is the one place the clear-line escape must
+  not be written. `frame_text` and `frame_diff` both ask it now and leave
+  the escape off for exactly that case - a line with no tail beside it to
+  clear has nothing to lose by it and one character to gain. A wrapped line
+  is measured by the final row it is carried onto, which is the only row
+  the escape ever follows, and a `size` of None keeps every piped frame
+  exactly as it was
+- `mode_status(name, collectibles, ...)` and `MODE_ITEMS`, the running
+  tally a mode's first frame will draw, answered before there is a game to
+  ask. It is the companion to `mode_controls`: both name a line of the
+  foot, both are settled by the options rather than by play, and both are
+  what a maze has to be carved against. A mode is looked up rather than
+  branched on, so the step that carves a maze never has to know which mode
+  fills an inventory
+- `fit_to_terminal` takes a `status` line beside its `controls` one, and
+  counts the rows each occupies. Handing over neither reserves
+  `RENDER_ROW_OVERHEAD`, exactly as before
 
 ### Fixed
 
+- **A frame line exactly as wide as the console lost its last character.**
+  Read off a real console at seed 2024, Windows 11 conhost: isolated from
+  the game with a plain `WriteConsoleW` into an allocated 60 column
+  console, 60 characters read back as 60 and 60 characters followed by
+  `\x1b[K` read back as 59 with a space in the last cell. A 60 character
+  ruler behaved the same, so it was the width and not the text
+- **A maze carved for a console was still a row too tall for it**, on
+  every console from 20 to 29 columns in plain and chase mode and from 20
+  to 39 in quest. The reserve counts the rows the whole foot occupies now,
+  and the comment ruling the status line out went with it. The two lines
+  the foot has left are the `end` marker and a blank spacer, and neither
+  reaches the edge of a console with room for a maze in it
 - **A console dragged wider kept the tail of the line it had wrapped.**
   `MazeGame.render` measures the frame it is drawing and the frame already
   on screen in rows now, and measured both against the console it is
@@ -37,7 +109,52 @@ was tagged, so it is not in `v1.0.0a7`.
   never having wrapped at all, so the wipe spans no rows and the row under
   the redrawn frame keeps `'q' to quit.`, the tail of the padded controls
   line, with the cursor parked on it and the end of the game printed from
-  there. The frame on screen is measured against the size it was drawn at
+  there. The frame on screen is measured against the size it was drawn at.
+  Found reviewing `1.0.0a7` and fixed after it was tagged, so it ships here
+- The `DOOR_MARKER` comment rested the choice of `#` on a claim that does
+  not hold - that a door never sits on the first column of a maze row, so
+  the only `#` a reader meets inside a grid is refused as the unexpected
+  character it is. A door does reach column 0, and `parse_save` reads a
+  line opening with `#` as a comment, so that row would be dropped rather
+  than refused. What makes the choice safe is that no marker reaches a
+  file at all: `save_lines` draws the grid through `SAVE_CHARS` and lays
+  nothing over it but the collectibles
+
+### Documentation
+
+- `docs/library.md` named the five-value shape `build_maze` stopped handing
+  back in `1.0.0a7`, so a caller following the page wrote
+  `grid, collectibles, seed, before, content = py_maze.build_maze(args)`
+  and got `ValueError: too many values to unpack (expected 5)`. The page
+  names the six-value shape and says what `chain_seed` is
+- The same page claimed the controls line is the longest line of the play
+  screen, which holds only while the maze is narrower than the line. It is
+  the longest line of the frame's *foot*, and the foot is the part of the
+  frame the console's width is measured against nowhere, which is why its
+  lines are the ones that wrap
+- `docs/options.md` sets out the status line's share of the reserve beside
+  the controls line's, with the width at which it costs a row of maze
+- `KNOWN_BUGS.md` records both faults, what was measured and how the suite
+  missed each
+
+### Tests
+
+- `TerminalScreen` holds a pending wrap, so the model of a full row matches
+  what a console does with one. Without it no test could see a line lose
+  its last character, and five of the new ones fail against the old model
+- A frame whose last line is exactly as wide as the console is asserted
+  whole at that width, at one column narrower where it wraps and one wider
+  where it does not, with `CONTROLS_LINE` at 60 columns and
+  `QUEST_CONTROLS_LINE` at 79 named and measured, so shortening either line
+  again moves the test with it. A shorter line redrawn over a longer one
+  still has the tail cleared from beside it, which is what the escape is
+  there for
+- `test_a_maze_carved_for_a_console_is_one_it_can_show_whole` runs on a
+  tally carrying both of its counts and over every width from 20 to 100 -
+  the shape and the widths the fault came back on. It fails 77 subtests
+  against the old reserve
+- A door that reaches column 0 is pinned against the picture it was found
+  on, beside the file that never carries it
 
 ## [1.0.0a7] - 2026-10-21
 

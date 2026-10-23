@@ -22,4 +22,4 @@ the size is recorded in that run's `CHANGELOG.md` entry. The core
 `1.0.0` does not move until the project actually releases.
 """
 
-__version__ = '1.0.0a7'
+__version__ = '1.0.0a8'

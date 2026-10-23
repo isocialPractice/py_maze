@@ -353,15 +353,18 @@ up in the lines of a frame:
 
 - **The window is resized.** Shrinking a terminal pushes its content up, and
   nothing tells the game it happened.
-- **A line is wider than the screen.** The controls line is 60 characters,
-  79 in quest mode, and no option makes either shorter, while only the maze
-  is measured against the terminal's columns. A terminal narrower than the
-  line carries it onto the row below it, and on a screen the frame fills that
-  row is the bottom one, where the carry takes the whole screen up exactly as
-  a newline would. The maze a run carves is sized with the rows that line
-  will actually occupy, so a console wide enough for the mode being played
-  gets a maze it can show whole; the window above is for the widths where no
-  reserve can make one fit.
+- **A line is wider than the screen.** Only the maze is measured against the
+  terminal's columns, so the two long lines under it are the ones that can
+  run past the last one. The controls line is 60 characters, 79 in quest
+  mode, and no option makes either shorter; the status line grows with what
+  it has to tally, reaching 47 characters for a quest played with
+  `--collectibles 9`. A terminal narrower than either carries it onto the row
+  below it, and on a screen the frame fills that row is the bottom one, where
+  the carry takes the whole screen up exactly as a newline would. The maze a
+  run carves is sized with the rows both lines will actually occupy, so a
+  console wide enough for the mode being played gets a maze it can show
+  whole; the window above is for the widths where no reserve can make one
+  fit.
 
 A line carried onto the row below is broken on a space rather than in the
 middle of a word. A console wraps on the column it runs out of, so the

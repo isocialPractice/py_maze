@@ -3,6 +3,76 @@
 Defects that are understood but not yet fixed. Each section records how to
 reproduce the bug, what is known about it and what is not.
 
+## Resolved in 1.0.0a8: the clear-line escape eating a line that filled its row
+
+Found reviewing 1.0.0a7 on a real console. A frame line exactly as many
+characters long as the console is wide was drawn one character short, and the
+character lost was always the last one. At 60 columns the plain controls line
+read `... 'q' to quit` with no full stop, and at 79 columns the quest line
+read the same way - which are the widths each line had been shortened to fit,
+so each landed on the one width that broke it. At 59, 61, 78 and 80 columns
+both were correct.
+
+`frame_text` and `frame_diff` wrote `ANSI_CLEAR_LINE` after every line, so
+that a shorter line never left the tail of a longer one beside it. On the row
+a line fills to the last column there is nothing to clear, and the escape is
+not harmless there: a console that has just had its last column written
+leaves the cursor *on* that column with the wrap pending rather than past it,
+and `\x1b[K` erases from where the cursor stands. Isolated from the game with
+a plain `WriteConsoleW` into an allocated 60 column console, 60 characters
+read back as 60, and 60 characters followed by `\x1b[K` read back as 59 with
+a space in the last cell. A 60 character ruler behaved the same, so it was
+the width and not the text.
+
+Fixed in 1.0.0a8 by `line_fills_row`, which both functions now ask before
+writing the escape: a line whose length divides by the terminal's width ends
+flush with the last column, has no tail beside it to clear, and is written
+without it. A wrapped line is measured by the final row it is carried onto,
+which is the only row the escape ever follows.
+
+The suite could not see any of it, and that is the half worth recording.
+`TerminalScreen` modelled the cursor as moving *past* the last column when a
+write filled the row - its `put` said so in a comment, that "a line filling
+it exactly wraps nothing" - and its `K` branch truncated the row to
+`self.column - 1`, which for a full row is the whole row. The model was right
+that a full row does not wrap and wrong that the cursor had left the edge,
+and `\x1b[K` reads the cursor rather than the wrap. The model holds a pending
+wrap now, so a write ending on the last column leaves the cursor on it and a
+following `K` erases it, which is what the fix is measured against.
+
+## Resolved in 1.0.0a8: the maze carved a row too tall for the foot it was measured against
+
+The third round of the wrapped-foot family recorded below, and the same
+mistake each time: a line of the play screen's foot was ruled out of the
+reserve on a figure that was not the figure it reaches. `fit_to_terminal`
+added `frame_height([controls], size) - 1` and ruled the rest of the foot out
+in a comment - "the status line runs to 31 characters with an inventory on
+it". 31 is the quest tally alone; `status_line` puts a collectible tally
+beside it, so `--mode quest --collectibles 9` draws
+`time 0:03   moves 4   collected 2/9   items 1/3` at 47 characters, and 50
+once the clock passes an hour.
+
+Swept over 20 to 120 columns, plain and chase carved a row over from 20 to 29
+columns and quest from 20 to 39, two rows over on the narrowest of them.
+`python -m py_maze --mode quest --collectibles 9 --seed 2024` on a 39 by 24
+console carved 9 by 8 and built a frame standing 25 rows tall: `fit_frame`
+cut it on the very first frame, the `end` marker read `end 1 row below`, and
+the exit was off screen with no resize anywhere in it.
+
+Fixed in 1.0.0a8 by reserving the rows the whole foot occupies rather than
+the controls line's alone. Both lines of the foot that can outrun the console
+are settled before a maze is carved - the mode decides the controls line, and
+the mode with `--collectibles` decides how wide the tally beside it will be -
+so `mode_status` builds the tally the first frame will draw and
+`fit_to_terminal` takes it as its `status` argument beside `controls`. The
+comment ruling the status line out went with it. The two lines the foot has
+left are the `end` marker and a blank spacer, and neither reaches the edge of
+a console with room for a maze in it.
+
+`test_a_maze_carved_for_a_console_is_one_it_can_show_whole` asserts the
+property end to end, now with a tally carrying both of its counts and with
+the widths carried down to 20 - the shape and the width this came back on.
+
 ## Resolved in 2.4.0: the timed key reader stranding keys typed inside one tick
 
 Found reviewing 2.3.0, which gave the game loop a reader that waits a moment
