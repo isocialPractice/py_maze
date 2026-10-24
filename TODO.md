@@ -28,6 +28,34 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the row a wrapped line is carried onto
+
+#### Found Issues
+
+- [ ] The status line loses the row it wraps onto, in every mode, on every
+  console narrow enough to wrap it
+  - **Issue**: `frame_diff` addresses each line of a frame by its index in
+    the list, so a line carried onto the row below leaves the indexes and
+    the screen rows one apart and the next line is written on the wrap's
+    row. `MazeGame.frame` ends `["end", self.status(), "", controls]`, so
+    the blank spacer lands on the wrapped status line's second row and its
+    clear-line escape erases it. Read off a real conhost at seed 2024:
+    `--mode quest --collectibles 9` on 39 by 24 draws the 47 character
+    status line and row 18 comes back as 39 spaces, losing `tems 0/3`; the
+    same at 29, 24 and 20 columns loses `ed 0/9   items 0/3`,
+    `llected 0/9   items 0/3` and `  collected 0/9   items 0/3`, and
+    `--mode plain` and `--mode chase` with `--collectibles 9` lose `ed 0/9`
+    at 29 columns and `   collected 0/9` at 20. At 29 columns the tally
+    reads `collect` with no number on it. Isolated with no game in it, the
+    console does carry the tail onto the row below and does hold it there
+    until the blank line's escape is written over it. `frame_height`
+    already measures a frame in rows rather than lines and gets this
+    right; `frame_diff` never asks it. The suite's own `TerminalScreen`
+    reproduces the erasure exactly, so the 1183 tests pass only because
+    nothing asks it this question
+  - **Goal**: Resolve to [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md)
+  - From: UI/UX Override - the row a wrapped line is carried onto
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
