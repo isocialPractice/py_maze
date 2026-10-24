@@ -169,8 +169,8 @@ warning: --height 60 needs 121 rows but only 17 are available; using 8
 
 Only the maze rows are measured against the terminal's columns, which is why
 these two lines are the ones that wrap: `--width` caps a maze row to the
-columns there are, and nothing caps the foot. The `end` marker and the
-spacer never reach the edge of a terminal with room for a maze in it.
+columns there are, and nothing caps the foot. The `start` and `end` markers
+and the spacer never reach the edge of a terminal with room for a maze in it.
 
 Two limits apply to the capping:
 
