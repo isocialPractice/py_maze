@@ -22,6 +22,84 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [1.0.0a9] - 2026-10-25
+
+The lines of a frame addressed by the rows they sit on rather than by their
+place in the list, and the tally padded at its break as the controls line
+already was.
+
+The fourth fault in the play screen's foot, and the first of them that is
+not a figure nobody checked. `frame_height` has measured a frame in screen
+rows since `1.0.0a6`, and `fit_frame`, the wipe and both cursor parks were
+converted to ask it. The one place still counting lines was the per line
+addressing inside `frame_diff` itself, which is the place a wrap actually
+costs a row.
+
+**The line after a wrapped one was written on the wrap's row.**
+`frame_diff` addressed every line by `ANSI_ROW % row` for
+`row, line in enumerate(current, start=1)`, so from the first wrapped line
+onward the list and the screen had drifted apart by one.
+`MazeGame.frame` ends `['end', self.status(), '', controls]`, which puts
+the blank spacer directly after the tally - and a blank line is not exempt
+from the clear-line escape, `line_fills_row` returning False for an empty
+line by design, so `[K` was written at column 0 of the row the tally
+had been carried onto and erased it whole.
+
+Read off a real conhost at seed 2024, `--mode quest --collectibles 9` on a
+39 by 24 console: the 47 character tally went out whole and the row holding
+`tems 0/3` came back as 39 spaces. The same run at 29, 24 and 20 columns
+lost `ed 0/9   items 0/3`, `llected 0/9   items 0/3` and
+`  collected 0/9   items 0/3`; `--mode plain` and `--mode chase` with
+`--collectibles 9` lost `ed 0/9` at 29 columns and `   collected 0/9` at
+20. At 29 columns the tally read `collect` with no number on it at all, and
+at 20 the player was given neither count.
+
+**The suite's own screen model reproduced it exactly**, which is the half
+worth recording twice over: `TerminalScreen` has modelled width and the
+pending wrap since `1.0.0a8`, so replaying `frame_diff`'s output through it
+at 39 columns returned the row empty where `tems 0/3` belonged. The 1183
+tests passed because nothing asked it the question.
+
+**The tally was broken inside a word.** `MazeGame.render` padded the last
+line of the frame so the console's break would land on a space, on the
+premise that it was "the only one long enough to be carried onto the row
+below". The reserve added in `1.0.0a8` disproved that premise in the same
+version it was written: the tally reaches 47 characters and wraps every
+console under 48 columns, which is why a row is reserved for it. Both lines
+of the foot are padded now, and `wrap_on_spaces` hands a line back unpadded
+where the padding would cost a row, so the rows either line occupies are
+unchanged and the maze is fitted exactly as it was.
+
+### Fixed
+
+- **A line carried onto the row below lost that row to the line after it**,
+  in every mode, on every console narrow enough to wrap the tally.
+  `frame_diff` addresses a line by the screen row it belongs on now - the
+  first row plus the rows every line above it occupies, which is what
+  `frame_height` already counts - so the rows of a wrapped line are held by
+  the console rather than written over. A line left alone by the difference
+  path counts the rows it is occupying toward where the next written line
+  goes, exactly as a written one does, and a frame with no terminal to
+  measure is still addressed by its line count
+- The wipe that clears the rows a shorter frame gave up is measured in the
+  rows its dropped lines were occupying and starts on the row below the
+  frame's own last one, which is the row the addressing above it counts to.
+  Both ends of it agreed about where the frame ended while every line fit
+  on a row; a frame that wrapped moved only one of them
+- **The tally was broken inside a word on every console that wrapped it**,
+  reading `collect` with its number on the row below at 29 columns.
+  `MazeGame.render` pads both lines of the foot a console can be narrower
+  than, which are the two `fit_to_terminal` reserves a wrapped row for, and
+  the comment resting the padding on the last line of the frame went with
+  it
+
+### Changed
+
+- `docs/playing.md` describes the break both lines of the foot are padded
+  at rather than the one, says what a line whose words need more rows than
+  the console's own break keeps instead, and records that a line carried
+  onto the row below keeps that row
+
 ## [1.0.0a8] - 2026-10-23
 
 The two lines of the play screen's foot measured against the console they

@@ -628,17 +628,24 @@ class MazeGame:
         drawn_size = size if self.drawn_size is None else self.drawn_size
         self.drawn_size = size
 
-        # the last line of the frame is the only one long enough to be
-        # carried onto the row below - the guide's answer runs to 104
-        # characters - and a console breaks it on the column rather
-        # than on the word. Padding it to the end of the row moves the
-        # break onto a space; the rows it occupies are unchanged, so
-        # the frame below is fitted exactly as it was.
+        # the two lines of the foot a console can be narrower than,
+        # which are the two fit_to_terminal reserves a wrapped row
+        # for: the status line and the controls line the frame ends
+        # with. The guide's answer reaches 104 characters there, and
+        # the tally reaches 47 for a quest played with
+        # --collectibles 9, so every console under 48 columns wraps it.
+        # A console breaks a line on the column rather than on the
+        # word; padding to the end of the row moves the break onto a
+        # space, and wrap_on_spaces hands a line back unpadded where
+        # the padding would cost a row, so the rows either line
+        # occupies are unchanged and the frame below is fitted exactly
+        # as it was.
         #
         # A terminal that cannot be drawn on by row is written whole
         # for every frame and is not measured at all, so there is no
         # width there to pad against - and output with no terminal
         # behind it is not wrapped by anything
+        lines[-3] = wrap_on_spaces(lines[-3], size)
         lines[-1] = wrap_on_spaces(lines[-1], size)
 
         # the frame is cut to the console it is being drawn on rather

@@ -541,6 +541,21 @@ def frame_diff(previous, current, whole=False, size=None):
     that did not change are left alone, which is what a player reads as
     a still controls line instead of a screen that blinks whole.
 
+    A line is addressed by the screen row it belongs on rather than by
+    its place in the list, and the two are the same count only while
+    every line fits on one row. A console carries a line longer than it
+    is wide onto the row below, so from the first wrapped line onward
+    the list and the screen have drifted apart and a line addressed by
+    its index lands on the row a wrap is sitting on. The status line
+    reaches 47 characters for a quest played with ``--collectibles 9``
+    and wraps every console under 48 columns, where the blank spacer
+    that follows it was addressed to its second row and the spacer's
+    clear-line escape took the tail of the tally off the screen.
+
+    The rows of a line that was skipped count toward where the next
+    written line goes, exactly as a written one's do: a line left alone
+    is still occupying the rows it was drawn on.
+
     Args:
         previous: Lines of the frame already on screen
         current: Lines of the frame that should be on it
@@ -550,13 +565,14 @@ def frame_diff(previous, current, whole=False, size=None):
             that draws the whole frame instead: every row is addressed
             and written, so the picture is put back wherever it drifted
             to rather than being repaired a changed line at a time
-        size: The terminal the frame is drawn on, for the row the
-            cursor is parked on. A frame carrying a wrapped line stands
-            taller than it has lines, so the row below it is below its
-            height rather than below its line count - and the end of a
-            game is printed from where this leaves the cursor. None
-            parks on the line count, which is the row below a frame
-            nothing wrapped
+        size: The terminal the frame is drawn on, for the rows its
+            lines are carried onto and the row the cursor is parked on.
+            A frame carrying a wrapped line stands taller than it has
+            lines, so the row below it is below its height rather than
+            below its line count - and the end of a game is printed
+            from where this leaves the cursor. None addresses a line by
+            its place in the list and parks on the line count, which is
+            what a frame nothing wrapped occupies
 
     Returns:
         str: The escapes and the text that turn the one frame into the
@@ -567,31 +583,39 @@ def frame_diff(previous, current, whole=False, size=None):
     """
 
     writes = []
+    row = 1
 
-    for row, line in enumerate(current, start=1):
-        if not whole and row <= len(previous) and previous[row - 1] == line:
-            continue
+    for index, line in enumerate(current):
+        if whole or index >= len(previous) or previous[index] != line:
+            # the wipe is left off a line that fills its row, which has
+            # no tail beside it to clear and would lose its own last
+            # character to the escape, per line_fills_row
+            writes.append(ANSI_ROW % row + line
+                          + ('' if line_fills_row(line, size)
+                             else ANSI_CLEAR_LINE))
 
-        # the wipe is left off a line that fills its row, which has no
-        # tail beside it to clear and would lose its own last character
-        # to the escape, per line_fills_row
-        writes.append(ANSI_ROW % row + line
-                      + ('' if line_fills_row(line, size)
-                         else ANSI_CLEAR_LINE))
+        # the row the line after this one belongs on, which is below
+        # every row this one occupies whether or not it was written:
+        # the rows a wrapped line is carried onto are held by the
+        # console rather than by this call
+        row += frame_height([line], size)
 
     # a frame shorter than the one it replaces would leave the tail of
-    # the older one on screen, so every row it no longer covers is
-    # wiped. Both ends are line counts, and the one caller that can
-    # hand over frames of different lengths - MazeGame.render - cuts
-    # `previous` to the length of `current` before it gets here and
-    # wipes what a shrunken console took itself, in rows
-    for row in range(len(current) + 1, len(previous) + 1):
-        writes.append(ANSI_ROW % row + ANSI_CLEAR_LINE)
+    # the older one on screen, so the rows the lines it dropped were
+    # occupying are wiped. The wipe starts on the row below the frame's
+    # own last one, which is the row the addressing above counted to,
+    # so the two agree about where the frame ends however much of it
+    # wrapped. The one caller that can hand over frames of different
+    # lengths - MazeGame.render - cuts `previous` to the length of
+    # `current` before it gets here and wipes what a shrunken console
+    # took itself, in rows
+    dropped = frame_height(previous[len(current):], size)
+    wiped = wipe_rows(row - 1, row - 1 + dropped, size)
 
-    if not writes:
+    if not writes and not wiped:
         return ''
 
-    return ''.join(writes) + ANSI_ROW % (frame_height(current, size) + 1)
+    return ''.join(writes) + wiped + ANSI_ROW % row
 
 
 def frame_wraps(lines, size):

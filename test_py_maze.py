@@ -3447,6 +3447,281 @@ class TestAFrameLineAsWideAsTheConsole(unittest.TestCase):
         self.assertIn('x' * 60 + py_maze.ANSI_CLEAR_LINE, frame)
 
 
+class TestTheRowAWrappedLineIsCarriedOnto(unittest.TestCase):
+    # a frame is a list of lines and a screen is a grid of rows, and a
+    # console carries a line longer than it is wide onto the row below.
+    # A line addressed by its place in the list therefore lands a row
+    # high from the first wrapped line onward, and the line following a
+    # wrapped one was written on the row the wrap was sitting on.
+    #
+    # Read off a real console at 1.0.0a8: `--mode quest
+    # --collectibles 9` draws a 47 character tally, and on a 39 column
+    # console the row holding `tems 0/3` came back as 39 spaces.
+    # MazeGame.frame ends ['end', status, '', controls], so the blank
+    # spacer follows the tally, and a blank line is not exempt from the
+    # clear-line escape - line_fills_row returns False for an empty
+    # line by design - so the escape was written at column 0 of the
+    # wrap's row and erased it whole.
+    #
+    # frame_height already measured a frame in rows rather than lines
+    # and got this right. frame_diff simply never asked it.
+
+    # the mode, the collectible count and the console width, as each
+    # row of the fault was read off the console
+    WIDTHS = (('quest', 9, 39), ('quest', 9, 29), ('quest', 9, 24),
+              ('quest', 9, 20), ('plain', 9, 29), ('plain', 9, 20),
+              ('chase', 9, 29), ('chase', 9, 20))
+
+    def foot(self, mode, collectibles):
+        # the foot of a play screen, in the shape MazeGame.frame ends
+        # with: the end marker, the tally, a blank spacer and the
+        # controls line
+        #
+        # Returns:
+        #     list: The four lines, as the frame builds them
+
+        return ['end', py_maze.mode_status(mode, collectibles), '',
+                py_maze.mode_controls(mode)]
+
+    def drawn(self, lines, columns, whole=True, previous=None):
+        # draw a frame on a console of a given width and read the rows
+        # of it back
+        #
+        # Args:
+        #     lines: The frame to draw
+        #     columns: Columns the console holds
+        #     whole: Whether every line is written or only the ones
+        #         that changed
+        #     previous: The frame already on screen, which defaults to
+        #         a frame of the same length sharing none of its lines
+        #
+        # Returns:
+        #     list: The rows of the screen, top to bottom
+
+        size = terminal_size(columns, 24)
+        if previous is None:
+            previous = ['stale %d' % at for at in range(len(lines))]
+        screen = TerminalScreen(height=24, width=columns)
+
+        return screen.feed(py_maze.frame_diff(previous, lines, whole=whole,
+                                              size=size)).lines()
+
+    def read(self, rows, columns, first, height):
+        # join a wrapped line back up from the rows it was carried onto
+        #
+        # Args:
+        #     rows: The rows of the screen
+        #     columns: Columns the console holds
+        #     first: Row the line starts on, counted from 0
+        #     height: Rows the line occupies
+        #
+        # Returns:
+        #     str: The line as the console holds it
+
+        return ''.join(row.ljust(columns)
+                       for row in rows[first:first + height]).rstrip()
+
+    def test_every_width_here_is_one_the_tally_wraps_on(self):
+        # the premise: a console wide enough for the tally has no wrap
+        # to lose and says nothing about this
+        for mode, collectibles, columns in self.WIDTHS:
+            size = terminal_size(columns, 24)
+            status = py_maze.mode_status(mode, collectibles)
+
+            self.assertGreater(
+                len(status), columns,
+                '%s on %d columns does not wrap' % (mode, columns))
+            self.assertGreater(py_maze.frame_height([status], size), 1)
+
+    def test_a_wrapped_tally_is_readable_whole_off_the_screen(self):
+        for mode, collectibles, columns in self.WIDTHS:
+            size = terminal_size(columns, 24)
+            lines = self.foot(mode, collectibles)
+            status = lines[1]
+            rows = self.drawn(lines, columns)
+
+            self.assertEqual(
+                self.read(rows, columns, 1,
+                          py_maze.frame_height([status], size)),
+                status, '%s on %d columns' % (mode, columns))
+
+    def test_it_is_readable_off_a_difference_as_well_as_a_whole_frame(self):
+        # both paths address rows the same way, so both drifted
+        for mode, collectibles, columns in self.WIDTHS:
+            size = terminal_size(columns, 24)
+            lines = self.foot(mode, collectibles)
+            status = lines[1]
+            rows = self.drawn(lines, columns, whole=False)
+
+            self.assertEqual(
+                self.read(rows, columns, 1,
+                          py_maze.frame_height([status], size)),
+                status, '%s on %d columns' % (mode, columns))
+
+    def test_the_spacer_and_the_controls_line_land_below_the_wrap(self):
+        # what the tally was losing its row to, and where the two lines
+        # under it belong instead
+        columns = 39
+        size = terminal_size(columns, 24)
+        lines = self.foot('quest', 9)
+        rows = self.drawn(lines, columns)
+        under = 1 + py_maze.frame_height([lines[1]], size)
+
+        self.assertEqual(rows[under], '')
+        self.assertEqual(self.read(rows, columns, under + 1,
+                                   py_maze.frame_height([lines[3]], size)),
+                         lines[3])
+
+    def test_a_line_left_alone_still_counts_the_rows_it_occupies(self):
+        # the difference path skips a line that did not change, and the
+        # console is holding it on every row it was drawn on: the rows
+        # of a skipped line count toward where the next written line
+        # goes exactly as a written one's do
+        columns = 39
+        size = terminal_size(columns, 24)
+        lines = self.foot('quest', 9)
+        screen = TerminalScreen(height=24, width=columns)
+
+        screen.feed(py_maze.frame_diff([], lines, whole=True, size=size))
+        screen.feed(py_maze.frame_diff(lines, lines[:3] + ['pressed a key'],
+                                       size=size))
+        rows = screen.lines()
+
+        self.assertEqual(self.read(rows, columns, 1,
+                                   py_maze.frame_height([lines[1]], size)),
+                         lines[1])
+        self.assertEqual(rows[1 + py_maze.frame_height([lines[1]], size) + 1],
+                         'pressed a key')
+
+    def test_the_cursor_is_parked_below_the_rows_rather_than_the_lines(self):
+        columns = 39
+        size = terminal_size(columns, 24)
+        lines = self.foot('quest', 9)
+        diff = py_maze.frame_diff([], lines, whole=True, size=size)
+
+        self.assertTrue(diff.endswith(
+            py_maze.ANSI_ROW % (py_maze.frame_height(lines, size) + 1)))
+
+    def test_a_shorter_frame_wipes_the_rows_its_dropped_lines_held(self):
+        # the wipe starts on the row below the frame's own last one,
+        # which is the row the addressing above it counted to, so the
+        # two agree about where the frame ends however much of it
+        # wrapped
+        columns = 39
+        size = terminal_size(columns, 24)
+        lines = self.foot('quest', 9)
+        diff = py_maze.frame_diff(lines, lines[:2], size=size)
+        under = py_maze.frame_height(lines[:2], size)
+        dropped = py_maze.frame_height(lines[2:], size)
+
+        # every row the two dropped lines were occupying is wiped, and
+        # the cursor is parked on the first of them
+        self.assertEqual(cursor_rows(diff),
+                         list(range(under + 1, under + 1 + dropped))
+                         + [under + 1])
+
+    def test_a_frame_with_no_terminal_to_measure_is_addressed_by_line(self):
+        # output that is piped or redirected is wrapped by nothing, so
+        # a line's place in the list is the row it is on
+        lines = self.foot('quest', 9)
+        diff = py_maze.frame_diff([], lines, whole=True)
+
+        self.assertEqual(cursor_rows(diff), [1, 2, 3, 4, 5])
+
+
+class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
+    # the controls line was padded out to the end of its row so that
+    # the console's break inside a word lands on a space instead, on
+    # the premise that the last line of the frame is the only one long
+    # enough to be carried onto the row below. The tally disproved that
+    # premise - 47 characters for a quest played with --collectibles 9,
+    # which is why fit_to_terminal reserves a row for it - so on a 29
+    # column console it read `collect` with its number on the row
+    # below. Both lines of the foot a console can be narrower than are
+    # padded now, and wrap_on_spaces hands a line back unpadded where
+    # the padding would cost a row, so the rows either line occupies
+    # are unchanged and the maze is fitted exactly as it was.
+
+    def drawn(self, columns, collectibles=(1, 1)):
+        # play one frame of a game holding a pickup, on a console of a
+        # given width
+        #
+        # Returns:
+        #     tuple: (the game, the rows of the screen)
+
+        size = terminal_size(columns, 24)
+        game = py_maze.MazeGame(grid_from_strings(TestMazeGame.MAZE),
+                                collectibles=[collectibles])
+        stream = io.StringIO()
+
+        with mock.patch.object(py_maze.game, 'terminal_size',
+                               return_value=size), \
+                mock.patch.object(py_maze.game, 'ansi_enabled',
+                                  return_value=True), \
+                mock.patch.object(game, 'clear_screen'):
+            game.render(stream)
+
+        screen = TerminalScreen(height=24, width=columns)
+
+        return game, screen.feed(stream.getvalue()).lines()
+
+    def tally_rows(self, rows, columns, game, size):
+        # the rows the tally was drawn on, read off the screen
+        #
+        # Returns:
+        #     list: Those rows, in order
+
+        lines = game.frame()
+        first = py_maze.frame_height(lines[:-3], size)
+
+        return rows[first:first + py_maze.frame_height([game.status()], size)]
+
+    def test_the_tally_wraps_on_this_console_and_is_broken_on_a_space(self):
+        columns = 29
+        size = terminal_size(columns, 24)
+        game, rows = self.drawn(columns)
+        drawn = self.tally_rows(rows, columns, game, size)
+
+        # the premise: the tally needs two rows at this width
+        self.assertEqual(len(drawn), 2)
+        self.assertFalse(drawn[1].startswith(' '),
+                         'the break fell inside a word: %r' % drawn[1])
+        self.assertTrue(game.status().endswith(drawn[1].rstrip()),
+                        '%r is not the tail of the tally' % drawn[1])
+
+    def test_the_whole_tally_is_still_on_the_screen(self):
+        columns = 29
+        size = terminal_size(columns, 24)
+        game, rows = self.drawn(columns)
+        drawn = self.tally_rows(rows, columns, game, size)
+
+        self.assertEqual(''.join(row.ljust(columns) for row in drawn).split(),
+                         game.status().split())
+
+    def test_padding_the_tally_costs_the_maze_no_row(self):
+        # wrap_on_spaces hands a line back unchanged where the padding
+        # would need a row the console's own break does not, so the
+        # reserve fit_to_terminal counts is the same either way
+        for columns in (20, 24, 29, 39):
+            size = terminal_size(columns, 24)
+            status = py_maze.mode_status('quest', 9)
+
+            self.assertEqual(
+                py_maze.frame_height([py_maze.wrap_on_spaces(status, size)],
+                                     size),
+                py_maze.frame_height([status], size),
+                'the tally gained a row on %d columns' % columns)
+
+    def test_a_tally_that_fits_its_row_is_left_exactly_as_it_was(self):
+        columns = 60
+        size = terminal_size(columns, 24)
+        game, rows = self.drawn(columns)
+
+        self.assertEqual(py_maze.frame_height([game.status()], size), 1)
+        self.assertEqual(self.tally_rows(rows, columns, game, size),
+                         [game.status()])
+
+
 class TestPlayScreenOnAScreenItFills(unittest.TestCase):
     # 2.2.5 drew only the lines that changed, addressing each by an
     # absolute screen row on the understanding that frame line 1 sits on

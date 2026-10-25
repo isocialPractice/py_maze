@@ -366,11 +366,20 @@ up in the lines of a frame:
   whole; the window above is for the widths where no reserve can make one
   fit.
 
-A line carried onto the row below is broken on a space rather than in the
-middle of a word. A console wraps on the column it runs out of, so the
-guide's answer in quest mode read as `...you can already r` with `each`
-underneath it; the line is padded out to the end of its row instead, which
-leaves the next word to start the row below and costs the maze nothing.
+Both of those lines are broken on a space rather than in the middle of a
+word. A console wraps on the column it runs out of, so the guide's answer in
+quest mode read as `...you can already r` with `each` underneath it, and the
+quest tally on a 29 column console read as `collect` with its number on the
+row below; each line is padded out to the end of its row instead, which
+leaves the next word to start the row below and costs the maze nothing. A
+line whose words need more rows than the console's own break does keeps that
+break: the padding is only ever free when it fits in the rows the line was
+already occupying, and a maze row is the worse thing to spend.
+
+A line carried onto the row below also keeps that row. The lines of a frame
+are addressed by the screen rows they belong on rather than by their place in
+the frame, so the blank spacer under a wrapped status line is written below
+the row the tally was carried onto rather than over it.
 
 So the terminal is measured once a frame. When its size has changed since the
 last frame, or when a line of the frame runs past its last column, the whole

@@ -28,67 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the row a wrapped line is carried onto
-
-#### Resolve Issues
-
-- [ ] Wrapped Foot 4 - only the last line of the frame is padded, and the
-  premise that says so is now false
-  - **Issue**: `MazeGame.render` pads one line, `lines[-1]`
-    (`py_maze/game.py:642`), and the comment above it at
-    `py_maze/game.py:631` gives the reason: "the last line of the frame is
-    the only one long enough to be carried onto the row below". `Wrapped
-    Foot 3` disproved that premise in the same turn - `mode_status` with
-    `--mode quest --collectibles 9` is 47 characters and wraps every console
-    under 48 columns, which is why `fit_to_terminal` now reserves a row for
-    it. So the status line wraps, is not padded, and a real conhost breaks
-    it inside a word: at 39 columns `collected 0/9   i` carries `tems 0/3`
-    over, and at 29 columns `collect` carries `ed 0/9   items 0/3` over -
-    the table read off a console this turn in
-    [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md).
-    `docs/playing.md:369` then tells a reader the opposite with nothing
-    qualifying it, "A line carried onto the row below is broken on a space
-    rather than in the middle of a word", in a paragraph the same turn
-    rewrote from naming the controls line alone to naming both lines of the
-    foot. The erasure queued below is what hides the break today, so
-    addressing `frame_diff` by screen row is what puts it in front of a
-    player
-  - **Goal**: either pad the status line as the controls line is padded -
-    `wrap_on_spaces` already hands a line back unchanged where padding it
-    would cost a row, so the reserve `fit_to_terminal` counts is the same
-    either way and the foot stays four lines - or narrow
-    `docs/playing.md:369` to the line it is true of. Whichever is chosen,
-    rest the comment at `py_maze/game.py:631` on a reason that holds rather
-    than on the premise the same turn disproved, and leave its second
-    paragraph, the ANSI and no-terminal cases, as it stands
-  - From: Gameplay Enhancements `->` New Game Modes
-
-#### Found Issues
-
-- [ ] The status line loses the row it wraps onto, in every mode, on every
-  console narrow enough to wrap it
-  - **Issue**: `frame_diff` addresses each line of a frame by its index in
-    the list, so a line carried onto the row below leaves the indexes and
-    the screen rows one apart and the next line is written on the wrap's
-    row. `MazeGame.frame` ends `["end", self.status(), "", controls]`, so
-    the blank spacer lands on the wrapped status line's second row and its
-    clear-line escape erases it. Read off a real conhost at seed 2024:
-    `--mode quest --collectibles 9` on 39 by 24 draws the 47 character
-    status line and row 18 comes back as 39 spaces, losing `tems 0/3`; the
-    same at 29, 24 and 20 columns loses `ed 0/9   items 0/3`,
-    `llected 0/9   items 0/3` and `  collected 0/9   items 0/3`, and
-    `--mode plain` and `--mode chase` with `--collectibles 9` lose `ed 0/9`
-    at 29 columns and `   collected 0/9` at 20. At 29 columns the tally
-    reads `collect` with no number on it. Isolated with no game in it, the
-    console does carry the tail onto the row below and does hold it there
-    until the blank line's escape is written over it. `frame_height`
-    already measures a frame in rows rather than lines and gets this
-    right; `frame_diff` never asks it. The suite's own `TerminalScreen`
-    reproduces the erasure exactly, so the 1183 tests pass only because
-    nothing asks it this question
-  - **Goal**: Resolve to [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md)
-  - From: UI/UX Override - the row a wrapped line is carried onto
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2821,5 +2760,58 @@ No items are currently queued in this section.
     same end-to-end property with a status line carrying both tallies and
     with the widths carried down to 20
   - From: Gameplay Enhancements `->` New Game Modes
+- [x] Wrapped Foot 4 - only the last line of the frame is padded, and the
+  premise that says so is now false
+  - **Issue**: `MazeGame.render` pads one line, `lines[-1]`
+    (`py_maze/game.py:642`), and the comment above it at
+    `py_maze/game.py:631` gives the reason: "the last line of the frame is
+    the only one long enough to be carried onto the row below". `Wrapped
+    Foot 3` disproved that premise in the same turn - `mode_status` with
+    `--mode quest --collectibles 9` is 47 characters and wraps every console
+    under 48 columns, which is why `fit_to_terminal` now reserves a row for
+    it. So the status line wraps, is not padded, and a real conhost breaks
+    it inside a word: at 39 columns `collected 0/9   i` carries `tems 0/3`
+    over, and at 29 columns `collect` carries `ed 0/9   items 0/3` over -
+    the table read off a console this turn in
+    [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md).
+    `docs/playing.md:369` then tells a reader the opposite with nothing
+    qualifying it, "A line carried onto the row below is broken on a space
+    rather than in the middle of a word", in a paragraph the same turn
+    rewrote from naming the controls line alone to naming both lines of the
+    foot. The erasure queued below is what hides the break today, so
+    addressing `frame_diff` by screen row is what puts it in front of a
+    player
+  - **Goal**: either pad the status line as the controls line is padded -
+    `wrap_on_spaces` already hands a line back unchanged where padding it
+    would cost a row, so the reserve `fit_to_terminal` counts is the same
+    either way and the foot stays four lines - or narrow
+    `docs/playing.md:369` to the line it is true of. Whichever is chosen,
+    rest the comment at `py_maze/game.py:631` on a reason that holds rather
+    than on the premise the same turn disproved, and leave its second
+    paragraph, the ANSI and no-terminal cases, as it stands
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] The status line loses the row it wraps onto, in every mode, on every
+  console narrow enough to wrap it
+  - **Issue**: `frame_diff` addresses each line of a frame by its index in
+    the list, so a line carried onto the row below leaves the indexes and
+    the screen rows one apart and the next line is written on the wrap's
+    row. `MazeGame.frame` ends `["end", self.status(), "", controls]`, so
+    the blank spacer lands on the wrapped status line's second row and its
+    clear-line escape erases it. Read off a real conhost at seed 2024:
+    `--mode quest --collectibles 9` on 39 by 24 draws the 47 character
+    status line and row 18 comes back as 39 spaces, losing `tems 0/3`; the
+    same at 29, 24 and 20 columns loses `ed 0/9   items 0/3`,
+    `llected 0/9   items 0/3` and `  collected 0/9   items 0/3`, and
+    `--mode plain` and `--mode chase` with `--collectibles 9` lose `ed 0/9`
+    at 29 columns and `   collected 0/9` at 20. At 29 columns the tally
+    reads `collect` with no number on it. Isolated with no game in it, the
+    console does carry the tail onto the row below and does hold it there
+    until the blank line's escape is written over it. `frame_height`
+    already measures a frame in rows rather than lines and gets this
+    right; `frame_diff` never asks it. The suite's own `TerminalScreen`
+    reproduces the erasure exactly, so the 1183 tests pass only because
+    nothing asks it this question
+  - **Goal**: Resolve to [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md)
+  - From: UI/UX Override - the row a wrapped line is carried onto
 
 </details>

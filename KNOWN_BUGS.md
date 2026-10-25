@@ -3,6 +3,80 @@
 Defects that are understood but not yet fixed. Each section records how to
 reproduce the bug, what is known about it and what is not.
 
+## Resolved in 1.0.0a9: the line after a wrapped one written onto the wrap's row
+
+Found reviewing 1.0.0a8 on a real console. A line carried onto the row below
+held that row only until the next line of the frame was written, which was
+addressed to it. In quest mode with `--collectibles 9` the tally runs to 47
+characters, so every console under 48 columns wraps it - and the blank
+spacer that follows it in the frame was written at column 0 of the row the
+tally had been carried onto, taking the row with it.
+
+Read off a real conhost at seed 2024.
+`python -m py_maze --mode quest --collectibles 9 --seed 2024` on a 39 by 24
+console drew the tally whole and the row holding `tems 0/3` came back as 39
+spaces. The same run at 29, 24 and 20 columns lost
+`ed 0/9   items 0/3`, `llected 0/9   items 0/3` and
+`  collected 0/9   items 0/3`; `--mode plain` and `--mode chase` with
+`--collectibles 9` lost `ed 0/9` at 29 columns and `   collected 0/9` at 20.
+At 29 columns the tally read `collect` with no number on it at all.
+Isolated with no game in it, writing the frame's three escapes at the rows
+`frame_diff` gave them into an allocated 39 column console, the console did
+carry the tail onto the row below and did hold it there until the blank
+line's escape was written over it.
+
+`frame_diff` addressed every line by its place in the list -
+`ANSI_ROW % row` for `row, line in enumerate(current, start=1)` - so from
+the first wrapped line onward the list and the screen had drifted apart by
+one. A blank line is not exempt from the clear-line escape:
+`line_fills_row` returns False for an empty line by design, because an empty
+line occupies its row without writing to any column of it.
+
+Fixed in 1.0.0a9 by addressing a line by the screen row it belongs on, which
+is the first row plus the rows every line above it occupies - what
+`frame_height` has counted since 1.0.0a6. The rows of a line the difference
+path skipped count toward where the next written line goes exactly as a
+written line's do, since a line left alone is still occupying the rows it
+was drawn on, and a frame with no terminal to measure is addressed by its
+line count as before. The wipe at the end of the call is measured in the
+rows its dropped lines were occupying and starts on the row below the
+frame's own last one, so it and the addressing agree about where the frame
+ends however much of it wrapped.
+
+The suite's own screen model reproduced the fault exactly and was never
+asked. `TerminalScreen` has modelled width and the pending wrap since
+1.0.0a8, so replaying `frame_diff`'s output through it at 39 columns
+returned the row empty where `tems 0/3` belonged. The 1183 tests passed on
+a fault their one instrument could see, which is the reason worth recording:
+an instrument is only worth what is asked of it.
+
+## Resolved in 1.0.0a9: the tally broken inside a word on a console that wrapped it
+
+The fourth round of the wrapped-foot family, and recorded apart from the row
+above because the cause is different: nothing was erased, the break simply
+fell where the console put it. `MazeGame.render` padded the last line of the
+frame out to the end of its row so the break would land on a space, on the
+premise named in its own comment - "the last line of the frame is the only
+one long enough to be carried onto the row below". The reserve added in
+1.0.0a8 disproved that premise in the same version it was written: the tally
+reaches 47 characters with a collectible count and an inventory on it, which
+is why `fit_to_terminal` reserves a row for it.
+
+So on a 29 column console the tally read `collect` with `ed 0/9   items 0/3`
+on the row below, and `docs/playing.md` told a reader the opposite with
+nothing qualifying it - "A line carried onto the row below is broken on a
+space rather than in the middle of a word".
+
+Fixed in 1.0.0a9 by padding both lines of the foot a console can be narrower
+than, which are the two `fit_to_terminal` reserves a wrapped row for.
+`wrap_on_spaces` hands a line back unpadded where the padding would need a
+row the console's own break does not, so the rows either line occupies are
+unchanged, the reserve is the same either way and the maze is fitted exactly
+as it was - at 24 columns the quest tally is one such line, and the
+console's break inside `collected` stands there. The comment resting the
+padding on the last line of the frame went with the fix, and the page says
+what a line keeps its own break for.
+
 ## Resolved in 1.0.0a8: the clear-line escape eating a line that filled its row
 
 Found reviewing 1.0.0a7 on a real console. A frame line exactly as many
@@ -211,6 +285,14 @@ saw - quitting a game on a 60 column console left the second row of the
 controls line under the summary, with nothing above it. The parks cancelled
 against each other at most widths, which is why nothing else showed. All
 five measure rows now.
+
+**1.0.0a9 found the sixth.** Those five each measure a whole frame, and the
+one place left counting lines was `frame_diff` addressing the lines inside
+one: a line went out at `ANSI_ROW % index`, so the line after a wrapped one
+landed on the row the wrap was sitting on. It is the site where a wrap
+actually costs a row, and the only one of the six where two counts cannot
+cancel - the drift opens at the first wrapped line and runs to the end of the
+frame. The section at the top of this file records what a player saw.
 
 The maze a run carves is sized against those rows as well, so a console wide
 enough for the mode being played is handed a maze it can show whole instead
