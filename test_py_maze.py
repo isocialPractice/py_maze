@@ -3722,6 +3722,159 @@ class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
                          [game.status()])
 
 
+class TestTheTallyThroughAPlayedGame(unittest.TestCase):
+    # the two classes above draw a frame each, and one frame is not
+    # where this went wrong on a console. The blank spacer and the
+    # controls line are exactly the lines a difference leaves alone, so
+    # which row they were addressed to told on the frames after the
+    # first as much as on the first - and MazeGame.render is where the
+    # padding, the fitting and the addressing meet. 1.0.0a9 was read
+    # off a real conhost across a walk, a hint and the ending; this is
+    # the part of that reading no console is needed for, so every
+    # platform the suite runs on asks it too.
+    #
+    # 29 columns is the width. A game holding a pickup draws a 35
+    # character tally, so it wraps, and the 60 character controls line
+    # below it wraps as well: the foot stands three rows taller than it
+    # has lines here, and the two lines under the tally are the ones
+    # that used to be written over it.
+
+    COLUMNS = 29
+
+    # rows enough that fit_frame never cuts the frame, so what is read
+    # back is the whole foot rather than a window onto it
+    LINES = 16
+
+    # the cell the pickup is laid on, which is what puts `collected` on
+    # the tally and carries it past the last column
+    PICKUP = (3, 3)
+
+    def walk(self, keys):
+        # play a route on a console narrower than the tally
+        #
+        # The clock is left standing, so the tally changes from one
+        # frame to the next only as the player moves. Every frame is
+        # still a difference the move count rewrites, and what the
+        # tally should say is the same read before or after the route
+        #
+        # Args:
+        #     keys: The route walked before the game is quit
+        #
+        # Returns:
+        #     tuple: (the session, the screen it was played on)
+
+        session = PlaySession(list(keys) + ['q'],
+                              collectibles=[self.PICKUP])
+        session.play(sizes=[terminal_size(self.COLUMNS, self.LINES)])
+
+        return session, session.screen(height=self.LINES,
+                                       width=self.COLUMNS,
+                                       text=session.played())
+
+    def foot(self, session, screen):
+        # the foot of the play screen, read as the rows it occupies
+        #
+        # A line is joined back up from the rows the console carried it
+        # onto, each padded out to the last column: a row that lost its
+        # final cell reads exactly like a row that never had one once
+        # it is stripped, which is the fault this is here to catch
+        #
+        # Returns:
+        #     tuple: (the tally joined back up, the row the blank
+        #     spacer landed on, the controls line joined back up)
+
+        size = terminal_size(self.COLUMNS, self.LINES)
+        rows = screen.lines()
+        first = next((at for at, row in enumerate(rows)
+                      if row.startswith('time ')), None)
+        self.assertIsNotNone(first, 'no tally is on the screen at all')
+
+        def held(at, line):
+            tall = py_maze.frame_height([line], size)
+            return ''.join(row.ljust(self.COLUMNS)
+                           for row in rows[at:at + tall])
+
+        tally = py_maze.wrap_on_spaces(session.game.status(), size)
+        under = first + py_maze.frame_height([tally], size)
+
+        return (held(first, tally), rows[under],
+                held(under + 1, py_maze.wrap_on_spaces(
+                    py_maze.CONTROLS_LINE, size)))
+
+    def tally_reads(self, session, screen):
+        # what the console is holding where the tally was written, with
+        # the padding collapsed
+        #
+        # The break wrap_on_spaces moves consumes the space it falls
+        # on, and the tally breaks inside a three space field
+        # separator, so the whole of it survives a join: only the
+        # separator is shorter by the one space the break took
+        #
+        # Returns:
+        #     tuple: (the tally as read, the tally as the frame built it)
+
+        held, _, _ = self.foot(session, screen)
+
+        return (' '.join(held.split()),
+                ' '.join(session.game.status().split()))
+
+    def test_the_tally_and_the_controls_line_both_wrap_here(self):
+        # the premise of every test below it: a console with room for
+        # either line has no wrap to lose and says nothing about this
+        session, _ = self.walk([])
+        size = terminal_size(self.COLUMNS, self.LINES)
+        frame = session.game.frame()
+
+        self.assertGreater(len(session.game.status()), self.COLUMNS)
+        self.assertGreater(len(py_maze.CONTROLS_LINE), self.COLUMNS)
+        self.assertEqual(py_maze.frame_height(frame, size), len(frame) + 3)
+
+    def test_the_whole_tally_is_there_before_a_key_is_pressed(self):
+        session, screen = self.walk([])
+        read, built = self.tally_reads(session, screen)
+
+        self.assertEqual(read, built)
+
+    def test_the_whole_tally_is_still_there_after_a_route(self):
+        # every frame after the first is drawn as a difference, and the
+        # lines landing under the tally are the ones a difference skips
+        session, screen = self.walk(TestMazeGame.ROUTE[:-1])
+        read, built = self.tally_reads(session, screen)
+
+        self.assertEqual(read, built)
+
+    def test_the_whole_tally_is_still_there_after_a_hint(self):
+        session, screen = self.walk(['h'])
+        read, built = self.tally_reads(session, screen)
+
+        self.assertEqual(read, built)
+
+    def test_the_spacer_and_the_controls_line_land_below_the_tally(self):
+        # the row directly under the tally's last row is blank, and the
+        # controls line starts on the row after that - whole, which is
+        # asked of the cells rather than of a join: the controls line
+        # breaks on a single space between words, so a join reads
+        # `'h' fora hint` however right the screen is
+        size = terminal_size(self.COLUMNS, self.LINES)
+        padded = py_maze.wrap_on_spaces(py_maze.CONTROLS_LINE, size)
+
+        for keys in ([], ['h'], TestMazeGame.ROUTE[:-1]):
+            session, screen = self.walk(keys)
+            _, spacer, controls = self.foot(session, screen)
+
+            self.assertEqual(spacer.strip(), '')
+            self.assertEqual(controls, padded.ljust(
+                py_maze.frame_height([padded], size) * self.COLUMNS))
+
+    def test_nothing_scrolled_the_screen(self):
+        # a frame carried onto the bottom row takes the screen up a
+        # row, which is the fault the row addressing is built over
+        for keys in ([], ['h'], TestMazeGame.ROUTE[:-1]):
+            _, screen = self.walk(keys)
+
+            self.assertEqual(screen.scrolls, 0)
+
+
 class TestPlayScreenOnAScreenItFills(unittest.TestCase):
     # 2.2.5 drew only the lines that changed, addressing each by an
     # absolute screen row on the understanding that frame line 1 sits on
