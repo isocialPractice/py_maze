@@ -602,15 +602,24 @@ def frame_diff(previous, current, whole=False, size=None):
 
     # a frame shorter than the one it replaces would leave the tail of
     # the older one on screen, so the rows the lines it dropped were
-    # occupying are wiped. The wipe starts on the row below the frame's
-    # own last one, which is the row the addressing above counted to,
-    # so the two agree about where the frame ends however much of it
-    # wrapped. The one caller that can hand over frames of different
+    # occupying are wiped. Those rows run from below the lines `current`
+    # kept to the bottom of the older frame, and both ends are measured
+    # as `previous` was drawn: a dropped line is sitting on the row the
+    # frame it belonged to put it on rather than on one counted off the
+    # frame replacing it.
+    #
+    # A row the new frame has taken for itself is never wiped. A line
+    # `current` keeps can stand taller than the one it replaces, which
+    # carries the dropped lines' old rows up under the new frame, and a
+    # wipe reaching back that far would erase what was just written -
+    # so the wipe starts no higher than the row the addressing above
+    # counted to. The one caller that can hand over frames of different
     # lengths - MazeGame.render - cuts `previous` to the length of
-    # `current` before it gets here and wipes what a shrunken console
-    # took itself, in rows
-    dropped = frame_height(previous[len(current):], size)
-    wiped = wipe_rows(row - 1, row - 1 + dropped, size)
+    # `current` before it gets here, so nothing is dropped there and
+    # the rows a shrunken console took are wiped at the call site, in
+    # rows
+    kept = frame_height(previous[:len(current)], size)
+    wiped = wipe_rows(max(row - 1, kept), frame_height(previous, size), size)
 
     if not writes and not wiped:
         return ''

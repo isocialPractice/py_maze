@@ -3620,6 +3620,45 @@ class TestTheRowAWrappedLineIsCarriedOnto(unittest.TestCase):
                          list(range(under + 1, under + 1 + dropped))
                          + [under + 1])
 
+    def test_the_wipe_clears_where_a_dropped_line_was_drawn(self):
+        # the check above hands over two frames whose kept lines occupy
+        # the same rows in both, which is where a count of the dropped
+        # rows and the rows themselves are the same run. A kept line
+        # that loses a wrap parts them: the row count stays right and
+        # the rows it addresses are the new frame's, a row above where
+        # the dropped lines are sitting
+        columns = 39
+        size = terminal_size(columns, 24)
+        previous = ['a' * (columns + 11), 'b']
+        current = ['a']
+        screen = TerminalScreen(height=24, width=columns)
+
+        screen.feed(py_maze.frame_diff([], previous, whole=True, size=size))
+        screen.feed(py_maze.frame_diff(previous, current, size=size))
+
+        self.assertEqual(screen.lines()[2], '',
+                         'the dropped line is still on the row the frame '
+                         'that drew it put it on')
+
+    def test_the_wipe_leaves_a_row_the_new_frame_has_taken(self):
+        # a kept line can stand taller than the one it replaces, which
+        # carries the dropped lines' old rows up under the new frame. A
+        # wipe reaching back to where they were drawn would erase what
+        # was just written, so it starts no higher than the row the
+        # addressing counted to
+        columns = 39
+        size = terminal_size(columns, 24)
+        previous = ['a', 'b']
+        current = ['c' * (columns + 11)]
+        screen = TerminalScreen(height=24, width=columns)
+
+        screen.feed(py_maze.frame_diff([], previous, whole=True, size=size))
+        screen.feed(py_maze.frame_diff(previous, current, size=size))
+
+        self.assertEqual(self.read(screen.lines(), columns, 0,
+                                   py_maze.frame_height(current, size)),
+                         current[0])
+
     def test_a_frame_with_no_terminal_to_measure_is_addressed_by_line(self):
         # output that is piped or redirected is wrapped by nothing, so
         # a line's place in the list is the row it is on

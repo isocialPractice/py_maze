@@ -22,6 +22,33 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+Found reviewing `1.0.0a9`. The wipe `frame_diff` keeps for a frame shorter
+than the one it replaces counted the right number of rows and addressed them
+from the wrong end.
+
+### Fixed
+
+- **A dropped line's row was wiped where the new frame ends rather than
+  where that line was drawn.** `frame_diff` measured the rows of
+  `previous[len(current):]` and wiped that many starting below `current`,
+  which is the same run of rows only while the lines `current` kept occupy
+  as many rows as the ones they replace. A line that lost a wrap left the
+  count right and the position wrong:
+  `frame_diff(['a' * 50, 'b'], ['a'], size=(39, 24))` wiped the row the
+  retained line had been carried onto and left `b` standing a row below the
+  frame. Both ends are measured as `previous` was drawn now - from below the
+  lines `current` kept to the bottom of the older frame - and the wipe still
+  starts no higher than the row the addressing counted to, so a row the new
+  frame has taken for itself is never erased. `MazeGame.render` cuts
+  `previous` to the length of `current` before the call, so nothing is
+  dropped there and what it writes is unchanged
+- The reproduction of the erased tally in `## [1.0.0a9]` and `KNOWN_BUGS.md`
+  read `   collected 0/9` for what `--mode plain` lost at 20 columns. The
+  tally the rest of that paragraph is read from carries a one digit move
+  count, which leaves two spaces on the row below rather than three
+
 ## [1.0.0a9] - 2026-10-25
 
 The lines of a frame addressed by the rows they sit on rather than by their
@@ -50,7 +77,7 @@ Read off a real conhost at seed 2024, `--mode quest --collectibles 9` on a
 `tems 0/3` came back as 39 spaces. The same run at 29, 24 and 20 columns
 lost `ed 0/9   items 0/3`, `llected 0/9   items 0/3` and
 `  collected 0/9   items 0/3`; `--mode plain` and `--mode chase` with
-`--collectibles 9` lost `ed 0/9` at 29 columns and `   collected 0/9` at
+`--collectibles 9` lost `ed 0/9` at 29 columns and `  collected 0/9` at
 20. At 29 columns the tally read `collect` with no number on it at all, and
 at 20 the player was given neither count.
 

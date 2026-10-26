@@ -18,7 +18,7 @@ console drew the tally whole and the row holding `tems 0/3` came back as 39
 spaces. The same run at 29, 24 and 20 columns lost
 `ed 0/9   items 0/3`, `llected 0/9   items 0/3` and
 `  collected 0/9   items 0/3`; `--mode plain` and `--mode chase` with
-`--collectibles 9` lost `ed 0/9` at 29 columns and `   collected 0/9` at 20.
+`--collectibles 9` lost `ed 0/9` at 29 columns and `  collected 0/9` at 20.
 At 29 columns the tally read `collect` with no number on it at all.
 Isolated with no game in it, writing the frame's three escapes at the rows
 `frame_diff` gave them into an allocated 39 column console, the console did
