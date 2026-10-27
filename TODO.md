@@ -28,36 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - the space a padded break leaves behind
-
-#### Resolve Issues
-
-- [ ] Separator Break 1 - the row a padded break carries over to can open
-  with a stray space
-  - **Issue**: `wrap_on_spaces` carries the rest of a line over with
-    `rest = rest[cut + 1:]` (`py_maze/rendering.py:761`), which drops the
-    one space the break fell on. The controls line separates its words with
-    a single space, so the row below always started on a word and nothing
-    showed this. The tally separates its fields with three
-    (`status_line`, `py_maze/rendering.py:858`), and padding it
-    (`py_maze/game.py:648`) is what first sent a multi-space run through
-    that helper: on a 20 column console
-    `--mode quest --collectibles 9` cuts at the second of the three spaces
-    after `moves 0`, so the row below reads ` collected 0/9   items 0/3`
-    with a space in column 1 and the tally no longer lines up under
-    itself. `test_the_tally_wraps_on_this_console_and_is_broken_on_a_space`
-    (`test_py_maze.py:3718`) asserts the row below does not open with a
-    space, but only at 29 columns, where the cut falls on the last of the
-    three and nothing leads
-  - **Goal**: carry the rest of the line over with the leading spaces of
-    the run taken off it as well - `rest = rest[cut + 1:].lstrip(' ')` is
-    the whole of it - which can only shorten the padded string and so can
-    never cost the line a row or change the reserve `fit_to_terminal`
-    counts. Then widen that test to the widths where a break falls inside a
-    separator run rather than on its last space, 20 among them, so the
-    assertion covers the case that produced this
-  - From: Gameplay Enhancements `->` New Game Modes
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2843,5 +2813,30 @@ No items are currently queued in this section.
     nothing asks it this question
   - **Goal**: Resolve to [status-line-wrap-row.prompt.md](.claude/prompts/status-line-wrap-row.prompt.md)
   - From: UI/UX Override - the row a wrapped line is carried onto
+- [x] Separator Break 1 - the row a padded break carries over to can open
+  with a stray space
+  - **Issue**: `wrap_on_spaces` carries the rest of a line over with
+    `rest = rest[cut + 1:]` (`py_maze/rendering.py:761`), which drops the
+    one space the break fell on. The controls line separates its words with
+    a single space, so the row below always started on a word and nothing
+    showed this. The tally separates its fields with three
+    (`status_line`, `py_maze/rendering.py:858`), and padding it
+    (`py_maze/game.py:648`) is what first sent a multi-space run through
+    that helper: on a 20 column console
+    `--mode quest --collectibles 9` cuts at the second of the three spaces
+    after `moves 0`, so the row below reads ` collected 0/9   items 0/3`
+    with a space in column 1 and the tally no longer lines up under
+    itself. `test_the_tally_wraps_on_this_console_and_is_broken_on_a_space`
+    (`test_py_maze.py:3718`) asserts the row below does not open with a
+    space, but only at 29 columns, where the cut falls on the last of the
+    three and nothing leads
+  - **Goal**: carry the rest of the line over with the leading spaces of
+    the run taken off it as well - `rest = rest[cut + 1:].lstrip(' ')` is
+    the whole of it - which can only shorten the padded string and so can
+    never cost the line a row or change the reserve `fit_to_terminal`
+    counts. Then widen that test to the widths where a break falls inside a
+    separator run rather than on its last space, 20 among them, so the
+    assertion covers the case that produced this
+  - From: Gameplay Enhancements `->` New Game Modes
 
 </details>

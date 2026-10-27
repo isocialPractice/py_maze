@@ -376,6 +376,12 @@ line whose words need more rows than the console's own break does keeps that
 break: the padding is only ever free when it fits in the rows the line was
 already occupying, and a maze row is the worse thing to spend.
 
+The break can fall inside a run of spaces rather than on a single one, and
+the rest of that run goes with it. The tally separates its fields with three
+spaces, so a 20 column console breaks it on the second of the three; the
+spaces still to come would have led the row below and pushed `collected 0/1`
+out of line with the field above it, and the row starts on its word instead.
+
 A line carried onto the row below also keeps that row. The lines of a frame
 are addressed by the screen rows they belong on rather than by their place in
 the frame, so the blank spacer under a wrapped status line is written below

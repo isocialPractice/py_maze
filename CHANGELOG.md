@@ -22,14 +22,40 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a10] - 2026-10-27
 
-Found reviewing `1.0.0a9`. The wipe `frame_diff` keeps for a frame shorter
-than the one it replaces counted the right number of rows and addressed them
-from the wrong end.
+The padding that moves a console's break onto a space now takes the rest of
+that run of spaces with it, so a line broken inside a separator starts the
+row below on its word.
+
+Found reviewing `1.0.0a9`, which is the version that introduced it.
+`wrap_on_spaces` cuts on the last space that still fills the row and carries
+the rest of the line over from the character after the cut, which is exactly
+right for a separator one space wide. The controls line separates its words
+that way and showed nothing; the tally separates its fields with three
+spaces, and padding the tally in `1.0.0a9` is what first sent a run of them
+through the helper.
+
+**The row below opened on a space.** On a 20 column console
+`--mode quest --collectibles 9` breaks the 47 character tally on the second
+of the three spaces after `moves 0`, so the row under it read
+` collected 0/9` with a space in column 1 and the field no longer sat under
+the one above it. The test written for this in `1.0.0a9` asked the question
+at 29 columns alone, where the cut falls on the last space of the run and
+there is nothing left to lead, so the widths that produced the fault were
+the ones the assertion did not reach.
 
 ### Fixed
 
+- **A break that fell inside a run of spaces left the rest of the run
+  leading the row below.** `wrap_on_spaces` takes the spaces still to come
+  off with the break, so a row below starts on its word whether its
+  separator was one space wide or three. Stripping them can only shorten the
+  padded line, so the rows it occupies are never more than before and the
+  reserve `fit_to_terminal` counts is unchanged. The widths where the cut
+  falls inside a separator are asked now rather than the one width where it
+  falls on the separator's last space, and every width either tally wraps on
+  is checked against both of the tallies the game builds
 - **A dropped line's row was wiped where the new frame ends rather than
   where that line was drawn.** `frame_diff` measured the rows of
   `previous[len(current):]` and wiped that many starting below `current`,
@@ -48,6 +74,12 @@ from the wrong end.
   read `   collected 0/9` for what `--mode plain` lost at 20 columns. The
   tally the rest of that paragraph is read from carries a one digit move
   count, which leaves two spaces on the row below rather than three
+
+### Changed
+
+- `docs/playing.md` records that a break falling inside a run of spaces
+  takes the rest of the run with it, beside what it already says about the
+  break being moved onto a space at all
 
 ## [1.0.0a9] - 2026-10-25
 

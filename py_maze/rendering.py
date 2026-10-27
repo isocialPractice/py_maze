@@ -722,6 +722,11 @@ def wrap_on_spaces(text, size):
     which is what the console would have done had it been counting
     words.
 
+    A break can fall inside a run of spaces rather than on a single
+    one, and the rest of the run would then lead the row below. Those
+    spaces go with the break, so the row below starts on its word
+    whether its separator was one space wide or three.
+
     Args:
         text: The line as the frame built it
         size: The terminal it is drawn on, or None when output is piped
@@ -757,8 +762,17 @@ def wrap_on_spaces(text, size):
             rest = rest[width:]
             continue
 
+        # a break that falls on a run of spaces leaves the rest of
+        # that run leading the row below. The controls line separates
+        # its words with one space and never showed this; the tally
+        # separates its fields with three, so a cut on the second of
+        # them opened the row under it on a space and the field there
+        # no longer lined up with the one above. Taking the run's
+        # remaining spaces off with the break can only shorten the
+        # padded line, so it never costs the line a row and the
+        # reserve fit_to_terminal counts is the same either way
         rows.append(rest[:cut].ljust(width))
-        rest = rest[cut + 1:]
+        rest = rest[cut + 1:].lstrip(' ')
 
     padded = ''.join(rows) + rest
 

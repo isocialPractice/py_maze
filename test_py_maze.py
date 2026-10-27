@@ -3715,18 +3715,68 @@ class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
 
         return rows[first:first + py_maze.frame_height([game.status()], size)]
 
-    def test_the_tally_wraps_on_this_console_and_is_broken_on_a_space(self):
-        columns = 29
-        size = terminal_size(columns, 24)
-        game, rows = self.drawn(columns)
-        drawn = self.tally_rows(rows, columns, game, size)
+    # the widths a 35 character tally needs two rows for and whose
+    # break falls on one of the three spaces separating `moves 0` from
+    # `collected 0/1`. 29 was the only width this was ever asked at,
+    # and the cut there lands on the last space of the run, so the row
+    # below opened on its word whether or not the run was accounted
+    # for. 19 cuts on the first of the three and 20 on the second, and
+    # those are the widths that leave a space leading the row below
+    BROKEN_ON_A_SPACE = (19, 20, 29)
 
-        # the premise: the tally needs two rows at this width
-        self.assertEqual(len(drawn), 2)
-        self.assertFalse(drawn[1].startswith(' '),
-                         'the break fell inside a word: %r' % drawn[1])
-        self.assertTrue(game.status().endswith(drawn[1].rstrip()),
-                        '%r is not the tail of the tally' % drawn[1])
+    def test_the_tally_wraps_on_this_console_and_is_broken_on_a_space(self):
+        for columns in self.BROKEN_ON_A_SPACE:
+            size = terminal_size(columns, 24)
+            game, rows = self.drawn(columns)
+            drawn = self.tally_rows(rows, columns, game, size)
+
+            # the premise: the tally needs two rows at this width
+            self.assertEqual(len(drawn), 2,
+                             'the tally did not wrap on %d columns' % columns)
+            self.assertFalse(
+                drawn[1].startswith(' '),
+                'the break left a space leading the row below on %d '
+                'columns: %r' % (columns, drawn[1]))
+            self.assertTrue(
+                game.status().endswith(drawn[1].rstrip()),
+                '%r is not the tail of the tally on %d columns'
+                % (drawn[1], columns))
+
+    def test_no_width_leaves_a_space_leading_a_row_of_a_padded_tally(self):
+        # the widths above are the ones this repository draws a tally
+        # at, and they are not the only ones a console can be. Every
+        # width either tally wraps on is asked here, against the two
+        # the game builds: the plain tally carrying one pickup, and the
+        # widest the game has - a quest played with --collectibles 9,
+        # whose three fields are separated by three spaces each and so
+        # give a break three places to fall rather than one
+        for status in (py_maze.status_line(0, 0, 0, 1),
+                       py_maze.status_line(0, 0, 0, 9, 0, 3)):
+            for columns in range(1, len(status) + 1):
+                size = terminal_size(columns, 24)
+                padded = py_maze.wrap_on_spaces(status, size)
+
+                # a line handed back unpadded is the console's own
+                # break and nothing this reaches: wrap_on_spaces
+                # declines the padding where it would cost a row, and
+                # a break inside a word is what is left
+                if padded == status:
+                    continue
+
+                rows = [padded[at:at + columns]
+                        for at in range(0, len(padded), columns)]
+
+                for below in rows[1:]:
+                    self.assertFalse(
+                        below.startswith(' '),
+                        'a padded break left a space leading a row on %d '
+                        'columns: %r' % (columns, rows))
+
+                # padding moves the break and never buys it a row
+                self.assertLessEqual(
+                    py_maze.frame_height([padded], size),
+                    py_maze.frame_height([status], size),
+                    'the tally gained a row on %d columns' % columns)
 
     def test_the_whole_tally_is_still_on_the_screen(self):
         columns = 29
