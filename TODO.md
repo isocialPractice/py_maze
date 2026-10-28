@@ -28,6 +28,38 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### User Overrides
+
+- [ ] The guide's answer in quest mode is gone before it can be read
+  - **Issue**: `n` calls `show_quest_hint` (`py_maze/game.py:751`), which
+    writes `GUIDE_LINE` over the controls line and holds it there for
+    `HINT_SECONDS` - 0.6 seconds, the time the `h` hint is given to light
+    one cell. The guide's answer is a sentence rather than a cell: the
+    example in `docs/modes.md` runs to 104 characters and wraps a standard
+    console, and the controls line is back before it has been read.
+    Raising the shared constant would slow the `h` hint with it, and
+    lengthening the `time.sleep` that holds the answer would stop the game
+    under it: `play` draws nothing while it sleeps, so the clock on the
+    status line stands still for the whole answer and every key pressed
+    under it waits to be played until it ends
+  - **Goal**: keep the guide's answer on the controls line's row for 6
+    seconds, under a constant of its own beside `HINT_SECONDS` and exported
+    as that one is, with `h` keeping its 0.6. The cell the guide lights
+    keeps the moment it has now; the line outlasts it on the loop's own
+    tick rather than on a sleep, so the player walks and the clock counts
+    while it is read. The line never outlasts what it says either: opening
+    the box or the door it names inside the 6 seconds rewords it or takes
+    it down. Then:
+    - replace `test_the_answer_is_only_up_for_a_moment`
+      (`test_py_maze.py:13624`), which pins the answer to `HINT_SECONDS`
+    - reword `docs/modes.md`, which says the guide answers "for the same
+      moment a solution hint stays up for"
+    - point the two queued items under `Chase Mode` and `Quest Mode` that
+      take the controls line's row "for `HINT_SECONDS`, as `GUIDE_LINE`
+      does" at the new constant, each of their lines being a sentence too
+  - From: Gameplay Enhancements `->` Existing Game Modes Improvements `->`
+    Quest Mode
+
 ### UI/UX Override - the space the padded break is taken on
 
 #### Found Issues
