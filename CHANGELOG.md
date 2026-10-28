@@ -54,8 +54,9 @@ the ones the assertion did not reach.
   padded line, so the rows it occupies are never more than before and the
   reserve `fit_to_terminal` counts is unchanged. The widths where the cut
   falls inside a separator are asked now rather than the one width where it
-  falls on the separator's last space, and every width either tally wraps on
-  is checked against both of the tallies the game builds
+  falls on the separator's last space, and every width either of them wraps
+  on is checked against two of the tallies the game builds - the plain tally
+  carrying a pickup, and the quest tally carrying both counts
 - **A dropped line's row was wiped where the new frame ends rather than
   where that line was drawn.** `frame_diff` measured the rows of
   `previous[len(current):]` and wiped that many starting below `current`,

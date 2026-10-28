@@ -50,6 +50,38 @@ into a `## Complete` section at the bottom of this file.
     alone
   - **Goal**: Resolve to [tally-field-break.prompt.md](.claude/prompts/tally-field-break.prompt.md)
   - From: Gameplay Enhancements `->` New Game Modes
+- [ ] The padded tally sweep asks two of the four tallies the game builds
+  - **Issue**: `test_no_width_leaves_a_space_leading_a_row_of_a_padded_tally`
+    (`test_py_maze.py:3745`) loops over `status_line(0, 0, 0, 1)` and
+    `status_line(0, 0, 0, 9, 0, 3)`, and the comment over it calls those
+    "the two the game builds". `mode_status` builds four shapes - 19
+    characters with no pickup, 31 for a quest with no collectibles, 35 with
+    a pickup, 47 with both - and the 31 character one is a shape 1.0.0a10
+    changed that nothing asks: at 19 columns `1.0.0a9` drew
+    `time 0:00   moves 0` over `  items 0/3` where `1.0.0a10` draws
+    `items 0/3`, and 20 columns is the same with one leading space rather
+    than two. The same comment calls that tally's fields three when it
+    carries four, and calls it "the widest the game has" when
+    `--collectibles` takes any count, so `--collectibles 10` draws 48
+  - **Goal**: add `status_line(0, 0, 0, 0)` and
+    `status_line(0, 0, 0, 0, 0, 3)` to the tuple the test loops over, so
+    every shape `mode_status` builds is swept, and correct the three
+    figures in the comment
+  - From: UI/UX Override - the space the padded break is taken on
+- [ ] Separator Break 2 names the wrong field for two of its widths
+  - **Issue**: the item above says the plain and chase tallies "part
+    `collected` from its count the same way at 17, 18 and 31 to 34
+    columns", and `.claude/prompts/tally-field-break.prompt.md` says it a
+    second time. At 17 and 18 columns those tallies read
+    `time 0:00   moves` over `0   collected 0/1`, so the field parted from
+    its value there is `moves`, and `collected 0/1` stands whole on the row
+    below. 31 to 34 are the widths where `collected` is parted from `0/1`.
+    A run sent looking for a parted `collected` at 17 columns finds none
+  - **Goal**: name `moves` at 17 and 18 columns and `collected` at 31 to
+    34, in the item and in the prompt file both. Nothing else in either
+    moves - the rule proposed there and the cost measured for it are read
+    off the widths rather than off the field names
+  - From: UI/UX Override - the space the padded break is taken on
 
 ## Fixes and Hardening
 
