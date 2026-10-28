@@ -28,6 +28,29 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the space the padded break is taken on
+
+#### Found Issues
+
+- [ ] Separator Break 2 - the padded break can fall inside a field, leaving
+  its name on one row and its value on the next
+  - **Issue**: `wrap_on_spaces` cuts on the last space that still fills the
+    row (`py_maze/rendering.py:755`) and cannot tell the three spaces
+    between two fields from the one inside a field, so the cut lands on
+    whichever comes last. Read off a real Windows console at seed 2024 with
+    `--mode quest --collectibles 9`: at 44 columns the row below the break
+    holds `0/3` and nothing else, with `items` on the row above; at 31
+    columns it is `0/9   items 0/3` under a row ending `collected`; at 17
+    and 18 columns it is `0   collected 0/9` under a row ending `moves`.
+    The plain and chase tallies part `collected` from its count the same
+    way at 17, 18 and 31 to 34 columns. This is not a regression and does
+    not reopen `Separator Break 1`: every row still opens on a character
+    rather than on a space, the revision before 1.0.0a10 draws these same
+    rows, and the widths 1.0.0a10 changed are 17, 18, 19, 20, 35 and 36
+    alone
+  - **Goal**: Resolve to [tally-field-break.prompt.md](.claude/prompts/tally-field-break.prompt.md)
+  - From: Gameplay Enhancements `->` New Game Modes
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
