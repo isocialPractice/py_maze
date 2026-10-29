@@ -387,7 +387,7 @@ yield in reading order, left to right and then down the rows.
 | `line_fills_row(line, size)` | Whether a line ends flush with the last column, where clearing to the end of the row would erase it |
 | `fit_frame(lines, size, focus, reserve)` | Cut a play screen to the rows the terminal has, around a row to keep and any kept back |
 | `cut_marker(marker, rows, where)` | An edge marker that names the maze rows the window stops short of |
-| `wrap_on_spaces(text, size)` | Pad a line so the console breaks it at a space rather than inside a word |
+| `wrap_on_spaces(text, size)` | Pad a line so the console breaks it between two words, taking a run of spaces over a single one where the row holds both |
 | `wipe_rows(first, last, size)` | Clear a run of rows a shorter frame gave up, stopping at the bottom of the screen |
 | `frame_text(lines, home, stream, size)` | A whole frame as the one string that draws it |
 | `frame_diff(previous, current, whole, size)` | The same for the lines that changed, or every row when `whole` |

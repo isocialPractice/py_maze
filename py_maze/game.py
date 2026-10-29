@@ -30,6 +30,7 @@ __all__ = [
     'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
     'GUIDE_LINE',
+    'GUIDE_SECONDS',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
@@ -48,6 +49,14 @@ HINT_STEPS = 1
 
 # seconds a hint stays on screen before the maze is redrawn without it
 HINT_SECONDS = 0.6
+
+# seconds the guide's answer stays on the controls line's row. A lit
+# cell is read at a glance and the moment above is all it needs; the
+# guide's answer is a sentence, long enough to wrap a narrow console,
+# and a sentence read at the speed of a glance is a sentence nobody
+# read. It is held on the game loop's own tick rather than on a sleep,
+# so the clock counts and the player walks for as long as it is up
+GUIDE_SECONDS = 6.0
 
 # seconds the game loop waits for a keypress before drawing again on its
 # own. The clock on the status line counts whole seconds, so a quarter of
@@ -235,8 +244,15 @@ class MazeGame:
         self.quest = quest
 
         # what the guide last answered, shown on the controls line's own
-        # row while the answer is up and cleared when it comes down
+        # row while the answer is up and cleared when it comes down,
+        # with the clock reading it was given at and the errand it was
+        # given about. The answer outlives the frame it was asked on,
+        # so those two are what age_guide_answer takes it down by: the
+        # reading says when it has been up long enough to have been
+        # read, and the errand says when it stopped being true
         self.quest_message = None
+        self.quest_asked = None
+        self.quest_errand = None
 
         # the route the chase point is measured against, solved once
         # here rather than on every step: the maze does not change under
@@ -751,13 +767,24 @@ class MazeGame:
     def show_quest_hint(self):
         """Ask the guide what the next step of the quest is.
 
-        It answers the way the solution hint does - the cell lit up for
-        a moment, the maze redrawn without it - and says something
-        else: where the box or the door the errand in front of the
-        player is at, with what it is in words on the controls line's
-        own row. It is a second kind of hint rather than a second way
-        to ask for the first, and it says nothing about where the exit
-        is.
+        It lights a cell the way the solution hint does - the cell up
+        for a moment, the maze redrawn without it - and says something
+        else as well: where the box or the door the errand in front of
+        the player is at, with what it is in words on the controls
+        line's own row. It is a second kind of hint rather than a
+        second way to ask for the first, and it says nothing about
+        where the exit is.
+
+        The cell and the words come down at different times, because
+        they are read at different speeds. The cell has the moment a
+        solution hint has, taken on a sleep as that one is. The words
+        are a sentence and need :data:`GUIDE_SECONDS` to be read, which
+        is too long to stop the game for: nothing is drawn while the
+        game sleeps, so the clock on the status line would stand still
+        for the whole answer and every key pressed under it would wait
+        to be played. So the answer is left standing instead, and
+        :meth:`age_guide_answer` takes it down on the game loop's own
+        tick, by which time the player has walked on under it.
 
         Returns:
             list: The cells that were highlighted, empty for a game
@@ -769,17 +796,62 @@ class MazeGame:
 
         cell = self.quest.target()
         self.quest_message = GUIDE_LINE % self.quest.task()
+        self.quest_asked = self.clock()
+        self.quest_errand = self.quest.stage()
         self.hint_cells = {cell} if cell is not None else set()
         self.render()
         time.sleep(HINT_SECONDS)
 
         # the game loop redraws the maze straight after, without the
-        # hint and with the keys back on the controls line
+        # hint. The answer itself stays on the controls line's row
         shown = sorted(self.hint_cells)
         self.hint_cells = set()
-        self.quest_message = None
 
         return shown
+
+    def age_guide_answer(self):
+        """Hold the guide's answer while it is being read, then take it down.
+
+        The game loop calls this on every turn it takes, the turns
+        nothing was pressed on included, so the answer comes down on
+        the clock rather than on the next keypress - a player who asks
+        the guide and then stands still reads it for as long as one
+        who walks.
+
+        It comes down for either of two reasons, and the second is why
+        the errand is recorded along with the reading. One is that
+        :data:`GUIDE_SECONDS` have passed and it has been up long
+        enough to have been read. The other is that it stopped being
+        true: the answer names one errand, and a player who opens the
+        door it named inside those seconds has finished that errand and
+        is owed no sentence about it. Finding the box the answer named
+        is the same errand still, so the answer is reworded where it
+        stands rather than taken down - it said where the item was, and
+        now says which door it opens.
+
+        Returns:
+            str: The answer as it now stands, and None once it has come
+            down or where there was none up to begin with
+        """
+
+        if self.quest_message is None:
+            return None
+
+        read = self.quest_asked is None or (self.clock() - self.quest_asked
+                                            >= GUIDE_SECONDS)
+
+        if (self.quest is None or read
+                or self.quest.stage() != self.quest_errand):
+            self.quest_message = None
+            self.quest_asked = None
+            self.quest_errand = None
+            return None
+
+        # the same errand, read off the quest as it now stands rather
+        # than as it stood when the question was asked
+        self.quest_message = GUIDE_LINE % self.quest.task()
+
+        return self.quest_message
 
     def open_box(self):
         """Open whatever box the player is standing on.
@@ -943,6 +1015,13 @@ class MazeGame:
         A chaser moves on the clock rather than on the keyboard, so it
         is advanced on every turn of the loop, the turns nothing was
         pressed on included. Standing still is what a chase punishes.
+
+        The guide's answer comes down on the clock for the same reason.
+        A sentence is read over several turns of the loop rather than
+        inside one, so the turn it has been up long enough to come down
+        on is not the turn anything was pressed on, and a player who
+        asks the guide and then stands still is given it for as long as
+        one who walks away reading it.
         """
 
         self.start_clock()
@@ -951,6 +1030,12 @@ class MazeGame:
         try:
             while True:
                 key = self.get_key(self.tick())
+
+                # every turn is one the guide's answer may have been up
+                # long enough to come down on, or one the errand it
+                # names has moved on from, so it is aged before the key
+                # is played rather than after
+                self.age_guide_answer()
 
                 if key is None:
                     # nothing was pressed, so the maze is where it was

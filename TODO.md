@@ -28,93 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### User Overrides
-
-- [ ] The guide's answer in quest mode is gone before it can be read
-  - **Issue**: `n` calls `show_quest_hint` (`py_maze/game.py:751`), which
-    writes `GUIDE_LINE` over the controls line and holds it there for
-    `HINT_SECONDS` - 0.6 seconds, the time the `h` hint is given to light
-    one cell. The guide's answer is a sentence rather than a cell: the
-    example in `docs/modes.md` runs to 104 characters and wraps a standard
-    console, and the controls line is back before it has been read.
-    Raising the shared constant would slow the `h` hint with it, and
-    lengthening the `time.sleep` that holds the answer would stop the game
-    under it: `play` draws nothing while it sleeps, so the clock on the
-    status line stands still for the whole answer and every key pressed
-    under it waits to be played until it ends
-  - **Goal**: keep the guide's answer on the controls line's row for 6
-    seconds, under a constant of its own beside `HINT_SECONDS` and exported
-    as that one is, with `h` keeping its 0.6. The cell the guide lights
-    keeps the moment it has now; the line outlasts it on the loop's own
-    tick rather than on a sleep, so the player walks and the clock counts
-    while it is read. The line never outlasts what it says either: opening
-    the box or the door it names inside the 6 seconds rewords it or takes
-    it down. Then:
-    - replace `test_the_answer_is_only_up_for_a_moment`
-      (`test_py_maze.py:13624`), which pins the answer to `HINT_SECONDS`
-    - reword `docs/modes.md`, which says the guide answers "for the same
-      moment a solution hint stays up for"
-    - point the two queued items under `Chase Mode` and `Quest Mode` that
-      take the controls line's row "for `HINT_SECONDS`, as `GUIDE_LINE`
-      does" at the new constant, each of their lines being a sentence too
-  - From: Gameplay Enhancements `->` Existing Game Modes Improvements `->`
-    Quest Mode
-
-### UI/UX Override - the space the padded break is taken on
-
-#### Found Issues
-
-- [ ] Separator Break 2 - the padded break can fall inside a field, leaving
-  its name on one row and its value on the next
-  - **Issue**: `wrap_on_spaces` cuts on the last space that still fills the
-    row (`py_maze/rendering.py:755`) and cannot tell the three spaces
-    between two fields from the one inside a field, so the cut lands on
-    whichever comes last. Read off a real Windows console at seed 2024 with
-    `--mode quest --collectibles 9`: at 44 columns the row below the break
-    holds `0/3` and nothing else, with `items` on the row above; at 31
-    columns it is `0/9   items 0/3` under a row ending `collected`; at 17
-    and 18 columns it is `0   collected 0/9` under a row ending `moves`.
-    The plain and chase tallies part `collected` from its count the same
-    way at 17, 18 and 31 to 34 columns. This is not a regression and does
-    not reopen `Separator Break 1`: every row still opens on a character
-    rather than on a space, the revision before 1.0.0a10 draws these same
-    rows, and the widths 1.0.0a10 changed are 17, 18, 19, 20, 35 and 36
-    alone
-  - **Goal**: Resolve to [tally-field-break.prompt.md](.claude/prompts/tally-field-break.prompt.md)
-  - From: Gameplay Enhancements `->` New Game Modes
-- [ ] The padded tally sweep asks two of the four tallies the game builds
-  - **Issue**: `test_no_width_leaves_a_space_leading_a_row_of_a_padded_tally`
-    (`test_py_maze.py:3745`) loops over `status_line(0, 0, 0, 1)` and
-    `status_line(0, 0, 0, 9, 0, 3)`, and the comment over it calls those
-    "the two the game builds". `mode_status` builds four shapes - 19
-    characters with no pickup, 31 for a quest with no collectibles, 35 with
-    a pickup, 47 with both - and the 31 character one is a shape 1.0.0a10
-    changed that nothing asks: at 19 columns `1.0.0a9` drew
-    `time 0:00   moves 0` over `  items 0/3` where `1.0.0a10` draws
-    `items 0/3`, and 20 columns is the same with one leading space rather
-    than two. The same comment calls that tally's fields three when it
-    carries four, and calls it "the widest the game has" when
-    `--collectibles` takes any count, so `--collectibles 10` draws 48
-  - **Goal**: add `status_line(0, 0, 0, 0)` and
-    `status_line(0, 0, 0, 0, 0, 3)` to the tuple the test loops over, so
-    every shape `mode_status` builds is swept, and correct the three
-    figures in the comment
-  - From: UI/UX Override - the space the padded break is taken on
-- [ ] Separator Break 2 names the wrong field for two of its widths
-  - **Issue**: the item above says the plain and chase tallies "part
-    `collected` from its count the same way at 17, 18 and 31 to 34
-    columns", and `.claude/prompts/tally-field-break.prompt.md` says it a
-    second time. At 17 and 18 columns those tallies read
-    `time 0:00   moves` over `0   collected 0/1`, so the field parted from
-    its value there is `moves`, and `collected 0/1` stands whole on the row
-    below. 31 to 34 are the widths where `collected` is parted from `0/1`.
-    A run sent looking for a parted `collected` at 17 columns finds none
-  - **Goal**: name `moves` at 17 and 18 columns and `collected` at 31 to
-    34, in the item and in the prompt file both. Nothing else in either
-    moves - the rule proposed there and the cost measured for it are read
-    off the widths rather than off the field names
-  - From: UI/UX Override - the space the padded break is taken on
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -194,9 +107,10 @@ changes what a player is told about the chase, or what the chaser knows.
   is told about
   - `Chaser.start` is the single place that knows the chase has just begun,
     and it already answers once: `started` is set there and never cleared
-  - The line takes the controls line's own row for `HINT_SECONDS`, as
-    `GUIDE_LINE` does for the guide's answer, so announcing the chase never
-    changes the height of the frame
+  - The line takes the controls line's own row for `GUIDE_SECONDS`, as
+    `GUIDE_LINE` does for the guide's answer - it is a sentence too, and
+    read at the same speed - so announcing the chase never changes the
+    height of the frame
   - It is drawn into the frame rather than printed under it: the chase is
     beginning rather than ending, so `MazeGame.ending` is not involved
 - [ ] Add a `--chase-sight` option bounding how far the chaser can see, so
@@ -223,9 +137,10 @@ what a player is told of the chain, and about a chain that holds.
   - `Quest.unlock` already knows the item and already answers False
     without saying anything, which `MazeGame.move_player` turns into a
     step that counts no move
-  - The answer takes the controls line's own row for `HINT_SECONDS`, as
-    the guide's answer does through `GUIDE_LINE`, so the frame keeps its
-    height and the refusal still costs no move
+  - The answer takes the controls line's own row for `GUIDE_SECONDS`, as
+    the guide's answer does through `GUIDE_LINE` - it is a sentence too,
+    and read at the same speed - so the frame keeps its height and the
+    refusal still costs no move
   - A door already opened and an ordinary wall both stay silent, so the
     line is only ever drawn for the one refusal a player cannot see the
     reason for
@@ -2925,5 +2840,85 @@ No items are currently queued in this section.
     separator run rather than on its last space, 20 among them, so the
     assertion covers the case that produced this
   - From: Gameplay Enhancements `->` New Game Modes
+- [x] The guide's answer in quest mode is gone before it can be read
+  - **Issue**: `n` calls `show_quest_hint` (`py_maze/game.py:751`), which
+    writes `GUIDE_LINE` over the controls line and holds it there for
+    `HINT_SECONDS` - 0.6 seconds, the time the `h` hint is given to light
+    one cell. The guide's answer is a sentence rather than a cell: the
+    example in `docs/modes.md` runs to 104 characters and wraps a standard
+    console, and the controls line is back before it has been read.
+    Raising the shared constant would slow the `h` hint with it, and
+    lengthening the `time.sleep` that holds the answer would stop the game
+    under it: `play` draws nothing while it sleeps, so the clock on the
+    status line stands still for the whole answer and every key pressed
+    under it waits to be played until it ends
+  - **Goal**: keep the guide's answer on the controls line's row for 6
+    seconds, under a constant of its own beside `HINT_SECONDS` and exported
+    as that one is, with `h` keeping its 0.6. The cell the guide lights
+    keeps the moment it has now; the line outlasts it on the loop's own
+    tick rather than on a sleep, so the player walks and the clock counts
+    while it is read. The line never outlasts what it says either: opening
+    the box or the door it names inside the 6 seconds rewords it or takes
+    it down. Then:
+    - replace `test_the_answer_is_only_up_for_a_moment`
+      (`test_py_maze.py:13624`), which pins the answer to `HINT_SECONDS`
+    - reword `docs/modes.md`, which says the guide answers "for the same
+      moment a solution hint stays up for"
+    - point the two queued items under `Chase Mode` and `Quest Mode` that
+      take the controls line's row "for `HINT_SECONDS`, as `GUIDE_LINE`
+      does" at the new constant, each of their lines being a sentence too
+  - From: Gameplay Enhancements `->` Existing Game Modes Improvements `->`
+    Quest Mode
+- [x] Separator Break 2 - the padded break can fall inside a field, leaving
+  its name on one row and its value on the next
+  - **Issue**: `wrap_on_spaces` cuts on the last space that still fills the
+    row (`py_maze/rendering.py:755`) and cannot tell the three spaces
+    between two fields from the one inside a field, so the cut lands on
+    whichever comes last. Read off a real Windows console at seed 2024 with
+    `--mode quest --collectibles 9`: at 44 columns the row below the break
+    holds `0/3` and nothing else, with `items` on the row above; at 31
+    columns it is `0/9   items 0/3` under a row ending `collected`; at 17
+    and 18 columns it is `0   collected 0/9` under a row ending `moves`.
+    The plain and chase tallies part a field from its value at 17, 18 and
+    31 to 34 columns too: `moves` from its count at the first two, where
+    `collected 0/1` stands whole on the row below, and `collected` from
+    its own at 31 to 34. This is not a regression and does not reopen
+    `Separator Break 1`: every row still opens on a character rather than
+    on a space, the revision before 1.0.0a10 draws these same rows, and
+    the widths 1.0.0a10 changed are 17, 18, 19, 20, 35 and 36 alone
+  - **Goal**: Resolve to [tally-field-break.prompt.md](.claude/prompts/tally-field-break.prompt.md)
+  - From: Gameplay Enhancements `->` New Game Modes
+- [x] The padded tally sweep asks two of the four tallies the game builds
+  - **Issue**: `test_no_width_leaves_a_space_leading_a_row_of_a_padded_tally`
+    (`test_py_maze.py:3745`) loops over `status_line(0, 0, 0, 1)` and
+    `status_line(0, 0, 0, 9, 0, 3)`, and the comment over it calls those
+    "the two the game builds". `mode_status` builds four shapes - 19
+    characters with no pickup, 31 for a quest with no collectibles, 35 with
+    a pickup, 47 with both - and the 31 character one is a shape 1.0.0a10
+    changed that nothing asks: at 19 columns `1.0.0a9` drew
+    `time 0:00   moves 0` over `  items 0/3` where `1.0.0a10` draws
+    `items 0/3`, and 20 columns is the same with one leading space rather
+    than two. The same comment calls that tally's fields three when it
+    carries four, and calls it "the widest the game has" when
+    `--collectibles` takes any count, so `--collectibles 10` draws 48
+  - **Goal**: add `status_line(0, 0, 0, 0)` and
+    `status_line(0, 0, 0, 0, 0, 3)` to the tuple the test loops over, so
+    every shape `mode_status` builds is swept, and correct the three
+    figures in the comment
+  - From: UI/UX Override - the space the padded break is taken on
+- [x] Separator Break 2 names the wrong field for two of its widths
+  - **Issue**: the item above says the plain and chase tallies "part
+    `collected` from its count the same way at 17, 18 and 31 to 34
+    columns", and `.claude/prompts/tally-field-break.prompt.md` says it a
+    second time. At 17 and 18 columns those tallies read
+    `time 0:00   moves` over `0   collected 0/1`, so the field parted from
+    its value there is `moves`, and `collected 0/1` stands whole on the row
+    below. 31 to 34 are the widths where `collected` is parted from `0/1`.
+    A run sent looking for a parted `collected` at 17 columns finds none
+  - **Goal**: name `moves` at 17 and 18 columns and `collected` at 31 to
+    34, in the item and in the prompt file both. Nothing else in either
+    moves - the rule proposed there and the cost measured for it are read
+    off the widths rather than off the field names
+  - From: UI/UX Override - the space the padded break is taken on
 
 </details>

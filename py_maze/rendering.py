@@ -727,6 +727,19 @@ def wrap_on_spaces(text, size):
     spaces go with the break, so the row below starts on its word
     whether its separator was one space wide or three.
 
+    Which space it falls on is a choice where the row holds more than
+    one of them. A tally separates its fields with a run of three
+    spaces and a field's name from its value with a single space, so
+    the last space that still fills the row is as likely to be inside
+    a field as between two of them, and a cut inside one leaves its
+    name on one row and its value opening the next. The run is
+    preferred wherever there is one, which is what keeps a field
+    whole - but a run early in the row leaves that row short of the
+    width, and a short row is how a padded line buys a row the
+    console's own break never needed. Where the run costs a row the
+    single space is kept, and the field parted from its value is what
+    that row is worth.
+
     Args:
         text: The line as the frame built it
         size: The terminal it is drawn on, or None when output is piped
@@ -734,52 +747,85 @@ def wrap_on_spaces(text, size):
 
     Returns:
         str: The line, padded at the breaks a console would otherwise
-        make inside a word. The line itself where it fits on one row,
-        where there is no terminal to wrap it against, or where the
-        padding would cost a row - a line whose words leave more rows
-        than the console's own break needs is a maze row given up to
-        tidy a break, which is the worse trade
+        make inside a word or between a field's name and its value.
+        The line itself where it fits on one row, where there is no
+        terminal to wrap it against, or where the padding would cost a
+        row - a line whose words leave more rows than the console's own
+        break needs is a maze row given up to tidy a break, which is
+        the worse trade
     """
 
     if size is None or size.columns < 1 or len(text) <= size.columns:
         return text
 
     width = size.columns
-    rows = []
-    rest = text
 
-    while len(rest) > width:
-        # the last space that still leaves the row above it full. A
-        # space on the column after the row's last is the break the
-        # console was going to make anyway, so it counts as one here
-        cut = rest.rfind(' ', 0, width + 1)
+    def padded(on_runs):
+        # the line with each of its breaks padded out to the width,
+        # cutting on the last run of two or more spaces where on_runs
+        # asks for one and the row holds one, and on the last single
+        # space otherwise
+        rows = []
+        rest = text
 
-        if cut <= 0:
-            # a word longer than the row has no space to break on, so
-            # the console's own break inside it is the only one there
-            # is: the row is filled and what is left carries on below
-            rows.append(rest[:width])
-            rest = rest[width:]
-            continue
+        while len(rest) > width:
+            # a run of spaces is what separates two fields, so cutting
+            # on one is what keeps a field whole. Any column of the run
+            # is the same cut: what comes before it is padded out to
+            # the width either way, and the rest of the run is taken
+            # off the row below
+            cut = rest.rfind('  ', 0, width + 2) if on_runs else -1
 
-        # a break that falls on a run of spaces leaves the rest of
-        # that run leading the row below. The controls line separates
-        # its words with one space and never showed this; the tally
-        # separates its fields with three, so a cut on the second of
-        # them opened the row under it on a space and the field there
-        # no longer lined up with the one above. Taking the run's
-        # remaining spaces off with the break can only shorten the
-        # padded line, so it never costs the line a row and the
-        # reserve fit_to_terminal counts is the same either way
-        rows.append(rest[:cut].ljust(width))
-        rest = rest[cut + 1:].lstrip(' ')
+            if cut <= 0:
+                # the last space that still leaves the row above it
+                # full. A space on the column after the row's last is
+                # the break the console was going to make anyway, so it
+                # counts as one here
+                cut = rest.rfind(' ', 0, width + 1)
 
-    padded = ''.join(rows) + rest
+            if cut <= 0:
+                # a word longer than the row has no space to break on,
+                # so the console's own break inside it is the only one
+                # there is: the row is filled and what is left carries
+                # on below
+                rows.append(rest[:width])
+                rest = rest[width:]
+                continue
 
-    if frame_height([padded], size) > frame_height([text], size):
+            # a break that falls on a run of spaces leaves the rest of
+            # that run leading the row below. The controls line
+            # separates its words with one space and never showed this;
+            # the tally separates its fields with three, so a cut on
+            # the second of them opened the row under it on a space and
+            # the field there no longer lined up with the one above.
+            # Taking the run's remaining spaces off with the break can
+            # only shorten the padded line, so it never costs the line
+            # a row and the reserve fit_to_terminal counts is the same
+            # either way
+            rows.append(rest[:cut].ljust(width))
+            rest = rest[cut + 1:].lstrip(' ')
+
+        return ''.join(rows) + rest
+
+    on_fields = padded(True)
+    on_spaces = padded(False)
+
+    # the field separator is the better cut of the two, and the tally
+    # is the only line that has one - the controls line separates its
+    # words with single spaces, so both passes come back with the same
+    # line there and nothing about it moves. What the preference is not
+    # worth is a row: where cutting on the separator leaves a row short
+    # enough of the width to need another one, the single space inside
+    # a field is kept and its value still opens the row below
+    chosen = on_fields
+
+    if frame_height([on_fields], size) > frame_height([on_spaces], size):
+        chosen = on_spaces
+
+    if frame_height([chosen], size) > frame_height([text], size):
         return text
 
-    return padded
+    return chosen
 
 
 def solution_overlay(path):

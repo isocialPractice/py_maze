@@ -22,6 +22,87 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [1.0.0a11] - 2026-10-29
+
+The guide's answer given the six seconds a sentence needs to be read, and the
+tally's break taken between two fields rather than inside one.
+
+Both are the play screen's foot again, and both are the same mistake read two
+ways: a line the game treats as a label when what is on it is a sentence. The
+guide's answer shared the `h` hint's 0.6 seconds, which is the time a lit
+cell needs and not the time 104 characters of prose needs. `wrap_on_spaces`
+treated the three spaces between two fields and the one space inside a field
+as the same space, which is true of the controls line and false of the tally.
+
+**The answer was gone before it could be read.** `show_quest_hint` wrote
+`GUIDE_LINE` over the controls line and held it on a `time.sleep` of
+`HINT_SECONDS`, so the keys were back under the player's eyes before the
+sentence had been got through. Lengthening that sleep was not the answer
+either: `play` draws nothing while it sleeps, so the clock on the status line
+would have stood still for the whole of it and every key pressed underneath
+would have waited to be played.
+
+**The break fell inside a field.** Read off a real Windows console at seed
+2024, `--mode quest --collectibles 9` on 44 columns broke the 47 character
+tally after `items` and left `0/3` alone on the row below, with the word it
+belongs to on the row above. 31 columns parted `collected` from `0/9`, and
+the plain tally did the same at 31 to 34 and parted `moves` from its count at
+17 and 18.
+
+### Added
+
+- `GUIDE_SECONDS`, the six seconds the guide's answer is given, exported
+  beside `HINT_SECONDS` as that one is. `h` keeps its 0.6: a lit cell is read
+  at a glance, and the two are no longer the same number because they were
+  never the same kind of thing
+- `MazeGame.age_guide_answer`, which holds the answer while it is being read
+  and takes it down afterwards. The game loop calls it on every turn it
+  takes, the turns nothing was pressed on included, so the answer comes down
+  on the clock rather than on the next keypress and a player who asks the
+  guide and then stands still is given it for as long as one who walks away
+  reading it
+
+### Fixed
+
+- **The padded break could fall inside a field, leaving its name on one row
+  and its value opening the next.** `wrap_on_spaces` cut on the last space
+  that still filled the row and could not tell a field separator from the
+  space inside a field, so the cut landed on whichever came last. The run of
+  two or more spaces is now the break that is taken wherever the row holds
+  one, which is what keeps a name and its value together. A run early enough
+  in the row to leave it well short of the last column is the exception:
+  breaking there needs a row the console's own break did not, so the single
+  space is kept and the field is parted after all - 17 columns is the only
+  width at or above the 15 column floor where that still happens, and a maze
+  row is the worse thing to spend. The controls line separates its words
+  with single spaces and has no run to prefer, so nothing about the line it
+  is padded to has moved
+- **The guide's answer was pinned to the time a lit cell is given.** The cell
+  keeps that moment and keeps it on a sleep; the answer is left standing and
+  aged on the loop's own tick, so the clock counts and the player walks while
+  it is read. It never outlasts what it says either: finding the box it named
+  is the same errand still and rewords the line where it stands, and opening
+  the door it named finishes that errand and takes the line down with
+  whatever is left of its six seconds
+
+### Changed
+
+- The sweep over the widths a padded tally wraps on asks all four shapes
+  `mode_status` builds - 19 characters for the plain game, 31 for a quest
+  with no collectibles, 35 with a pickup and 47 with both - rather than the
+  two it named. It also asks that no row of a padded tally opens on a value
+  rather than on the name it belongs to, and pins the widths where one still
+  does to the set that cannot be had without a row, so a width joining them
+  is caught as well as one leaving
+- The comment over that sweep called the two shapes "the two the game
+  builds", counted the quest tally's four fields as three, and called it "the
+  widest the game has" when `--collectibles` takes any count and ten of them
+  draws 48. All three figures are corrected
+- `docs/modes.md` and `docs/playing.md` record that the cell and the words
+  come down at different times and why, and that an answer never outlasts
+  the errand it was about. `docs/playing.md` and `docs/library.md` record
+  that a run of spaces is taken over a single one where the row holds both
+
 ## [1.0.0a10] - 2026-10-27
 
 The padding that moves a console's break onto a space now takes the rest of

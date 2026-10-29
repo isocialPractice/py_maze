@@ -246,8 +246,10 @@ reaching the exit, and the exit is behind the last door.
 A guide (`@`) waits just inside the entrance. Pressing **n** asks it what
 the errand in front of you is, from anywhere in the maze: it lights the cell
 up the way a hint does, and says what it is where the controls line usually
-sits. [Game modes](modes.html) has the whole of it, including what `--braid`
-does to a quest.
+sits. The cell comes down a moment later and the words stay for six seconds,
+which is long enough to read a sentence; the maze is still being played
+under them either way. [Game modes](modes.html) has the whole of it,
+including what `--braid` does to a quest.
 
 ## Hints
 
@@ -381,6 +383,19 @@ the rest of that run goes with it. The tally separates its fields with three
 spaces, so a 20 column console breaks it on the second of the three; the
 spaces still to come would have led the row below and pushed `collected 0/1`
 out of line with the field above it, and the row starts on its word instead.
+
+Which space the break falls on is a choice of its own, because the tally has
+two kinds of them. Three spaces separate one field from the next and a single
+space separates a field's name from its value, so the last space that still
+fills the row is as likely to be inside a field as between two of them: a 44
+column console used to break the quest tally after `items` and leave `0/3`
+alone on the row below. The run between two fields is the break that is
+taken wherever the row holds one, which is what keeps a name and its value
+together. The exception is a run early enough in the row to leave it well
+short of the last column, where breaking there would need a row the console's
+own break did not - 17 columns is where that happens - and there the single
+space is kept and the field is parted after all. A maze row is still the
+worse thing to spend.
 
 A line carried onto the row below also keeps that row. The lines of a frame
 are addressed by the screen rows they belong on rather than by their place in

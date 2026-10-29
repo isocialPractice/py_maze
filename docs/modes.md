@@ -116,9 +116,12 @@ time 0:42   moves 61   items 2/3
 ### The Guide
 
 A quest maze has somebody in it. The guide waits just inside the entrance,
-drawn `@`, and answers from anywhere in the maze: press `n` and it says what
-the errand in front of you is and lights up where it is, for the same moment
-a solution hint stays up for.
+drawn `@`, and answers from anywhere in the maze: press `n` and it lights up
+where the errand in front of you is and says what it is in words. The two
+come down at different times, because they are read at different speeds. The
+cell has the moment a solution hint has; the words are a sentence and stay
+for six seconds, with the game still being played underneath them - the clock
+counts, and a step taken while the answer is up is a step like any other.
 
 It is a second kind of hint rather than a second way to ask for the first.
 `h` points at the next step of the way to the exit; `n` points at the box
@@ -131,6 +134,11 @@ The guide says: item 2 is still in its box, and the box is in the part of the ma
 
 Once every door is open it says so, and from there the maze is an ordinary
 walk to the exit.
+
+An answer never outlasts the errand it was about. Finding the box it named
+rewords it to the door that item opens, and opening that door takes it down,
+whatever is left of its six seconds: the errand it was an answer to is
+finished.
 
 ### Braiding Opens a Way Round
 

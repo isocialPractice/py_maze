@@ -3724,6 +3724,30 @@ class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
     # those are the widths that leave a space leading the row below
     BROKEN_ON_A_SPACE = (19, 20, 29)
 
+    # the names a tally gives its fields, each followed by a single
+    # space and then its value. A row of a padded tally opens on one of
+    # these when the break fell between two fields, and on a value when
+    # it fell inside one
+    TALLY_FIELDS = ('time', 'moves', 'collected', 'items')
+
+    # the narrowest console this repository has measured. Under it no
+    # cut keeps a field whole at all - `collected 0/9` is 13 characters,
+    # so a row of 11 holds the name or the value and never both - and
+    # the widths below the floor are asked nothing about which of the
+    # two spaces the break fell on
+    NARROWEST_CONSOLE = 15
+
+    # the widths at or above that floor where a padded tally still
+    # opens a row on a value rather than on the name it belongs to.
+    # Cutting on the run of spaces between two fields is what keeps a
+    # field whole, and at these two the last such run sits early enough
+    # in the row to leave it short of the width - `time 0:00` on a 17
+    # column row - so keeping the field whole would buy the tally a row
+    # the console's own break never needed. The single space inside the
+    # field is the better cut of the two there, and `moves` parted from
+    # its count is what the row the maze keeps is worth
+    A_FIELD_IS_STILL_PARTED = {17, 18}
+
     def test_the_tally_wraps_on_this_console_and_is_broken_on_a_space(self):
         for columns in self.BROKEN_ON_A_SPACE:
             size = terminal_size(columns, 24)
@@ -3745,12 +3769,19 @@ class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
     def test_no_width_leaves_a_space_leading_a_row_of_a_padded_tally(self):
         # the widths above are the ones this repository draws a tally
         # at, and they are not the only ones a console can be. Every
-        # width either tally wraps on is asked here, against the two
-        # the game builds: the plain tally carrying one pickup, and the
-        # widest the game has - a quest played with --collectibles 9,
-        # whose three fields are separated by three spaces each and so
-        # give a break three places to fall rather than one
-        for status in (py_maze.status_line(0, 0, 0, 1),
+        # width any of them wraps on is asked here, against all four
+        # shapes mode_status builds: the plain game at 19 characters, a
+        # quest with no collectibles at 31, a game carrying one pickup
+        # at 35, and a quest played with --collectibles 9 at 47, whose
+        # four fields are separated by three spaces each and so give a
+        # break three places to fall rather than one. 47 is the widest
+        # the game draws rather than the widest it can - --collectibles
+        # takes any count, and ten of them draws 48
+        parted = set()
+
+        for status in (py_maze.status_line(0, 0, 0, 0),
+                       py_maze.status_line(0, 0, 0, 0, 0, 3),
+                       py_maze.status_line(0, 0, 0, 1),
                        py_maze.status_line(0, 0, 0, 9, 0, 3)):
             for columns in range(1, len(status) + 1):
                 size = terminal_size(columns, 24)
@@ -3772,11 +3803,28 @@ class TestTheTallyIsPaddedAtItsBreak(unittest.TestCase):
                         'a padded break left a space leading a row on %d '
                         'columns: %r' % (columns, rows))
 
+                    # the row opens on a field's name rather than on a
+                    # value, which is the break having fallen between
+                    # two fields rather than inside one
+                    if below.split()[0] not in self.TALLY_FIELDS:
+                        parted.add(columns)
+
                 # padding moves the break and never buys it a row
                 self.assertLessEqual(
                     py_maze.frame_height([padded], size),
                     py_maze.frame_height([status], size),
                     'the tally gained a row on %d columns' % columns)
+
+        # and the widths where it still falls inside a field are the
+        # two that cannot be had without a row, named above. Asserting
+        # the set rather than skipping it is what catches a width
+        # joining them as well as one leaving
+        self.assertEqual(
+            {columns for columns in parted
+             if columns >= self.NARROWEST_CONSOLE},
+            self.A_FIELD_IS_STILL_PARTED,
+            'the widths a padded tally parts a field from its value on '
+            'have moved: %r' % sorted(parted))
 
     def test_the_whole_tally_is_still_on_the_screen(self):
         columns = 29
@@ -13595,7 +13643,9 @@ class TestTheGuide(unittest.TestCase):
         self.grid = grid_from_strings(TestMazeGame.MAZE)
         self.quest = py_maze.Quest(boxes={(2, 1): 1}, doors={(3, 2): 1},
                                    guide=(1, 1))
-        self.game = py_maze.MazeGame(self.grid, quest=self.quest)
+        self.clock = FakeClock()
+        self.game = py_maze.MazeGame(self.grid, quest=self.quest,
+                                     clock=self.clock)
 
     def ask(self):
         # Returns:
@@ -13621,12 +13671,114 @@ class TestTheGuide(unittest.TestCase):
 
         self.assertEqual(self.ask()[0], [(3, 2)])
 
-    def test_the_answer_is_only_up_for_a_moment(self):
+    def test_the_cell_it_lights_is_only_up_for_a_moment(self):
+        # the cell keeps the moment a solution hint has, and keeps it
+        # on a sleep as that one does: a lit cell is read at a glance,
+        # and a glance is what it is given
         _, _, sleep = self.ask()
 
         sleep.assert_called_once_with(py_maze.HINT_SECONDS)
         self.assertEqual(self.game.hint_cells, set())
+
+    def test_the_answer_outlasts_the_cell_rather_than_sharing_its_moment(self):
+        # the answer is a sentence rather than a cell, so it is still
+        # up once the cell has gone - and it is not a second sleep
+        # holding it there, which would stop the game for as long as it
+        # took to read
+        _, _, sleep = self.ask()
+
+        self.assertEqual(self.game.quest_message,
+                         py_maze.GUIDE_LINE % self.quest.task())
+        self.assertEqual(sleep.call_args_list,
+                         [mock.call(py_maze.HINT_SECONDS)])
+        self.assertGreater(py_maze.GUIDE_SECONDS, py_maze.HINT_SECONDS)
+
+    def test_the_answer_stands_until_it_has_been_up_long_enough_to_read(self):
+        self.ask()
+
+        for waited in (0.0, py_maze.HINT_SECONDS,
+                       py_maze.GUIDE_SECONDS / 2):
+            self.clock.now = waited
+
+            self.assertEqual(
+                self.game.age_guide_answer(),
+                py_maze.GUIDE_LINE % self.quest.task(),
+                'the answer came down after %s seconds' % waited)
+
+    def test_the_answer_comes_down_once_it_has_been_read(self):
+        self.ask()
+        self.clock.advance(py_maze.GUIDE_SECONDS)
+
+        self.assertIsNone(self.game.age_guide_answer())
         self.assertIsNone(self.game.quest_message)
+        self.assertEqual(self.game.frame()[-1], self.game.controls())
+
+    def test_the_game_is_still_being_played_while_the_answer_is_read(self):
+        # the answer is held on the loop's own tick rather than on a
+        # sleep, which is the whole reason for the change: nothing is
+        # drawn while the game sleeps, so a sleep long enough to read a
+        # sentence under would stand the clock still for all of it
+        self.game.start_clock()
+        self.ask()
+        self.clock.advance(py_maze.GUIDE_SECONDS / 2)
+        self.game.age_guide_answer()
+
+        self.assertIsNotNone(self.game.quest_message)
+        self.assertIn('0:03', self.game.status())
+        self.assertTrue(self.game.move_player(0, 1))
+
+    def test_standing_still_is_enough_for_the_answer_to_come_down(self):
+        # the turns nothing was pressed on are turns of the loop like
+        # any other, so the answer comes down on the clock rather than
+        # on the player's next keypress
+        keys = ['n', None, None, 'q']
+        standing = []
+
+        def pressed(timeout=None):
+            self.clock.advance(py_maze.GUIDE_SECONDS / 2)
+            standing.append(self.game.quest_message)
+            return keys.pop(0)
+
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(self.game, 'get_key',
+                                  side_effect=pressed), \
+                mock.patch.object(time, 'sleep'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.play()
+
+        # read before each key is played: nothing up, the answer for
+        # the turns it is still being read on, then down again, with no
+        # move made and nothing pressed to bring it down
+        self.assertEqual([line is not None for line in standing],
+                         [False, True, True, False])
+        self.assertIsNone(self.game.quest_message)
+        self.assertEqual(self.game.moves, 0)
+
+    def test_finding_the_box_the_answer_named_rewords_it(self):
+        # the same errand still, so the line is reworded where it
+        # stands: it said where the item was and now says which door
+        # it opens
+        self.ask()
+        named = self.game.quest_message
+        self.quest.open_box((2, 1))
+
+        self.assertEqual(self.game.age_guide_answer(),
+                         py_maze.GUIDE_LINE % self.quest.task())
+        self.assertNotEqual(self.game.quest_message, named)
+        self.assertIn('opens the door ahead', self.game.quest_message)
+
+    def test_opening_the_door_the_answer_named_takes_it_down(self):
+        # the errand the answer was about is finished, so a sentence
+        # about it has nothing left to say however much of its six
+        # seconds is left to run
+        self.ask()
+        self.quest.open_box((2, 1))
+        self.quest.unlock((3, 2))
+
+        self.assertIsNone(self.game.age_guide_answer())
+        self.assertIsNone(self.game.quest_message)
+        self.assertEqual(self.game.frame()[-1], self.game.controls())
 
     def test_what_it_said_takes_the_controls_line_rather_than_a_row(self):
         plain = len(self.game.frame())
@@ -13661,7 +13813,13 @@ class TestTheGuide(unittest.TestCase):
 
         output = stdout.getvalue()
         self.assertIn(py_maze.HINT_MARKER, output)
-        self.assertIsNone(self.game.quest_message)
+        self.assertEqual(self.game.hint_cells, set())
+
+        # the quit came inside the six seconds the answer is given, so
+        # the line the player is reading is still the one they asked
+        # for. Only the cell came down with the redraw
+        self.assertEqual(self.game.quest_message,
+                         py_maze.GUIDE_LINE % self.quest.task())
         self.assertEqual(self.game.moves, 0)
 
     def test_the_n_key_moves_nothing_in_a_game_with_no_quest(self):

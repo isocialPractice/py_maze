@@ -59,10 +59,10 @@ from .cli import (DEFAULT_DIFFICULTY, DIFFICULTIES, EXIT_FILE_ERROR,
                   quest_stage_count, resolve_dimensions)
 from .game import (CAUGHT_BANNER, CAUGHT_OUTCOME, CONTROLS_LINE,
                    ESCAPED_OUTCOME, EXIT_PROMPT, GOODBYE_MESSAGE, GUIDE_LINE,
-                   HINT_SECONDS, HINT_STEPS, PLAIN_CAUGHT_BANNER,
-                   PLAIN_WIN_BANNER, QUEST_CONTROLS_LINE, QUIT_MESSAGE,
-                   TICK_SECONDS, WIN_BANNER, MazeGame, caught_banner,
-                   win_banner)
+                   GUIDE_SECONDS, HINT_SECONDS, HINT_STEPS,
+                   PLAIN_CAUGHT_BANNER, PLAIN_WIN_BANNER,
+                   QUEST_CONTROLS_LINE, QUIT_MESSAGE, TICK_SECONDS,
+                   WIN_BANNER, MazeGame, caught_banner, win_banner)
 from .generation import (MAX_SEED, MazeGenerator, braid_maze, maze_seed,
                          place_collectibles)
 from .grid import (MIN_DIMENSION, MIN_GRID_WIDTH, MOVES, find_entrance,
@@ -241,6 +241,7 @@ __all__ = [
     'EXIT_PROMPT',
     'GOODBYE_MESSAGE',
     'GUIDE_LINE',
+    'GUIDE_SECONDS',
     'HINT_SECONDS',
     'HINT_STEPS',
     'PLAIN_CAUGHT_BANNER',
