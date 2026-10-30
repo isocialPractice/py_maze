@@ -22,6 +22,21 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+One correction to the release below, found reviewing it and fixed after it
+was tagged, so it is not in `v1.0.0a11`.
+
+### Fixed
+
+- **The note and `docs/playing.md` both named one width where the padded
+  break still parts a field, and there are two.** A run of spaces early
+  enough in the row to cost it a row is passed over at 17 columns and at 18,
+  which is the set the sweep over `wrap_on_spaces` pins and what the entry
+  below says in its own opening, where `moves` is parted from its count at
+  17 and 18, before the `Fixed` note called 17 the only one. The figure is
+  now 17 and 18 in both places
+
 ## [1.0.0a11] - 2026-10-29
 
 The guide's answer given the six seconds a sentence needs to be read, and the
@@ -72,9 +87,9 @@ the plain tally did the same at 31 to 34 and parted `moves` from its count at
   one, which is what keeps a name and its value together. A run early enough
   in the row to leave it well short of the last column is the exception:
   breaking there needs a row the console's own break did not, so the single
-  space is kept and the field is parted after all - 17 columns is the only
-  width at or above the 15 column floor where that still happens, and a maze
-  row is the worse thing to spend. The controls line separates its words
+  space is kept and the field is parted after all - 17 and 18 columns are the
+  only widths at or above the 15 column floor where that still happens, and a
+  maze row is the worse thing to spend. The controls line separates its words
   with single spaces and has no run to prefer, so nothing about the line it
   is padded to has moved
 - **The guide's answer was pinned to the time a lit cell is given.** The cell

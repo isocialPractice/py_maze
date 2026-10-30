@@ -64,6 +64,38 @@ into a `## Complete` section at the bottom of this file.
     mid-answer, where `docs/modes.md` says the reword happens "in place"
   - **Goal**: Resolve to [guide-answer-costs-a-maze-row.prompt.md](.claude/prompts/guide-answer-costs-a-maze-row.prompt.md)
   - From: UI/UX Override - the row the guide's answer takes off the maze
+- [ ] The guide's answer outlives the game and is drawn on the ending
+  - **Issue**: `show_quest_hint` no longer clears `quest_message` and no
+    ending clears it either, so the answer is still set when
+    `print_ending` redraws the frame. On the suite's own maze with a
+    `FakeClock`, pressing `n` and then `q` inside `GUIDE_SECONDS` draws the
+    summary with `The guide says: item 1 is still in its box, and the box
+    is in the part of the maze you can already reach` on the controls
+    line's row - a sentence about an errand the player has just abandoned,
+    where the keys belong. It costs the ending a row as well: that foot is
+    2 rows at 80 columns and 3 at 44, against the controls line's 1 and 2,
+    so the ending gives up a maze row at the widths the item above
+    measures for play. A second case is the answer being false rather than
+    merely stale. `play` (`py_maze/game.py:1038`) ages the answer before
+    the key is dispatched, so with item 1 carried and the player beside the
+    door, `n` followed by the move that opens it leaves `stage()` at None
+    while `The guide says: you are carrying item 1, and it opens the door
+    ahead` is still the frame's last line. The next tick takes it down
+    0.25s later, so under `--mode quest` that is a flicker; it is only
+    permanent where an ending lands on that same turn, which needs a
+    chaser beside the quest and so is reachable through `MazeGame` rather
+    than through `--mode`. `docs/modes.md` says an answer "never outlasts
+    the errand it was about"
+  - **Goal**: Decide whether an ending clears the answer or keeps it, and
+    make the code and `docs/modes.md` agree. Clearing `quest_message` in
+    `finish` and on the `q` branch is the small version. Aging after the
+    key is dispatched rather than before would close the false-sentence
+    case too, but that ordering is also what keeps a stale answer off the
+    ending when the player quits on a later turn, so the two interact and
+    the choice is worth stating rather than swapping. Pin whichever is
+    chosen with an ending driven after `n`, and with a step that opens the
+    door the answer names
+  - From: UI/UX Override - the row the guide's answer takes off the maze
 
 ## Fixes and Hardening
 

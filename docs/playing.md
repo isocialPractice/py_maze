@@ -393,9 +393,9 @@ alone on the row below. The run between two fields is the break that is
 taken wherever the row holds one, which is what keeps a name and its value
 together. The exception is a run early enough in the row to leave it well
 short of the last column, where breaking there would need a row the console's
-own break did not - 17 columns is where that happens - and there the single
-space is kept and the field is parted after all. A maze row is still the
-worse thing to spend.
+own break did not - 17 and 18 columns are where that happens - and there the
+single space is kept and the field is parted after all. A maze row is still
+the worse thing to spend.
 
 A line carried onto the row below also keeps that row. The lines of a frame
 are addressed by the screen rows they belong on rather than by their place in
