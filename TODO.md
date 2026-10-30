@@ -28,6 +28,43 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the row the guide's answer takes off the maze
+
+#### Found Issues
+
+- [ ] The guide's answer takes a row off the maze, and now holds it for six
+  seconds
+  - **Issue**: `GUIDE_LINE` (`py_maze/game.py:96`) says the answer "takes
+    the controls line's row rather than a row of its own, so asking a
+    question never changes the height of the frame". It takes the row; it
+    does not take the row count. The quest controls line is 79 characters
+    and the answer about a box is 104, so on a console that wraps the
+    answer further than the controls line the frame is a row taller while
+    the answer is up and `fit_frame` pays for it out of the maze.
+    `fit_to_terminal` reserves rows for the lines it is handed
+    (`py_maze/rendering.py:1175`) and is never handed the answer, so the
+    maze is carved a row too tall for the screen it is drawn on the moment
+    the guide speaks. Read off a real Windows console at seed 2024,
+    `--mode quest`, pressing `n` and sending nothing after it: at 80
+    columns the maze goes from 19 rows to 18, the `end` marker from `end`
+    to `end 1 row below`, and the foot from row 23 to row 22, returning
+    6.1 seconds later; at 44 columns with `--collectibles 9`, 17 rows to
+    16. Comparing `frame_height` of the two padded lines over 15 to 200
+    columns, it is 57 widths - the bands 39 to 51 and 79 to 103 among them,
+    which hold 44, 80 and 100 - and clean from 104 columns up. 60 columns
+    is clean, which is why the request's check passes there and fails at
+    the other width it names. This is not a regression and does not reopen
+    `Guide Answer 1`: driving `04e9610^` on the same console shows the same
+    cut at 80 columns, lasting 0.56 seconds, for the span of the old
+    `time.sleep`. What `1.0.0a11` changed is that the six seconds the
+    answer is now given are long enough to read, and long enough to watch
+    a row of maze go. The reword moves it too: the door wording is 68
+    characters against the box's 104, so finding the box shifts the answer
+    from row 22 to row 23 at 80 columns and gives the maze row back
+    mid-answer, where `docs/modes.md` says the reword happens "in place"
+  - **Goal**: Resolve to [guide-answer-costs-a-maze-row.prompt.md](.claude/prompts/guide-answer-costs-a-maze-row.prompt.md)
+  - From: UI/UX Override - the row the guide's answer takes off the maze
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
