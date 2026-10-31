@@ -94,7 +94,19 @@ QUEST_CONTROLS_LINE = ("Use arrow keys or WASD to move. "
 
 # how the guide's answer is written where the controls line usually
 # sits. It takes the controls line's row rather than a row of its own,
-# so asking a question never changes the height of the frame
+# so asking a question never changes the height of the frame.
+#
+# Taking the row is not the same as taking the row count, and for a
+# version it took only the first. A console breaks a line on the column,
+# so a sentence longer than the line it replaces stands a row taller
+# wherever the extra characters reach past the edge - the answer about a
+# box ran to 104 characters against the quest controls line's 79 - and
+# fit_frame pays for that row out of the maze. At 80 columns the maze
+# went from 19 rows to 18 the moment the guide spoke and back six
+# seconds later, and 56 other widths did the same. What holds the
+# sentence now is Quest.task, where every answer is written to fit
+# inside QUEST_CONTROLS_LINE's length, so there is no console on which
+# the answer needs a row the controls line did not already have
 GUIDE_LINE = "The guide says: %s"
 
 # the banner shown when the maze is solved, and the plain text a console
@@ -458,6 +470,15 @@ class MazeGame:
                 Where there is no frame to cut they are on the screen
                 already and are left where they are
         """
+
+        # an ending is not a frame the guide speaks on. The answer is a
+        # sentence about an errand and a game that is over has no
+        # errand left, so a player who asked where the box was and then
+        # quit read the summary with the guide still naming it, on the
+        # row the keys belong on. It is a row as well as a sentence: the
+        # answer wraps a console the controls line fits, and the frame
+        # the ending is printed under gave up a maze row to carry it
+        self.clear_guide_answer()
 
         # a terminal that cannot be drawn on by row is wiped and
         # written whole for every frame and nothing of it is fitted to
@@ -829,6 +850,12 @@ class MazeGame:
         stands rather than taken down - it said where the item was, and
         now says which door it opens.
 
+        There is a third way down, and it is not here: the end of the
+        game takes the answer with it, in :meth:`print_ending`. A game
+        that is over has no errand left for a sentence to be about, and
+        an ending is printed under a frame whose last row is the keys
+        rather than the guide.
+
         Returns:
             str: The answer as it now stands, and None once it has come
             down or where there was none up to begin with
@@ -842,9 +869,7 @@ class MazeGame:
 
         if (self.quest is None or read
                 or self.quest.stage() != self.quest_errand):
-            self.quest_message = None
-            self.quest_asked = None
-            self.quest_errand = None
+            self.clear_guide_answer()
             return None
 
         # the same errand, read off the quest as it now stands rather
@@ -852,6 +877,20 @@ class MazeGame:
         self.quest_message = GUIDE_LINE % self.quest.task()
 
         return self.quest_message
+
+    def clear_guide_answer(self):
+        """Take the guide's answer down, whatever is left of its seconds.
+
+        It is what :meth:`age_guide_answer` does when the answer has
+        been read or the errand it named is over, and what an ending
+        does on its way out: the reading it was given at and the errand
+        it was given about come down with the sentence, so nothing is
+        left for a later turn to age an answer that is no longer up.
+        """
+
+        self.quest_message = None
+        self.quest_asked = None
+        self.quest_errand = None
 
     def open_box(self):
         """Open whatever box the player is standing on.
@@ -1022,6 +1061,16 @@ class MazeGame:
         on is not the turn anything was pressed on, and a player who
         asks the guide and then stands still is given it for as long as
         one who walks away reading it.
+
+        It is aged twice a turn, once either side of the key, because
+        the two calls answer different turns. Before, because the turn
+        nothing was pressed on returns from its own branch without
+        reaching anything below it, and because the keys that draw a
+        frame of their own - the two hints - would otherwise draw a
+        sentence whose seconds had already run out. After, because the
+        step just taken is what finishes the errand the answer named,
+        and a sentence the move has made false should come down on the
+        frame that move draws rather than a tick later.
         """
 
         self.start_clock()
@@ -1034,7 +1083,12 @@ class MazeGame:
                 # every turn is one the guide's answer may have been up
                 # long enough to come down on, or one the errand it
                 # names has moved on from, so it is aged before the key
-                # is played rather than after
+                # is played. The turn nothing was pressed on is the
+                # commonest turn there is and returns from its own
+                # branch below without reaching anything after it, and
+                # the two hint keys draw a frame from inside their own
+                # handler, which would carry a sentence whose seconds
+                # had run out
                 self.age_guide_answer()
 
                 if key is None:
@@ -1074,6 +1128,16 @@ class MazeGame:
                 # that never happened. Falling out of the branch instead
                 # of starting the loop again is what keeps a key the game
                 # ignores from freezing the chase along with it
+
+                # the step just played is what can finish the errand the
+                # answer named - the move that opens the door it pointed
+                # at - so the answer is aged a second time before the
+                # frame that step draws goes out. Aged only above, a
+                # sentence the move has just made false is drawn once
+                # more and comes down a tick later, which is a flicker
+                # under --mode quest and a permanent reading on the one
+                # turn an ending lands with it
+                self.age_guide_answer()
 
                 self.advance_chase()
                 self.render()

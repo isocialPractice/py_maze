@@ -760,6 +760,38 @@ def measuring(size):
         yield
 
 
+def guide_answers(item=1):
+    # every answer the guide can give, as the frame writes it over the
+    # controls line
+    #
+    # They are read off a quest walked through its three states rather
+    # than copied out of Quest.task, so a reworded answer is measured
+    # here as the game will draw it. Copies were how the tables below
+    # came to describe a 104 character sentence the game had stopped
+    # saying
+    #
+    # Args:
+    #     item: The item number the errand is about, which is what
+    #         lengthens an answer: a two-digit number is a character
+    #         more of it
+    #
+    # Returns:
+    #     tuple: The answer about the box the item is in, the answer
+    #     about the door that item opens, and the answer once every
+    #     door is open
+
+    quest = py_maze.Quest(boxes={(2, 1): item}, doors={(3, 2): item},
+                          guide=(1, 1))
+    box = py_maze.GUIDE_LINE % quest.task()
+
+    quest.open_box((2, 1))
+    door = py_maze.GUIDE_LINE % quest.task()
+
+    quest.unlock((3, 2))
+
+    return box, door, py_maze.GUIDE_LINE % quest.task()
+
+
 def grid_from_strings(rows):
     # build a maze grid from a picture of the maze
     #
@@ -2330,28 +2362,31 @@ class TestFrameHeight(unittest.TestCase):
 
     # the two lines that take the controls line's row in quest mode,
     # measured across the widths a console is usually set to. The
-    # controls line is the one on screen between questions; the answer
-    # replaces it while the guide is speaking, and is the longer of the
-    # two, so a width where the controls line fits and the answer does
-    # not is a width where the frame changes height without changing
-    # its line count
+    # controls line is the one on screen between questions and the
+    # answer replaces it while the guide is speaking, so the rows they
+    # occupy are the same rows and a width where one needs more of them
+    # than the other is a width where the frame changes height without
+    # changing its line count.
+    #
+    # One table serves both because the answer is written to fit inside
+    # the controls line's length. It did not always: the answer about a
+    # box ran to 104 characters against the controls line's 79 and had
+    # a table of its own reading 2 rows at 80, 88 and 100 columns where
+    # this one reads 1
     WIDTHS = (60, 80, 88, 100, 120)
     CONTROLS_ROWS = {60: 2, 80: 1, 88: 1, 100: 1, 120: 1}
-    ANSWER_ROWS = {60: 2, 80: 2, 88: 2, 100: 2, 120: 1}
 
     def answer(self):
         # the longest thing the guide says, which is the answer a fresh
-        # quest gets: the first item is still in its box
-        return py_maze.GUIDE_LINE % (
-            'item 1 is still in its box, and the box is in the part of '
-            'the maze you can already reach')
+        # quest gets: the first item is still in a box
+        return max(guide_answers(), key=len)
 
     def test_the_two_foot_lines_are_the_lengths_the_table_is_built_on(self):
         # the premise of the two tests below, so a reworded controls
         # line or guide answer is caught here rather than read as a
         # table that still passes
         self.assertEqual(len(py_maze.QUEST_CONTROLS_LINE), 79)
-        self.assertEqual(len(self.answer()), 104)
+        self.assertEqual(len(self.answer()), 73)
 
     def test_the_quest_controls_line_across_the_usual_widths(self):
         for columns in self.WIDTHS:
@@ -2367,7 +2402,7 @@ class TestFrameHeight(unittest.TestCase):
                 self.assertEqual(
                     py_maze.frame_height([self.answer()],
                                          terminal_size(columns, 24)),
-                    self.ANSWER_ROWS[columns])
+                    self.CONTROLS_ROWS[columns])
 
     def test_fit_frame_gives_up_a_maze_row_wherever_the_foot_wraps(self):
         # the whole point of measuring in rows: the frame is eighteen
@@ -2378,7 +2413,7 @@ class TestFrameHeight(unittest.TestCase):
             for name, line, table in (
                     ('controls', py_maze.QUEST_CONTROLS_LINE,
                      self.CONTROLS_ROWS),
-                    ('answer', self.answer(), self.ANSWER_ROWS)):
+                    ('answer', self.answer(), self.CONTROLS_ROWS)):
                 frame = (['start'] + ['*' * 13 for _ in range(13)] +
                          ['end', 'time 0:03   moves 4   items 0/3', '', line])
                 size = terminal_size(columns, len(frame))
@@ -2438,15 +2473,21 @@ class TestWrapOnSpaces(unittest.TestCase):
     # is a fixed number of lines and the maze window is measured off it
     # - so what is changed is where the break lands, by padding each
     # row out to its last column
+    #
+    # The width this is measured at came down with the answer. That
+    # reading was taken on a 100 column console, of a sentence 104
+    # characters long; the answer is now written to fit inside the
+    # quest controls line's 79, so there is no console wide enough for
+    # the controls line and too narrow for the answer - which is the
+    # whole point of shortening it, and leaves 60 columns as the width
+    # that still breaks both lines of the foot
 
-    SIZE = terminal_size(100, 24)
+    SIZE = terminal_size(60, 24)
 
     def answer(self):
         # the longest thing the guide says, which is the answer a fresh
-        # quest gets: the first item is still in its box
-        return py_maze.GUIDE_LINE % (
-            'item 1 is still in its box, and the box is in the part of '
-            'the maze you can already reach')
+        # quest gets: the first item is still in a box
+        return max(guide_answers(), key=len)
 
     def rows(self, text, size=None):
         # Returns:
@@ -2465,12 +2506,17 @@ class TestWrapOnSpaces(unittest.TestCase):
         self.assertEqual(py_maze.wrap_on_spaces(self.answer(), None),
                          self.answer())
 
-    def test_the_guide_answer_is_the_line_that_reaches(self):
-        # the premise: it is longer than the console the fault was read
-        # on, and the controls line that takes its row back is not
+    def test_both_lines_of_the_foot_reach_past_this_console(self):
+        # the premise: the answer is longer than the console it is
+        # measured on, so there is a break to move, and it reaches no
+        # further than the controls line whose row it takes - which is
+        # what stops the sentence costing the frame a row it was not
+        # carved for
         self.assertGreater(len(self.answer()), self.SIZE.columns)
-        self.assertLessEqual(len(py_maze.QUEST_CONTROLS_LINE),
-                             self.SIZE.columns)
+        self.assertGreater(len(py_maze.QUEST_CONTROLS_LINE),
+                           self.SIZE.columns)
+        self.assertLessEqual(len(self.answer()),
+                             len(py_maze.QUEST_CONTROLS_LINE))
 
     def test_the_break_falls_at_a_space(self):
         padded = py_maze.wrap_on_spaces(self.answer(), self.SIZE)
@@ -13639,6 +13685,8 @@ class TestTheGuide(unittest.TestCase):
     # the hint-giving character: a second kind of hint, on a key of its
     # own, shown the way the solution hint already is
 
+    SIZE = terminal_size(80, 24)
+
     def setUp(self):
         self.grid = grid_from_strings(TestMazeGame.MAZE)
         self.quest = py_maze.Quest(boxes={(2, 1): 1}, doors={(3, 2): 1},
@@ -13658,6 +13706,51 @@ class TestTheGuide(unittest.TestCase):
             shown = self.game.show_quest_hint()
 
         return shown, stdout.getvalue(), sleep
+
+    def end(self, banner=py_maze.QUIT_MESSAGE):
+        # print an ending over the frame, on a console that can be
+        # drawn on by row, which is where the frame is redrawn under it
+        #
+        # Returns:
+        #     str: Everything the redraw and the ending wrote
+
+        stdout = io.StringIO()
+        with mock.patch.object(py_maze.game, 'terminal_size',
+                               return_value=self.SIZE), \
+                mock.patch.object(py_maze.game, 'ansi_enabled',
+                                  return_value=True), \
+                mock.patch.object(self.game, 'clear_screen'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.print_ending(self.game.ending(banner))
+
+        return stdout.getvalue()
+
+    def spoken(self, keys):
+        # play the keys through and report what the guide was saying on
+        # every frame the game drew
+        #
+        # Returns:
+        #     list: self.quest_message as each render was reached, so a
+        #     sentence drawn after the errand it names was finished is
+        #     an entry that should have been None
+
+        said = []
+        render = self.game.render
+
+        def recording(*args, **named):
+            said.append(self.game.quest_message)
+            return render(*args, **named)
+
+        stdout = io.StringIO()
+        with mock.patch.object(self.game, 'clear_screen'), \
+                mock.patch.object(self.game, 'render',
+                                  side_effect=recording), \
+                mock.patch.object(self.game, 'get_key', side_effect=keys), \
+                mock.patch.object(time, 'sleep'), \
+                contextlib.redirect_stdout(stdout):
+            self.game.play()
+
+        return said
 
     def test_it_points_at_the_box_the_errand_is_about(self):
         shown, drawn, _ = self.ask()
@@ -13815,12 +13908,58 @@ class TestTheGuide(unittest.TestCase):
         self.assertIn(py_maze.HINT_MARKER, output)
         self.assertEqual(self.game.hint_cells, set())
 
-        # the quit came inside the six seconds the answer is given, so
-        # the line the player is reading is still the one they asked
-        # for. Only the cell came down with the redraw
-        self.assertEqual(self.game.quest_message,
-                         py_maze.GUIDE_LINE % self.quest.task())
+        # the quit came inside the six seconds the answer is given, and
+        # took it down anyway: the errand it was about is one the player
+        # has just walked away from, and the summary is printed under a
+        # frame whose last row carries the keys
+        self.assertIsNone(self.game.quest_message)
         self.assertEqual(self.game.moves, 0)
+
+    def test_an_ending_takes_the_answer_down_with_the_game(self):
+        # a game that is over has no errand left for a sentence to be
+        # about, so the ending is printed under a frame whose last row
+        # carries the keys rather than the guide. It is a row as well as
+        # a sentence: the answer wraps a console the controls line fits,
+        # and the frame under the ending gave a maze row up to carry it
+        self.ask()
+        self.assertIsNotNone(self.game.quest_message)
+        drawn = self.end()
+
+        self.assertIsNone(self.game.quest_message)
+        self.assertIsNone(self.game.quest_asked)
+        self.assertIsNone(self.game.quest_errand)
+        self.assertEqual(self.game.frame()[-1], self.game.controls())
+        self.assertNotIn('The guide says', drawn)
+        self.assertIn(py_maze.QUEST_CONTROLS_LINE, drawn)
+
+    def test_the_exit_leaves_no_answer_on_the_summary_either(self):
+        # the exit leaves by finish rather than by the quit branch, so
+        # the one place both of them print through is what takes the
+        # answer down rather than either branch doing it for itself
+        self.quest.open_box((2, 1))
+        self.quest.unlock((3, 2))
+        self.spoken(['n'] + TestMazeGame.ROUTE + ['x'])
+
+        self.assertTrue(self.game.check_win())
+        self.assertIsNone(self.game.quest_message)
+
+    def test_the_step_that_opens_the_door_takes_the_answer_with_it(self):
+        # the answer named the door the carried item opens, and the step
+        # that opens it has finished the errand the sentence was about:
+        # "it opens the door ahead" is false the moment the door is
+        # open, so the frame that step draws is where it has to be gone.
+        # Aged only before the key is played, it stood for the frame
+        # that move drew and came down a tick afterwards
+        self.quest.open_box((2, 1))
+        self.game.player_x, self.game.player_y = 3, 1
+        said = self.spoken(['n', 's', 'q'])
+
+        self.assertTrue(self.quest.finished())
+        self.assertIn(py_maze.GUIDE_LINE % 'you are carrying item 1, and it '
+                                           'opens the door ahead', said)
+        self.assertIsNone(said[-1],
+                          'the step that opened the door drew the answer '
+                          'that had just stopped being true')
 
     def test_the_n_key_moves_nothing_in_a_game_with_no_quest(self):
         plain = py_maze.MazeGame(self.grid)
@@ -13834,6 +13973,154 @@ class TestTheGuide(unittest.TestCase):
 
         self.assertEqual(sleep.call_count, 0)
         self.assertEqual(plain.moves, 0)
+
+
+class TestTheGuideAnswerLeavesTheFrameAlone(unittest.TestCase):
+    # the guide's answer takes the controls line's row, and for a
+    # version it took only the row and not the row count. A console
+    # breaks a line on the column, so a sentence longer than the line it
+    # replaces stands a row taller wherever the extra characters reach
+    # past the edge, and fit_frame pays for that row out of the maze: at
+    # 80 columns the maze went from 19 rows to 18 the moment the guide
+    # spoke, and back six seconds later, with the end marker reading
+    # "end 1 row below" in between.
+    #
+    # What holds it is the wording, which is what the controls line's
+    # own wrap was fixed with in 1.0.0a7: QUEST_CONTROLS_LINE lost the
+    # word "Press" to reach 79 characters so an 80 column console stops
+    # paying a maze row for it. Here the sweep is the whole width range
+    # rather than the widths a console is usually set to, since one
+    # width inside a band is as good as the band
+
+    WIDTHS = range(15, 201)
+
+    # the item numbers the answers are measured for. The number is
+    # written into two of the three sentences, so a two-digit one is a
+    # character more of them: --quest-stages stops at 9, and a quest
+    # built through the library takes any number its boxes are keyed by
+    ITEMS = (1, 10)
+
+    def answers(self):
+        # every answer the guide can give, for a one-digit item number
+        # and a two-digit one
+        #
+        # Returns:
+        #     list: One (label, line) per answer, the label naming the
+        #     errand so a failing width says which sentence it was
+
+        lines = []
+        for item in self.ITEMS:
+            box, door, walk = guide_answers(item)
+            lines += [('box, item %d' % item, box),
+                      ('door, item %d' % item, door),
+                      ('every door open, item %d' % item, walk)]
+
+        return lines
+
+    def test_no_answer_is_longer_than_the_line_it_is_written_over(self):
+        # the invariant the width sweep below follows from: ceiling
+        # division by any width is monotonic in the length, so an answer
+        # inside the controls line's length needs no more rows than it
+        # at any width at all, measured or not
+        for label, line in self.answers():
+            with self.subTest(answer=label):
+                self.assertLessEqual(len(line),
+                                     len(py_maze.QUEST_CONTROLS_LINE),
+                                     'the guide says %r, which is %d '
+                                     'characters against the controls '
+                                     'line\'s %d'
+                                     % (line, len(line),
+                                        len(py_maze.QUEST_CONTROLS_LINE)))
+
+    def test_no_answer_needs_a_row_the_controls_line_did_not(self):
+        # the one assertion the whole finding reduces to. It failed at
+        # 57 of these 186 widths, the bands 39 to 51 and 79 to 103 among
+        # them, which hold 44, 80 and 100
+        for label, line in self.answers():
+            for columns in self.WIDTHS:
+                size = terminal_size(columns, 24)
+                with self.subTest(answer=label, columns=columns):
+                    self.assertLessEqual(
+                        py_maze.frame_height([line], size),
+                        py_maze.frame_height([py_maze.QUEST_CONTROLS_LINE],
+                                             size))
+
+    def test_the_reword_leaves_the_answer_on_the_row_it_was_on(self):
+        # the other half. Finding the box rewords the answer to the door
+        # that item opens, which age_guide_answer does where the
+        # sentence stands rather than by taking it down and putting a
+        # second one up - so the two wordings are measured against each
+        # other as well as against the controls line. They ran to 104
+        # and 68 characters, so at 80 columns the reword gave the maze
+        # row back halfway through the answer and the frame moved under
+        # the sentence being read
+        for item in self.ITEMS:
+            box, door, _ = guide_answers(item)
+            for columns in self.WIDTHS:
+                size = terminal_size(columns, 24)
+                reworded = self.fitted(door, size)
+
+                with self.subTest(item=item, columns=columns):
+                    self.assertEqual(reworded[:-1],
+                                     self.fitted(box, size)[:-1])
+
+    def fitted(self, foot, size):
+        # the play screen a quest maze is carved for, cut to the console
+        # it is drawn on, with the line given on the controls line's row
+        #
+        # Args:
+        #     foot: The controls line, or the answer that takes its row
+        #     size: The console it is all measured against
+        #
+        # Returns:
+        #     list: The frame as fit_frame hands it over, which is the
+        #     window onto the maze, the marker saying whether it was
+        #     cut, the tally, the spacer and that last line
+
+        controls = py_maze.mode_controls(py_maze.QUEST_MODE)
+        status = py_maze.mode_status(py_maze.QUEST_MODE, collectibles=9,
+                                     quest_stages=3)
+
+        with mock.patch.object(py_maze.rendering, 'terminal_size',
+                               return_value=size):
+            width, height = py_maze.fit_to_terminal(
+                200, 200, size=size, stream=io.StringIO(),
+                controls=controls, status=status)
+
+        maze = ['*' * min(width * 2 + 1, size.columns)
+                for _ in range(height * 2 + 1)]
+        frame = (['start'] + maze +
+                 ['end', py_maze.wrap_on_spaces(status, size), '',
+                  py_maze.wrap_on_spaces(foot, size)])
+
+        return py_maze.fit_frame(frame, size, focus=0)
+
+    def test_the_maze_carved_for_a_quest_fits_the_guide_speaking(self):
+        # the end-to-end version, and the one that would catch a future
+        # wording change reopening this. fit_to_terminal counts a
+        # wrapped row for the lines it is handed and is handed the
+        # controls line, never the answer, so a maze carved a row too
+        # tall for the console is what the guide used to speak on.
+        #
+        # The quest is measured with the pickups as well, since that is
+        # the tally that wraps furthest - 47 characters - and so the
+        # tightest frame an answer has to fit inside
+        controls = py_maze.mode_controls(py_maze.QUEST_MODE)
+
+        for columns in self.WIDTHS:
+            size = terminal_size(columns, 24)
+            keys = self.fitted(controls, size)
+
+            for label, line in self.answers():
+                speaking = self.fitted(line, size)
+
+                with self.subTest(columns=columns, answer=label):
+                    # every row of the picture but the sentence itself:
+                    # the window onto the maze, the marker that says
+                    # whether it was cut, the tally and the spacer
+                    self.assertEqual(speaking[:-1], keys[:-1])
+                    self.assertLessEqual(
+                        py_maze.frame_height(speaking, size), size.lines)
 
 
 class TestQuestModeRegistry(unittest.TestCase):

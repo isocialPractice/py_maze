@@ -129,16 +129,29 @@ you still need, or at the door it opens once you are carrying it, and says
 so in words where the controls line usually sits:
 
 ```
-The guide says: item 2 is still in its box, and the box is in the part of the maze you can already reach
+The guide says: item 2 is still in a box, somewhere you can already reach
 ```
 
 Once every door is open it says so, and from there the maze is an ordinary
 walk to the exit.
 
+Every answer is written short enough to fit inside the controls line it is
+drawn over, which is 79 characters in quest mode. That is what keeps asking a
+question from changing the height of the screen: a console breaks a line on
+the column it runs out of, so a sentence longer than the line it replaces
+stands a row taller on every console narrow enough to break it further, and
+the maze is what pays for that row.
+
 An answer never outlasts the errand it was about. Finding the box it named
-rewords it to the door that item opens, and opening that door takes it down,
-whatever is left of its six seconds: the errand it was an answer to is
-finished.
+rewords it to the door that item opens, on the row it is already on, and
+opening that door takes it down, whatever is left of its six seconds: the
+errand it was an answer to is finished.
+
+The end of the game takes it down as well, however much of the six seconds
+is left. A quit, the exit and the chaser are three ways out of the same maze
+and all three print their summary under the frame, where the last row is the
+keys again: a sentence about the box you were sent for has nothing to say to
+a player who has just stopped looking for it.
 
 ### Braiding Opens a Way Round
 

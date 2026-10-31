@@ -28,75 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the row the guide's answer takes off the maze
-
-#### Found Issues
-
-- [ ] The guide's answer takes a row off the maze, and now holds it for six
-  seconds
-  - **Issue**: `GUIDE_LINE` (`py_maze/game.py:96`) says the answer "takes
-    the controls line's row rather than a row of its own, so asking a
-    question never changes the height of the frame". It takes the row; it
-    does not take the row count. The quest controls line is 79 characters
-    and the answer about a box is 104, so on a console that wraps the
-    answer further than the controls line the frame is a row taller while
-    the answer is up and `fit_frame` pays for it out of the maze.
-    `fit_to_terminal` reserves rows for the lines it is handed
-    (`py_maze/rendering.py:1175`) and is never handed the answer, so the
-    maze is carved a row too tall for the screen it is drawn on the moment
-    the guide speaks. Read off a real Windows console at seed 2024,
-    `--mode quest`, pressing `n` and sending nothing after it: at 80
-    columns the maze goes from 19 rows to 18, the `end` marker from `end`
-    to `end 1 row below`, and the foot from row 23 to row 22, returning
-    6.1 seconds later; at 44 columns with `--collectibles 9`, 17 rows to
-    16. Comparing `frame_height` of the two padded lines over 15 to 200
-    columns, it is 57 widths - the bands 39 to 51 and 79 to 103 among them,
-    which hold 44, 80 and 100 - and clean from 104 columns up. 60 columns
-    is clean, which is why the request's check passes there and fails at
-    the other width it names. This is not a regression and does not reopen
-    `Guide Answer 1`: driving `04e9610^` on the same console shows the same
-    cut at 80 columns, lasting 0.56 seconds, for the span of the old
-    `time.sleep`. What `1.0.0a11` changed is that the six seconds the
-    answer is now given are long enough to read, and long enough to watch
-    a row of maze go. The reword moves it too: the door wording is 68
-    characters against the box's 104, so finding the box shifts the answer
-    from row 22 to row 23 at 80 columns and gives the maze row back
-    mid-answer, where `docs/modes.md` says the reword happens "in place"
-  - **Goal**: Resolve to [guide-answer-costs-a-maze-row.prompt.md](.claude/prompts/guide-answer-costs-a-maze-row.prompt.md)
-  - From: UI/UX Override - the row the guide's answer takes off the maze
-- [ ] The guide's answer outlives the game and is drawn on the ending
-  - **Issue**: `show_quest_hint` no longer clears `quest_message` and no
-    ending clears it either, so the answer is still set when
-    `print_ending` redraws the frame. On the suite's own maze with a
-    `FakeClock`, pressing `n` and then `q` inside `GUIDE_SECONDS` draws the
-    summary with `The guide says: item 1 is still in its box, and the box
-    is in the part of the maze you can already reach` on the controls
-    line's row - a sentence about an errand the player has just abandoned,
-    where the keys belong. It costs the ending a row as well: that foot is
-    2 rows at 80 columns and 3 at 44, against the controls line's 1 and 2,
-    so the ending gives up a maze row at the widths the item above
-    measures for play. A second case is the answer being false rather than
-    merely stale. `play` (`py_maze/game.py:1038`) ages the answer before
-    the key is dispatched, so with item 1 carried and the player beside the
-    door, `n` followed by the move that opens it leaves `stage()` at None
-    while `The guide says: you are carrying item 1, and it opens the door
-    ahead` is still the frame's last line. The next tick takes it down
-    0.25s later, so under `--mode quest` that is a flicker; it is only
-    permanent where an ending lands on that same turn, which needs a
-    chaser beside the quest and so is reachable through `MazeGame` rather
-    than through `--mode`. `docs/modes.md` says an answer "never outlasts
-    the errand it was about"
-  - **Goal**: Decide whether an ending clears the answer or keeps it, and
-    make the code and `docs/modes.md` agree. Clearing `quest_message` in
-    `finish` and on the `q` branch is the small version. Aging after the
-    key is dispatched rather than before would close the false-sentence
-    case too, but that ordering is also what keeps a stale answer off the
-    ending when the player quits on a later turn, so the two interact and
-    the choice is worth stating rather than swapping. Pin whichever is
-    chosen with an ending driven after `n`, and with a step that opens the
-    door the answer names
-  - From: UI/UX Override - the row the guide's answer takes off the maze
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -2989,5 +2920,69 @@ No items are currently queued in this section.
     moves - the rule proposed there and the cost measured for it are read
     off the widths rather than off the field names
   - From: UI/UX Override - the space the padded break is taken on
+- [x] The guide's answer takes a row off the maze, and now holds it for six
+  seconds
+  - **Issue**: `GUIDE_LINE` (`py_maze/game.py:96`) says the answer "takes
+    the controls line's row rather than a row of its own, so asking a
+    question never changes the height of the frame". It takes the row; it
+    does not take the row count. The quest controls line is 79 characters
+    and the answer about a box is 104, so on a console that wraps the
+    answer further than the controls line the frame is a row taller while
+    the answer is up and `fit_frame` pays for it out of the maze.
+    `fit_to_terminal` reserves rows for the lines it is handed
+    (`py_maze/rendering.py:1175`) and is never handed the answer, so the
+    maze is carved a row too tall for the screen it is drawn on the moment
+    the guide speaks. Read off a real Windows console at seed 2024,
+    `--mode quest`, pressing `n` and sending nothing after it: at 80
+    columns the maze goes from 19 rows to 18, the `end` marker from `end`
+    to `end 1 row below`, and the foot from row 23 to row 22, returning
+    6.1 seconds later; at 44 columns with `--collectibles 9`, 17 rows to
+    16. Comparing `frame_height` of the two padded lines over 15 to 200
+    columns, it is 57 widths - the bands 39 to 51 and 79 to 103 among them,
+    which hold 44, 80 and 100 - and clean from 104 columns up. 60 columns
+    is clean, which is why the request's check passes there and fails at
+    the other width it names. This is not a regression and does not reopen
+    `Guide Answer 1`: driving `04e9610^` on the same console shows the same
+    cut at 80 columns, lasting 0.56 seconds, for the span of the old
+    `time.sleep`. What `1.0.0a11` changed is that the six seconds the
+    answer is now given are long enough to read, and long enough to watch
+    a row of maze go. The reword moves it too: the door wording is 68
+    characters against the box's 104, so finding the box shifts the answer
+    from row 22 to row 23 at 80 columns and gives the maze row back
+    mid-answer, where `docs/modes.md` says the reword happens "in place"
+  - **Goal**: Resolve to [guide-answer-costs-a-maze-row.prompt.md](.claude/prompts/guide-answer-costs-a-maze-row.prompt.md)
+  - From: UI/UX Override - the row the guide's answer takes off the maze
+- [x] The guide's answer outlives the game and is drawn on the ending
+  - **Issue**: `show_quest_hint` no longer clears `quest_message` and no
+    ending clears it either, so the answer is still set when
+    `print_ending` redraws the frame. On the suite's own maze with a
+    `FakeClock`, pressing `n` and then `q` inside `GUIDE_SECONDS` draws the
+    summary with `The guide says: item 1 is still in its box, and the box
+    is in the part of the maze you can already reach` on the controls
+    line's row - a sentence about an errand the player has just abandoned,
+    where the keys belong. It costs the ending a row as well: that foot is
+    2 rows at 80 columns and 3 at 44, against the controls line's 1 and 2,
+    so the ending gives up a maze row at the widths the item above
+    measures for play. A second case is the answer being false rather than
+    merely stale. `play` (`py_maze/game.py:1038`) ages the answer before
+    the key is dispatched, so with item 1 carried and the player beside the
+    door, `n` followed by the move that opens it leaves `stage()` at None
+    while `The guide says: you are carrying item 1, and it opens the door
+    ahead` is still the frame's last line. The next tick takes it down
+    0.25s later, so under `--mode quest` that is a flicker; it is only
+    permanent where an ending lands on that same turn, which needs a
+    chaser beside the quest and so is reachable through `MazeGame` rather
+    than through `--mode`. `docs/modes.md` says an answer "never outlasts
+    the errand it was about"
+  - **Goal**: Decide whether an ending clears the answer or keeps it, and
+    make the code and `docs/modes.md` agree. Clearing `quest_message` in
+    `finish` and on the `q` branch is the small version. Aging after the
+    key is dispatched rather than before would close the false-sentence
+    case too, but that ordering is also what keeps a stale answer off the
+    ending when the player quits on a later turn, so the two interact and
+    the choice is worth stating rather than swapping. Pin whichever is
+    chosen with an ending driven after `n`, and with a step that opens the
+    door the answer names
+  - From: UI/UX Override - the row the guide's answer takes off the maze
 
 </details>

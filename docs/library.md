@@ -565,6 +565,14 @@ controls line is the longest line of the *foot*, not of the screen. The
 two lines the foot has left are the `end` marker and a blank spacer, and
 neither is wide enough to reach the edge of a console with room for a maze
 in it.
+
+The guide's answer is a third line that can wrap, and it is handed over
+nowhere, because it takes the controls line's row while the guide is
+speaking. `Quest.task` writes every answer short enough that `GUIDE_LINE`
+around it fits inside `QUEST_CONTROLS_LINE`, so there is no console on which
+the sentence needs a row the controls line did not already have and no
+reserve of its own to count. A longer answer is a maze row given up for as
+long as the answer is up, which is what it was until 1.0.0a12.
 `place_quest` is the call behind quest mode's entry, and `Quest` is the
 inventory the player fills:
 

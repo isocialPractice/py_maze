@@ -3,6 +3,90 @@
 Defects that are understood but not yet fixed. Each section records how to
 reproduce the bug, what is known about it and what is not.
 
+## Resolved in 1.0.0a12: the guide's answer costing the maze a row for six seconds
+
+The fourth round of the wrapped-foot family recorded below, and the only one
+where the line that wrapped was never handed to the reserve at all.
+`GUIDE_LINE` said of itself that the answer "takes the controls line's row
+rather than a row of its own, so asking a question never changes the height
+of the frame". It took the row; it did not take the row count. The quest
+controls line is 79 characters and the answer about a box was 104, 105 once
+the item number reached two digits, so on a console narrow enough to break
+the answer further than the controls line the frame stood a row taller while
+the answer was up and `fit_frame` paid for that row out of the maze.
+`fit_to_terminal` reserves rows for the lines it is handed and is handed the
+controls line, never the answer.
+
+Read off a real Windows console at seed 2024, `--mode quest`, pressing `n`
+and sending nothing after it: at 80 columns the maze went from 19 rows to 18,
+the `end` marker from `end` to `end 1 row below` and the foot from row 23 to
+row 22, returning 6.1 seconds later; at 44 columns with `--collectibles 9`,
+17 rows to 16. Comparing `frame_height` of the two padded lines over 15 to
+200 columns, it is 57 widths - the bands 39 to 51 and 79 to 103 among them,
+which hold 44, 80 and 100 - and clean from 104 columns up. 60 columns is
+clean, because there the controls line already wraps to two rows and the
+answer fits in the same two.
+
+This was not a regression. Driving `04e9610^` on the same console shows the
+same cut at 80 columns, lasting 0.56 seconds, for the span of the old
+`time.sleep`. What 1.0.0a11 changed is that the six seconds the answer is now
+given are long enough to read, and long enough to watch a row of maze go.
+The reword moved it too: the door wording is 68 characters against the box's
+104, so finding the box shifted the answer from row 22 to row 23 at 80
+columns and gave the maze row back mid-answer.
+
+Fixed in 1.0.0a12 by shortening the wording rather than by reserving a row
+for it, which is what the controls line's own wrap was fixed with in 1.0.0a7:
+`CONTROLS_LINE` lost the word "Press" to reach 60 characters and the quest
+line was written to 79 so an 80 column console stops paying a maze row for
+the wrap. Reserving against the taller of the two lines would have been
+correct at every width as well, and would have spent the maze row
+permanently - a quest maze a row shorter than a plain one at 80 columns,
+which is the asymmetry the 1.0.0a7 work removed. The answer about a box is
+now 73 characters, 74 at two digits, and every answer the guide can give is
+inside the controls line's 79.
+
+`TestTheGuideAnswerLeavesTheFrameAlone` pins it four ways: no answer longer
+than the line it is written over, no answer needing a row the controls line
+did not at any width from 15 to 200, the reword leaving the sentence on the
+row it was on, and the end-to-end one - a maze carved by `fit_to_terminal`
+for a quest console still fitting that console when the controls line's row
+carries the answer instead. The last is the one that would catch a future
+wording change reopening this, and it fails at 81 of the swept widths with
+the old wording restored.
+
+## Resolved in 1.0.0a12: the guide's answer drawn on the summary of a game it had outlived
+
+Found with the one above, verifying 1.0.0a11. `show_quest_hint` left
+`quest_message` standing for `GUIDE_SECONDS` and no ending cleared it, so the
+answer was still set when `print_ending` redrew the frame under the summary.
+Pressing `n` and then `q` inside the six seconds drew the summary with
+`The guide says: item 1 is still in its box, and the box is in the part of
+the maze you can already reach` on the controls line's row - a sentence about
+an errand the player had just abandoned, where the keys belong. It cost the
+ending a row as well, that foot being 2 rows at 80 columns and 3 at 44
+against the controls line's 1 and 2.
+
+A second case was the answer being false rather than merely stale. `play`
+aged the answer before the key was dispatched and not after, so with item 1
+carried and the player beside the door, `n` followed by the move that opens
+it left `stage()` at None while `The guide says: you are carrying item 1, and
+it opens the door ahead` was still the frame's last line. The next tick took
+it down 0.25 seconds later, so under `--mode quest` that was a flicker; it
+was permanent only where an ending landed on that same turn, which needs a
+chaser beside the quest and so is reachable through `MazeGame` rather than
+through `--mode`.
+
+Fixed in 1.0.0a12 by taking the answer down in `print_ending`, which is the
+one place a quit, the exit and the chaser all print through, and by ageing it
+a second time after the key is played as well as before. The call before the
+key stays where it is rather than moving: the turn nothing was pressed on
+returns from its own branch without reaching anything below it, and the two
+hint keys draw a frame from inside their own handler. `clear_guide_answer`
+is the one method both the ageing and the ending take it down with, so the
+reading it was given at and the errand it was given about always come down
+with the sentence.
+
 ## Resolved in 1.0.0a9: the line after a wrapped one written onto the wrap's row
 
 Found reviewing 1.0.0a8 on a real console. A line carried onto the row below

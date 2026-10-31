@@ -22,20 +22,109 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a12] - 2026-10-31
 
-One correction to the release below, found reviewing it and fixed after it
-was tagged, so it is not in `v1.0.0a11`.
+The guide's answer held to the length of the line it is written over, and
+taken down by the end of the game.
+
+Both are what six seconds of reading time exposed. 1.0.0a11 gave the answer
+long enough to be read, and both of these had been there all along at a
+length nobody could catch: a 0.56 second flicker became a sentence a player
+sits and looks at. The first is the fourth round of the wrapped-foot family -
+a line of the play screen's foot whose rows nothing counted - and the second
+is a sentence about an errand outliving the errand, and the game.
+
+**The answer took the controls line's row but not its row count.**
+`GUIDE_LINE` said of itself that asking a question "never changes the height
+of the frame". The quest controls line is 79 characters and the answer about
+a box was 104, so on a console narrow enough to break the answer further the
+frame stood a row taller while it was up, and `fit_frame` paid for that row
+out of the maze. `fit_to_terminal` reserves rows for the lines it is handed
+and is handed the controls line, never the answer. Read off a real Windows
+console at seed 2024, `--mode quest`, pressing `n`: at 80 columns the maze
+went from 19 rows to 18, the `end` marker read `end 1 row below`, and 6.1
+seconds later both came back. 57 of the widths from 15 to 200 columns did the
+same, the bands 39 to 51 and 79 to 103 among them, which hold 44, 80 and 100.
+
+**And the answer was still up when the game was over.** No ending cleared
+`quest_message`, so `print_ending` redrew the frame with the guide still
+naming the box on the row the keys belong on - under a summary for a quest
+the player had just quit. That foot is 2 rows at 80 columns against the
+controls line's 1, so the ending gave up a maze row for it as well.
 
 ### Fixed
 
+- **The guide's answer cost the maze a row for as long as it was up.** Every
+  answer is now written to fit inside `QUEST_CONTROLS_LINE`'s 79 characters -
+  the box wording is 73, 74 once the item number reaches two digits - so
+  there is no console on which the sentence needs a row the controls line did
+  not already have. Shortening the wording is what the controls line's own
+  wrap was fixed with in 1.0.0a7, and it is the reading that costs no maze
+  row anywhere: reserving against the taller of the two lines would have been
+  correct at every width too, and would have left a quest maze permanently a
+  row shorter than a plain one at 80 columns, which is the asymmetry that
+  work removed. The reword is fixed with it - the door wording was 68
+  characters against the box's 104, so finding the box gave the maze row back
+  halfway through the answer, and both wordings are now inside the controls
+  line
+- **An ending drew the guide's answer on the row the keys belong on.**
+  `print_ending` takes the answer down before it redraws the frame, which is
+  the one place a quit, the exit and the chaser all print through, so a
+  summary is printed under the keys whatever is left of the six seconds. A
+  game that is over has no errand left for a sentence to be about
+- **A step that finished the errand drew the sentence saying it had not.**
+  `play` aged the answer before the key was dispatched and not after, so the
+  move that opened the door the answer pointed at drew one more frame reading
+  `you are carrying item 1, and it opens the door ahead` with the door open
+  behind it. The answer is aged on both sides of the key now. The call before
+  it stays where it is rather than moving down: the turn nothing was pressed
+  on returns from its own branch without reaching anything below, and the two
+  hint keys draw a frame from inside their own handler
 - **The note and `docs/playing.md` both named one width where the padded
-  break still parts a field, and there are two.** A run of spaces early
-  enough in the row to cost it a row is passed over at 17 columns and at 18,
-  which is the set the sweep over `wrap_on_spaces` pins and what the entry
-  below says in its own opening, where `moves` is parted from its count at
-  17 and 18, before the `Fixed` note called 17 the only one. The figure is
-  now 17 and 18 in both places
+  break still parts a field, and there are two.** Found reviewing `1.0.0a11`
+  after it was tagged. A run of spaces early enough in the row to cost it a
+  row is passed over at 17 columns and at 18, which is the set the sweep over
+  `wrap_on_spaces` pins and what the entry below says in its own opening,
+  where `moves` is parted from its count at 17 and 18, before the `Fixed`
+  note called 17 the only one. The figure is now 17 and 18 in both places
+
+### Added
+
+- `MazeGame.clear_guide_answer`, the one method the ageing and the ending
+  both take the answer down with, so the reading it was given at and the
+  errand it was given about always come down with the sentence rather than
+  being left for a later turn to age an answer that is no longer up
+
+### Changed
+
+- `Quest.task` records why its wordings are the length they are, and
+  `GUIDE_LINE`'s comment no longer claims the height of the frame is safe
+  without saying what keeps it so. Taking a line's row is not the same as
+  taking its row count, and that distinction is the whole of both faults
+- `TestTheGuideAnswerLeavesTheFrameAlone` sweeps 15 to 200 columns rather
+  than the five widths a console is usually set to, since one width inside a
+  band is as good as the band: no answer longer than the line it replaces, no
+  answer needing a row the controls line did not, the reword leaving the
+  sentence on the row it was on, and the end-to-end one - a maze carved by
+  `fit_to_terminal` for a quest console still fitting that console when the
+  controls line's row carries the answer instead. The last is what would
+  catch a future wording change reopening this, and it fails at 81 of the
+  swept widths with the old wording restored
+- The tables in `TestFrameHeight` and the console the padding in
+  `TestWrapOnSpaces` is measured on both read off `guide_answers`, a helper
+  that walks a real quest through its three states, rather than off a copy of
+  the sentence. The copies are how those tables came to describe a 104
+  character answer the game had stopped saying, and `TestWrapOnSpaces` came
+  down from a 100 column console to a 60 column one with the wording: there
+  is no longer a width wide enough for the controls line and too narrow for
+  the answer, which is the point of the fix
+- `docs/modes.md` and `docs/playing.md` record that every answer is written
+  to fit inside the controls line it replaces and why, that the reword
+  happens on the row the sentence is already on, and that the end of the game
+  takes the answer down. `docs/library.md` names the answer as the third line
+  of the foot that can wrap and says why `fit_to_terminal` is handed two
+  lines rather than three. `KNOWN_BUGS.md` carries both faults as the console
+  readings they were found on
 
 ## [1.0.0a11] - 2026-10-29
 

@@ -248,8 +248,11 @@ the errand in front of you is, from anywhere in the maze: it lights the cell
 up the way a hint does, and says what it is where the controls line usually
 sits. The cell comes down a moment later and the words stay for six seconds,
 which is long enough to read a sentence; the maze is still being played
-under them either way. [Game modes](modes.html) has the whole of it,
-including what `--braid` does to a quest.
+under them either way. The sentence is written to fit inside the controls
+line it replaces, so asking a question costs the maze no row on any console,
+and the end of the game puts the keys back on that row whatever is left of
+the six seconds. [Game modes](modes.html) has the whole of it, including
+what `--braid` does to a quest.
 
 ## Hints
 
@@ -370,10 +373,11 @@ up in the lines of a frame:
 
 Both of those lines are broken on a space rather than in the middle of a
 word. A console wraps on the column it runs out of, so the guide's answer in
-quest mode read as `...you can already r` with `each` underneath it, and the
-quest tally on a 29 column console read as `collect` with its number on the
-row below; each line is padded out to the end of its row instead, which
-leaves the next word to start the row below and costs the maze nothing. A
+quest mode reads as `...is still in a box, so` on a 44 column console with
+`mewhere` opening the row underneath it, and the quest tally on a 29 column
+console read as `collect` with its number on the row below; each line is
+padded out to the end of its row instead, which leaves the next word to
+start the row below and costs the maze nothing. A
 line whose words need more rows than the console's own break does keeps that
 break: the padding is only ever free when it fits in the rows the line was
 already occupying, and a maze row is the worse thing to spend.

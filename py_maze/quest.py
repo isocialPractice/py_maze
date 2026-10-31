@@ -298,6 +298,18 @@ class Quest:
     def task(self):
         """Say what the next step of the quest is, in words.
 
+        Every answer is written short enough that
+        :data:`py_maze.GUIDE_LINE` around it is no longer than
+        :data:`py_maze.QUEST_CONTROLS_LINE`, the line it is drawn over.
+        That is what keeps asking the guide from changing the height of
+        the play screen: a console carries a line onto the row below it
+        on the column, so a sentence longer than the line it replaces
+        stands a row taller on every console narrow enough to break it
+        further, and :func:`py_maze.fit_frame` pays for that row out of
+        the maze. The answer about a box ran to 104 characters against
+        the controls line's 79 and cost a maze row at 57 widths, 80 and
+        44 among them, for as long as it was up.
+
         Returns:
             str: The errand in front of the player - the box to find,
             the door it opens, or that the way out is clear. It names
@@ -310,8 +322,8 @@ class Quest:
             return "every door is open - the way out is yours to find"
 
         if item not in self.carried:
-            return ("item %d is still in its box, and the box is in the "
-                    "part of the maze you can already reach" % item)
+            return ("item %d is still in a box, somewhere you can "
+                    "already reach" % item)
 
         return "you are carrying item %d, and it opens the door ahead" % item
 
