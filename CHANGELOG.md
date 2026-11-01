@@ -22,6 +22,21 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **The sentence introducing the quest API table read as the tail of the
+  paragraph above it.** Found reviewing `1.0.0a12` after it was tagged.
+  Markdown joins consecutive lines into one paragraph, and `docs/library.md`
+  had no blank line between the note on which lines of the foot wrap and
+  "`place_quest` is the call behind quest mode's entry, and `Quest` is the
+  inventory the player fills:", so the line that says what the table below
+  it holds was published as the last clause of a paragraph about wrapping.
+  The missing break predates `1.0.0a12`: the paragraph on the guide's answer
+  added there landed above it rather than causing it, and only moved which
+  text the table's own introduction was joined to
+
 ## [1.0.0a12] - 2026-10-31
 
 The guide's answer held to the length of the line it is written over, and

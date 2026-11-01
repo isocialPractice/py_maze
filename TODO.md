@@ -28,6 +28,33 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### Code Review Override - the version credited for the quest line's wording
+
+#### Found Issues
+
+- [ ] Date the quest controls line's shortening to the version that did it
+  - **Issue**: the class comment on `TestTheGuideAnswerLeavesTheFrameAlone`
+    in `test_py_maze.py` says the controls line's own wrap "was fixed with
+    in 1.0.0a7: QUEST_CONTROLS_LINE lost the word Press to reach 79
+    characters". `CHANGELOG.md` records that change one version earlier,
+    under 1.0.0a6, as "`QUEST_CONTROLS_LINE` is 79 characters rather than
+    88", and the 1.0.0a7 entry contradicts the comment in as many words:
+    "`QUEST_CONTROLS_LINE` lost the word in 1.0.0a6 and this one kept it",
+    1.0.0a7 being where `CONTROLS_LINE` went from 66 characters to 60. The
+    pairing of 79 characters with 1.0.0a7 is in no entry of the project's
+    history, so a reader sent to 1.0.0a7 for the precedent this fix follows
+    finds the plain line's change instead of the quest line's. The same
+    sentence in `KNOWN_BUGS.md` and in the 1.0.0a12 `CHANGELOG.md` entry
+    both name `CONTROLS_LINE` and its 60 characters, and are right, which
+    leaves the test comment the one place the repository disagrees with
+    itself about it
+  - **Goal**: name 1.0.0a6 in that comment, since the quest line's own
+    shortening is the closer precedent for a quest line fix; or keep
+    1.0.0a7 and name `CONTROLS_LINE` and its 60 characters instead.
+    Nothing else in the class changes - the figure 79, the 57 widths and
+    the 80 column reading are all correct
+  - From: Code Review Override - the version credited for the quest line's wording
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an

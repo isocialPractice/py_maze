@@ -573,6 +573,7 @@ around it fits inside `QUEST_CONTROLS_LINE`, so there is no console on which
 the sentence needs a row the controls line did not already have and no
 reserve of its own to count. A longer answer is a maze row given up for as
 long as the answer is up, which is what it was until 1.0.0a12.
+
 `place_quest` is the call behind quest mode's entry, and `Quest` is the
 inventory the player fills:
 
