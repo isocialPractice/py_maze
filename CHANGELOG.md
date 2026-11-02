@@ -26,6 +26,17 @@ when one is written.
 
 ### Fixed
 
+- **A test comment credited the wrong version with the quest line's
+  shortening.** Found reviewing `1.0.0a12` after it was tagged. The class
+  comment on `TestTheGuideAnswerLeavesTheFrameAlone` named `1.0.0a7` as where
+  `QUEST_CONTROLS_LINE` lost the word "Press" to reach 79 characters, which is
+  the 1.0.0a6 change - 1.0.0a7 is where `CONTROLS_LINE` went from 66
+  characters to 60, and its entry says as much in as many words. A reader sent
+  to 1.0.0a7 for the precedent the guide's answer follows found the plain
+  line's change instead. The comment now names 1.0.0a6 and says "the quest
+  controls line", the two being the same claim from either side.
+  `KNOWN_BUGS.md` and the `1.0.0a12` entry had the pairing right already, so
+  the comment was the one place the repository disagreed with itself about it
 - **The sentence introducing the quest API table read as the tail of the
   paragraph above it.** Found reviewing `1.0.0a12` after it was tagged.
   Markdown joins consecutive lines into one paragraph, and `docs/library.md`

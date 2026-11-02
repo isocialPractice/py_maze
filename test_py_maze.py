@@ -13985,12 +13985,12 @@ class TestTheGuideAnswerLeavesTheFrameAlone(unittest.TestCase):
     # spoke, and back six seconds later, with the end marker reading
     # "end 1 row below" in between.
     #
-    # What holds it is the wording, which is what the controls line's
-    # own wrap was fixed with in 1.0.0a7: QUEST_CONTROLS_LINE lost the
-    # word "Press" to reach 79 characters so an 80 column console stops
-    # paying a maze row for it. Here the sweep is the whole width range
-    # rather than the widths a console is usually set to, since one
-    # width inside a band is as good as the band
+    # What holds it is the wording, which is what the quest controls
+    # line's own wrap was fixed with in 1.0.0a6: QUEST_CONTROLS_LINE
+    # lost the word "Press" to reach 79 characters so an 80 column
+    # console stops paying a maze row for it. Here the sweep is the
+    # whole width range rather than the widths a console is usually set
+    # to, since one width inside a band is as good as the band
 
     WIDTHS = range(15, 201)
 
