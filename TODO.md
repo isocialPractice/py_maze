@@ -28,37 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - nothing reads the version a comment credits
-
-- [ ] Pin the version claims the suite's own comments make about a
-  constant's length
-  - **Issue**: the comment corrected this turn paired
-    `QUEST_CONTROLS_LINE`'s 79 characters with 1.0.0a7, where
-    `CHANGELOG.md` records that shortening under 1.0.0a6. It was written
-    in the `1.0.0a12` release commit and shipped inside that tag, and
-    nothing in the suite reads a claim of that shape, so only a
-    human-style read of the prose found it. The claim is mechanically
-    checkable - the constant's length is in the module and `CHANGELOG.md`
-    holds one entry per version - and the reader written for it during
-    the fix was dropped because, scoped to a block of prose, it failed on
-    the changelog entry that had to restate the wrong pairing in order to
-    correct it
-  - **Goal**: add a test that reads `test_py_maze.py`'s `#` comments,
-    takes each sentence naming a `py_maze` string constant, an
-    `N characters` count and a version number together, and asserts the
-    `## [version]` entry of `CHANGELOG.md` states that count for that
-    constant. Scope the sentence rather than the comment block, and read
-    only `test_py_maze.py` - never `CHANGELOG.md`'s own prose, which is
-    where a corrected claim is necessarily restated. A prototype of that
-    shape, left at `.tmp/review/pair_shape.py`, matches exactly one claim
-    on the tree as it stands and passes, flags the pre-fix wording when
-    `HEAD~1`'s comment is put back, and skips both near misses the fix
-    run named: the `ANSI_CLEAR_LINE` comment at `test_py_maze.py:3366`
-    pairs no count with the constant, and the `CONTROLS_LINE` comment at
-    `test_py_maze.py:4148` puts its count and the version 2.2.6 in
-    different sentences
-  - From: Code Review Override - nothing reads the version a comment credits
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3037,5 +3006,33 @@ No items are currently queued in this section.
     Nothing else in the class changes - the figure 79, the 57 widths and
     the 80 column reading are all correct
   - From: Code Review Override - the version credited for the quest line's wording
+- [x] Pin the version claims the suite's own comments make about a
+  constant's length
+  - **Issue**: the comment corrected this turn paired
+    `QUEST_CONTROLS_LINE`'s 79 characters with 1.0.0a7, where
+    `CHANGELOG.md` records that shortening under 1.0.0a6. It was written
+    in the `1.0.0a12` release commit and shipped inside that tag, and
+    nothing in the suite reads a claim of that shape, so only a
+    human-style read of the prose found it. The claim is mechanically
+    checkable - the constant's length is in the module and `CHANGELOG.md`
+    holds one entry per version - and the reader written for it during
+    the fix was dropped because, scoped to a block of prose, it failed on
+    the changelog entry that had to restate the wrong pairing in order to
+    correct it
+  - **Goal**: add a test that reads `test_py_maze.py`'s `#` comments,
+    takes each sentence naming a `py_maze` string constant, an
+    `N characters` count and a version number together, and asserts the
+    `## [version]` entry of `CHANGELOG.md` states that count for that
+    constant. Scope the sentence rather than the comment block, and read
+    only `test_py_maze.py` - never `CHANGELOG.md`'s own prose, which is
+    where a corrected claim is necessarily restated. A prototype of that
+    shape, left at `.tmp/review/pair_shape.py`, matches exactly one claim
+    on the tree as it stands and passes, flags the pre-fix wording when
+    `HEAD~1`'s comment is put back, and skips both near misses the fix
+    run named: the `ANSI_CLEAR_LINE` comment at `test_py_maze.py:3366`
+    pairs no count with the constant, and the `CONTROLS_LINE` comment at
+    `test_py_maze.py:4148` puts its count and the version 2.2.6 in
+    different sentences
+  - From: Code Review Override - nothing reads the version a comment credits
 
 </details>

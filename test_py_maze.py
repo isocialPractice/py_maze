@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
 import unittest
 from unittest import mock
 
@@ -60,6 +61,11 @@ WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                              'tests.yml')
 PAGES_WORKFLOW_PATH = os.path.join(PROJECT_ROOT, '.github', 'workflows',
                                    'workflow.yml')
+
+# this file, read as text rather than run. Its comments date what they
+# say about the package, and a date is a claim CHANGELOG.md either
+# states or does not
+SUITE_PATH = os.path.join(PROJECT_ROOT, 'test_py_maze.py')
 
 # the documentation site, one page to a file. The README is the front door
 # now, so the prose these tests run against lives here rather than there
@@ -462,6 +468,52 @@ def changelog_entries():
     return entries
 
 
+# where one statement of an entry gives way to the next: a bullet of any
+# marker, or a numbered item. A wrapped line of the statement above is
+# indented and opens with none of them, which is what the join below
+# reads it as
+STATEMENT_OPENER = re.compile(r'\s*(?:[-*+]|\d+\.)\s')
+
+
+def changelog_statements():
+    # every entry of CHANGELOG.md as the statements it is written in,
+    # keyed by the version heading them
+    #
+    # A statement is one bullet or one paragraph, its wrapped lines
+    # joined back into a line. The file wraps at the width it is read
+    # to, so a claim naming a constant and counting its characters is as
+    # likely to straddle a break as not, and a reader working a line at
+    # a time would see half of one. The join ends at the next bullet,
+    # the next blank line and the next heading, which is as far as one
+    # statement reaches
+    #
+    # Returns:
+    #     dict: Version to its statements, one string each. The preamble
+    #     above the first entry is under None, as is a heading neither
+    #     shape, and nothing looks either up
+
+    lines = read_project_file(CHANGELOG_PATH).splitlines()
+    heads = {entry.number: entry.version for entry in changelog_entries()}
+
+    statements, version, current = {}, None, []
+    for number, line in enumerate(lines, start=1):
+        opens = number in heads
+        if current and (opens or not line.strip() or line.startswith('#')
+                        or STATEMENT_OPENER.match(line)):
+            statements.setdefault(version, []).append(' '.join(current))
+            current = []
+
+        if opens:
+            version = heads[number]
+        elif line.strip() and not line.startswith('#'):
+            current.append(line.strip())
+
+    if current:
+        statements.setdefault(version, []).append(' '.join(current))
+
+    return statements
+
+
 def scheme_prose(path):
     # the part of a document that says how this project numbers itself
     # now, as against the part that uses a number
@@ -659,6 +711,207 @@ def road_map_prose():
     #     from 1 as the file is read
 
     return [pair for _, prose in road_map_sections() for pair in prose]
+
+
+# the shape a claim about a constant's length takes in this file's own
+# comments: the constant named, the characters it runs to, and the
+# version that length was settled in. A version is read with
+# CHANGELOG_VERSION, so both sides of a claim recognise one the same way
+#
+# The name pattern is any run of capitals, and deliberately loose: what
+# makes a word one of py_maze's constants is the package carrying it as
+# a string, which credited_claim() asks the package rather than keeping
+# a list here that a rename would quietly empty
+CREDITED_VERSION = re.compile(r'\b(%s)\b' % CHANGELOG_VERSION)
+CHARACTER_COUNT = re.compile(r'\b(\d+) characters\b')
+CONSTANT_NAME = re.compile(r'\b[A-Z][A-Z0-9_]{3,}\b')
+
+# where one sentence of a comment paragraph ends and the next begins
+SENTENCE_BREAK = re.compile(r'(?<=[.!?])\s+')
+
+# how far apart a constant and a count may stand inside one statement of
+# an entry and still read as the same claim. A bullet runs several lines
+# once its wrap is joined, and the two ends of one say nothing about
+# each other
+CLAIM_SPREAD = 120
+
+# one claim a comment makes, and the first line of the paragraph making
+# it. The number is the paragraph's rather than the sentence's, which is
+# what a reader of a failure is sent to
+CreditedClaim = collections.namedtuple('CreditedClaim',
+                                       'number name count versions')
+
+
+def comment_paragraphs(path):
+    # every paragraph of every `#` comment in a Python file, its lines
+    # joined back into one string
+    #
+    # The comments come from the tokenizer rather than from lines whose
+    # first character is a `#`, which is the same answer on this file
+    # today and stops being it the moment a line inside a string starts
+    # with one
+    #
+    # A line of nothing but `#` ends a paragraph rather than joining the
+    # two either side of it, and so does a line of code between two
+    # comments. This file ends most of its paragraphs without a full
+    # stop, so a reader that ran them together would hand a sentence
+    # check two paragraphs as one sentence
+    #
+    # A comment with code in front of it is a paragraph of its own and
+    # joins nothing. It is written about the line it sits on, which is
+    # not what the block below it is about - and the four of them that
+    # label the tree-drawing constants would otherwise be read as the
+    # opening lines of whatever comment block follows them
+    #
+    # Args:
+    #     path: Absolute path to the file
+    #
+    # Returns:
+    #     list: One (line number, paragraph) pair per paragraph, in file
+    #     order, the number being the paragraph's first line
+
+    with open(path, encoding='utf-8') as handle:
+        tokens = list(tokenize.generate_tokens(handle.readline))
+
+    paragraphs, row, running = [], None, False
+    for token in tokens:
+        if token.type != tokenize.COMMENT:
+            continue
+
+        text = token.string.lstrip('#').strip()
+        number = token.start[0]
+        alone = not token.line[:token.start[1]].strip()
+        if text and alone and running and number == row + 1:
+            paragraphs[-1][1].append(text)
+        elif text:
+            paragraphs.append((number, [text]))
+
+        row, running = number, bool(text) and alone
+
+    return [(number, ' '.join(lines)) for number, lines in paragraphs]
+
+
+def comment_sentences(path):
+    # every sentence of every comment paragraph in a Python file
+    #
+    # The sentence is the span a claim is read in rather than the
+    # paragraph. A paragraph names a version beside a count as readily
+    # as about it - the one at TestPlayScreenOnANarrowTerminal counts
+    # CONTROLS_LINE in its first sentence and dates a different change
+    # in its last - and a reader given the paragraph would pair the two
+    #
+    # Args:
+    #     path: Absolute path to the file
+    #
+    # Returns:
+    #     list: One (line number, sentence) pair per sentence, the
+    #     number being its paragraph's first line
+
+    sentences = []
+    for number, paragraph in comment_paragraphs(path):
+        sentences += [(number, sentence.strip())
+                      for sentence in SENTENCE_BREAK.split(paragraph)
+                      if sentence.strip()]
+
+    return sentences
+
+
+def credited_claim(sentence):
+    # the claim one sentence makes about how long a py_maze string
+    # constant is, and the versions it credits for that length
+    #
+    # One count and one constant to a sentence is the shape. A sentence
+    # naming two of either is not read at all: a count that cannot be
+    # tied to one name is a claim nothing can check, and the answer to
+    # one is to write it as two sentences rather than to have a reader
+    # guess which number belongs to which constant
+    #
+    # Several versions are allowed and one of them carrying the claim is
+    # enough, because a sentence dating a shortening often names the
+    # version it replaced beside the one that made it, and only the
+    # second owes an entry
+    #
+    # Args:
+    #     sentence: One sentence of a comment
+    #
+    # Returns:
+    #     tuple: (name, count, versions), the count as the sentence
+    #     writes it, or None where the sentence is not that shape
+
+    versions = sorted(set(CREDITED_VERSION.findall(sentence)))
+    counts = set(CHARACTER_COUNT.findall(sentence))
+    names = {name for name in CONSTANT_NAME.findall(sentence)
+             if isinstance(getattr(py_maze, name, None), str)}
+
+    if not versions or len(counts) != 1 or len(names) != 1:
+        return None
+
+    return names.pop(), counts.pop(), tuple(versions)
+
+
+def credited_claims(path):
+    # every claim the comments of a Python file make about how long one
+    # of py_maze's string constants is
+    #
+    # Args:
+    #     path: Absolute path to the file
+    #
+    # Returns:
+    #     list: One CreditedClaim per sentence of that shape
+
+    claims = []
+    for number, sentence in comment_sentences(path):
+        read = credited_claim(sentence)
+        if read:
+            claims.append(CreditedClaim(number, *read))
+
+    return claims
+
+
+def states_the_count(statements, name, count):
+    # whether any one statement of an entry says that constant runs to
+    # that many characters
+    #
+    # The two stand in either order and within CLAIM_SPREAD characters
+    # of each other, which is what keeps them one clause of a statement
+    # rather than the two ends of a long bullet
+    #
+    # Args:
+    #     statements: An entry's statements, as changelog_statements()
+    #         writes them
+    #     name: The constant's name
+    #     count: The character count, as the claim writes it
+    #
+    # Returns:
+    #     bool: True where one statement pairs the two
+
+    pair = re.compile(r'\b%s\b.{0,%d}?\b%s characters'
+                      r'|\b%s characters.{0,%d}?\b%s\b'
+                      % (re.escape(name), CLAIM_SPREAD, count,
+                         count, CLAIM_SPREAD, re.escape(name)))
+
+    return any(pair.search(statement) for statement in statements)
+
+
+def entries_stating(statements, name, count):
+    # the versions whose entries do pair that constant with that count
+    #
+    # This is read for a failure message and never for a verdict. The
+    # claim is settled by the entry the comment credits and by nothing
+    # else, which is why the check above takes one entry's statements
+    # rather than the file - but a reader told only that the credited
+    # entry is silent still has to go looking for the one that is not
+    #
+    # Args:
+    #     statements: Every entry's statements, keyed by version
+    #     name: The constant's name
+    #     count: The character count, as the claim writes it
+    #
+    # Returns:
+    #     list: Their versions, in sorted order
+
+    return sorted(version for version, lines in statements.items()
+                  if version and states_the_count(lines, name, count))
 
 
 def version_pair(text):
@@ -13088,6 +13341,267 @@ class TestFencedBlockReading(unittest.TestCase):
         # the quote runs to the end of the document and the fence in it
         # is still open there, so the block is open at the end too
         self.assertEqual(self.unclosed('> one\n> ```\n> carve()'), 2)
+
+
+class TestTheVersionsTheCommentsCredit(unittest.TestCase):
+    # the claims this file's own comments make about how long py_maze's
+    # string constants are, each held against the entry of CHANGELOG.md
+    # it credits. 1.0.0a12 shipped a comment dating QUEST_CONTROLS_LINE's
+    # shortening to 1.0.0a7, where the changelog records it under
+    # 1.0.0a6. It went out inside the release commit, and nothing read a
+    # claim of that shape, so the only reader it ever had was a person
+    # reading the prose
+    #
+    # Only this file's comments are read. CHANGELOG.md's own prose is
+    # not, because correcting a claim there means restating the wrong
+    # pairing in order to say what it was - the reader written during
+    # the fix was dropped for failing on exactly that entry
+    #
+    # This file's comments are read, though, and that includes these.
+    # The sentence above says what the wrong claim was without being
+    # one, by naming no count: a comment that has to quote both the
+    # count and the version it was wrongly paired with names the right
+    # version in the same sentence, which is the shape credited_claim()
+    # allows several versions for
+
+    # the claim the file carries today, as (constant, count, versions).
+    # The reader above would pass the check below in silence if it came
+    # back empty, and this is what stops it: the claim it was written
+    # for is the one that has to stay in what it finds. A comment
+    # reworded around the same claim still satisfies this, since the
+    # parts are read rather than the sentence, and prose about the claim
+    # does not, since that names the version it was mis-dated to as
+    # well; a claim deliberately taken out of the file is what has to be
+    # written out of here
+    ANCHOR = ('QUEST_CONTROLS_LINE', '79', ('1.0.0a6',))
+
+    def test_every_version_a_comment_credits_states_the_count(self):
+        statements = changelog_statements()
+
+        wrong = []
+        for claim in credited_claims(SUITE_PATH):
+            if any(states_the_count(statements.get(version, ()),
+                                    claim.name, claim.count)
+                   for version in claim.versions):
+                continue
+
+            stated = entries_stating(statements, claim.name, claim.count)
+            says = ('which is what %s says' % ' and '.join(stated)
+                    if stated else 'which no entry states')
+            wrong.append('test_py_maze.py:%d credits %s with %s at %s '
+                         'characters, %s'
+                         % (claim.number, ' or '.join(claim.versions),
+                            claim.name, claim.count, says))
+
+        self.assertEqual(wrong, [],
+                         'a comment dating a constant to a version is a '
+                         'claim about that version\'s entry, and the '
+                         'entry is what settles it')
+
+    def test_the_claim_the_file_carries_is_one_of_the_claims_read(self):
+        read = {(claim.name, claim.count, claim.versions)
+                for claim in credited_claims(SUITE_PATH)}
+
+        self.assertIn(self.ANCHOR, read,
+                      '%s at %s characters credited to %s is the claim '
+                      'the reader was written for, and it is not among '
+                      'the %d it found'
+                      % (self.ANCHOR[0], self.ANCHOR[1],
+                         ' or '.join(self.ANCHOR[2]), len(read)))
+
+
+class TestCreditedClaimReading(unittest.TestCase):
+    # the shape credited_claim() reads and the near shapes it does not.
+    # The file carries one claim, so everything the reader turns away is
+    # only ever visible here - and two of the three near misses are
+    # comments this file already carries, at
+    # TestAFrameLineAsWideAsTheConsole and
+    # TestPlayScreenOnANarrowTerminal
+
+    CLAIM = 'QUEST_CONTROLS_LINE is 79 characters as of 1.0.0a6.'
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'sample.py')
+
+    def written(self, source):
+        # read the claims out of a file written for one test
+        #
+        # Args:
+        #     source: The file's whole source, lines separated by
+        #         newlines
+        #
+        # Returns:
+        #     list: The claims, as credited_claims() reports them
+
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(source + '\n')
+
+        return credited_claims(self.path)
+
+    def test_a_sentence_pairing_all_three_is_a_claim(self):
+        self.assertEqual(credited_claim(self.CLAIM),
+                         ('QUEST_CONTROLS_LINE', '79', ('1.0.0a6',)))
+
+    def test_a_count_with_no_version_is_no_claim(self):
+        # the first sentence of TestPlayScreenOnANarrowTerminal's
+        # comment: the constant is counted and nothing dates the count
+        self.assertIsNone(credited_claim(
+            'CONTROLS_LINE is 60 characters and is the last line.'))
+
+    def test_a_version_with_no_count_is_no_claim(self):
+        # TestAFrameLineAsWideAsTheConsole reads its widths off a real
+        # console at a version, which counts columns and not characters
+        self.assertIsNone(credited_claim(
+            'ANSI_CLEAR_LINE was read at 1.0.0a7 on 60 columns.'))
+
+    def test_a_name_the_package_does_not_carry_is_no_claim(self):
+        # the loose name pattern matches any run of capitals, so the
+        # package is what decides which of them is a constant
+        self.assertIsNone(credited_claim(
+            'The WIDE_MARGIN is 79 characters as of 1.0.0a6.'))
+
+    def test_a_name_the_package_carries_as_something_else_is_no_claim(self):
+        # a name the package carries as a mapping is not a string, and
+        # nothing in an entry counts the characters of one
+        self.assertIsNone(credited_claim(
+            'MODE_CONTROLS runs to 79 characters as of 1.0.0a6.'))
+
+    def test_two_counts_in_one_sentence_is_no_claim(self):
+        # which of the two the constant runs to is not in the sentence,
+        # and a reader that guessed would fail a correct comment
+        self.assertIsNone(credited_claim(
+            'QUEST_CONTROLS_LINE went from 88 characters to 79 '
+            'characters in 1.0.0a6.'))
+
+    def test_two_constants_in_one_sentence_is_no_claim(self):
+        self.assertIsNone(credited_claim(
+            'QUEST_CONTROLS_LINE lost the word CONTROLS_LINE kept, to '
+            'reach 79 characters in 1.0.0a6.'))
+
+    def test_every_version_a_sentence_names_is_carried(self):
+        # a sentence that dates a shortening beside the version it
+        # replaced owes the claim to one of the two, so both are read
+        self.assertEqual(
+            credited_claim('QUEST_CONTROLS_LINE reached 79 characters in '
+                           '1.0.0a6, where 1.0.0a5 wrapped.'),
+            ('QUEST_CONTROLS_LINE', '79', ('1.0.0a5', '1.0.0a6')))
+
+    def test_a_bare_hash_line_ends_the_paragraph(self):
+        # the count on one side of it and the version on the other are
+        # two paragraphs, which is the shape this file writes most
+        claims = self.written('# QUEST_CONTROLS_LINE is 79 characters\n'
+                              '#\n'
+                              '# It was shortened in 1.0.0a6')
+
+        self.assertEqual(claims, [])
+
+    def test_a_line_of_code_between_two_comments_ends_it(self):
+        claims = self.written('# QUEST_CONTROLS_LINE is 79 characters\n'
+                              'WIDTH = 79\n'
+                              '# It was shortened in 1.0.0a6')
+
+        self.assertEqual(claims, [])
+
+    def test_a_comment_with_code_in_front_of_it_joins_nothing(self):
+        # it is written about its own line, so the block under it is
+        # not a continuation of it. Four of this file's own comments
+        # label a constant from the end of its line, and the paragraph
+        # below one of those would otherwise open with its label
+        claims = self.written('WIDTH = 79  # QUEST_CONTROLS_LINE is 79\n'
+                              '# characters as of 1.0.0a6.')
+
+        self.assertEqual(claims, [])
+
+    def test_two_sentences_of_one_paragraph_are_read_apart(self):
+        # the paragraph pairs all three and neither sentence does, which
+        # is why the sentence is the span and not the paragraph
+        claims = self.written('# QUEST_CONTROLS_LINE is 79 characters.\n'
+                              '# It was shortened in 1.0.0a6.')
+
+        self.assertEqual(claims, [])
+
+    def test_a_wrapped_sentence_is_read_as_one(self):
+        # the other half of the rule above: a comment wrapped at this
+        # file's width breaks mid-sentence far more often than it breaks
+        # between two, and a reader working a line at a time would see
+        # no claim at all
+        claims = self.written('# QUEST_CONTROLS_LINE is 79\n'
+                              '# characters as of 1.0.0a6.')
+
+        self.assertEqual([(claim.name, claim.count, claim.versions)
+                          for claim in claims],
+                         [('QUEST_CONTROLS_LINE', '79', ('1.0.0a6',))])
+
+    def test_a_hash_inside_a_string_is_not_a_comment(self):
+        # what the tokenizer is read for. A line of a multi-line string
+        # can open with a `#` and say anything a comment says, and a
+        # reader taking lines by their first character would hold the
+        # file to prose the file is only quoting
+        claims = self.written("TEXT = '''\n"
+                              '# QUEST_CONTROLS_LINE is 79 characters as '
+                              'of 1.0.0a7.\n'
+                              "'''")
+
+        self.assertEqual(claims, [])
+
+    def test_the_line_a_claim_is_reported_at_opens_its_paragraph(self):
+        claims = self.written('WIDTH = 79\n'
+                              '\n'
+                              '# QUEST_CONTROLS_LINE is 79\n'
+                              '# characters as of 1.0.0a6.')
+
+        self.assertEqual([claim.number for claim in claims], [3])
+
+
+class TestChangelogStatementReading(unittest.TestCase):
+    # the span states_the_count() is given: one bullet or one paragraph
+    # of an entry, its wrap joined back up. The entry a claim credits is
+    # read whole and nothing else is, so a statement that reached into
+    # the bullet below it would answer for a neighbour
+
+    def test_every_dated_entry_is_read_as_statements(self):
+        # an entry read as nothing would make every claim crediting it
+        # a failure, and an empty reader would make all of them one
+        statements = changelog_statements()
+
+        silent = [entry.version for entry in changelog_entries()
+                  if entry.date and not statements.get(entry.version)]
+
+        self.assertEqual(silent, [],
+                         'each of these entries was read as no prose at '
+                         'all, so nothing it says can settle a claim')
+
+    def test_the_entry_the_anchored_claim_credits_states_it(self):
+        # the pair the whole check turns on, read from the entry rather
+        # than from the file: 1.0.0a6 is where the shortening is
+        # recorded, and 1.0.0a7 is the version the comment used to
+        # credit and the one that must not answer for it
+        name, count, versions = TestTheVersionsTheCommentsCredit.ANCHOR
+        statements = changelog_statements()
+
+        for version in versions:
+            self.assertTrue(states_the_count(statements.get(version, ()),
+                                             name, count))
+
+        self.assertFalse(states_the_count(statements.get('1.0.0a7', ()),
+                                          name, count))
+
+    def test_a_wrapped_statement_is_read_as_one(self):
+        # the entry writes the pair on one line, so this is read for the
+        # join rather than for the pairing: the bullet carries the lines
+        # wrapped under it as well, and no line of the file holds the
+        # statement whole
+        name, count, versions = TestTheVersionsTheCommentsCredit.ANCHOR
+        pair = '%s` is %s characters' % (name, count)
+        bullet = [one for one in changelog_statements()[versions[0]]
+                  if pair in one]
+        lines = [line.strip() for line
+                 in read_project_file(CHANGELOG_PATH).splitlines()]
+
+        self.assertEqual(len(bullet), 1)
+        self.assertNotIn(bullet[0], lines)
 
 
 def finish_quest(grid, quest):

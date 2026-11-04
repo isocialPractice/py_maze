@@ -226,3 +226,14 @@ and no line of `test_py_maze.py` runs past the 85 that file keeps to, a
 wider number for a file whose test names are sentences. Both are things
 only a reader had been catching: a collapsed line continuation arrives as
 whitespace and leaves Python that still passes.
+
+The suite's own comments are read for one claim in particular. A sentence of
+a comment that names a string constant of the package, counts its characters
+and credits a version for that count is held against that version's entry in
+`CHANGELOG.md`, which has to state the same count for the same constant. A
+comment dating a change that way is a claim about the history the changelog
+keeps, and the only reader such a claim had was a person reading the prose.
+The span is the sentence rather than the comment, so a count in one sentence
+and a version in another are not paired, and the comments are the only prose
+read: a correction in the changelog has to restate the wrong pairing in order
+to say what it was, which makes that file evidence of nothing.

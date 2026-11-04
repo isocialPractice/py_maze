@@ -22,7 +22,55 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a13] - 2026-11-04
+
+A reader for the one claim the suite's comments make that the repository can
+check itself, and the two corrections to 1.0.0a12 that were waiting for a
+number.
+
+The comment corrected below was found by reading the prose, after 1.0.0a12
+was tagged and with the wrong pairing already shipped inside it. Nothing in
+the suite read a claim of that shape, and the claim is mechanically
+checkable: the count is in the module and this file holds one entry per
+version. What stopped a reader being kept the first time was scope - one
+written against a block of prose failed on the entry that had to restate the
+wrong pairing in order to correct it, and was dropped rather than narrowed.
+
+### Added
+
+- **A comment that dates a constant's length is read against the entry it
+  credits.** A sentence of a `#` comment in `test_py_maze.py` that names one
+  of the package's string constants, counts its characters and names a
+  version is a claim about that version's entry here, and the entry has to
+  state the same count for the same constant. The shape is one count and one
+  constant to a sentence: a count that cannot be tied to one name is a claim
+  nothing can check, and the answer to one of those is to write it as two
+  sentences rather than to have a reader guess which number belongs to which
+  name. Several versions are allowed and one of them carrying the claim is
+  enough, which is what lets a comment say what a wrong pairing was by naming
+  the right version beside it. The comments come from the tokenizer rather
+  than from lines whose first character is a `#`, because a line of a string
+  can open with one and say everything a comment says. Only the suite's
+  comments are read: a correction here necessarily restates the wrong
+  pairing, which is what sank the reader written during the fix for it
+- **The sentence is the span, rather than the comment.** The comment on
+  `TestPlayScreenOnANarrowTerminal` counts `CONTROLS_LINE` in its first
+  sentence and dates a different change in its last, and the one on
+  `TestAFrameLineAsWideAsTheConsole` reads its widths off a real console at a
+  version without counting characters at all. Both are the shape from a
+  distance and neither is a claim, so both are left alone. A line of nothing
+  but `#` ends a paragraph rather than joining the two either side of it,
+  the suite ending most of its paragraphs without a full stop, and a comment
+  with code in front of it stands alone and joins nothing - the four that
+  label the tree-drawing constants from the end of their own lines would
+  otherwise be read as the opening lines of the block below them
+- **The entries here are read as statements rather than as lines.** One
+  bullet or one paragraph, its wrapped lines joined back into a line, ending
+  at the next bullet, the next blank line or the next heading. The file wraps
+  at the width it is read to, so a constant and its count are as likely to
+  straddle a break as not, and the two have to stand within 120 characters of
+  each other inside one statement to read as the same claim - the two ends of
+  a long bullet say nothing about each other
 
 ### Fixed
 
