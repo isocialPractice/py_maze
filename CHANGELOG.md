@@ -22,6 +22,32 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **A figure a sentence wrapped onto a line of its own split the entry it
+  was in.** Found reviewing `1.0.0a13` after it was tagged.
+  `changelog_statements()` read every line opening with a number and a full
+  stop as a numbered list item, and the `1.0.0a9` entry ends a sentence on a
+  column count that the wrap carried onto a line by itself, so one paragraph
+  of that entry was reported as two statements broken mid-sentence. The join
+  is what the reader exists for: a constant named on one side of such a break
+  and its count written on the other reads as unpaired, and an unpaired read
+  is reported as a comment crediting the wrong version, which would be a
+  correct comment called wrong. Markdown lets a numbered item interrupt a
+  paragraph only where it is numbered 1, and that is the rule the reader
+  keeps now: inside a list any number opens the next statement, inside a
+  paragraph only a bullet or a `1.` does. The entries are otherwise read
+  exactly as before, that one paragraph being the only statement anywhere in
+  the file whose span changed
+- **The note on reading comments described the join backwards.** The
+  `1.0.0a13` entry said the four labels written from the ends of the
+  tree-drawing constant lines would otherwise open the comment block below
+  them. Two blank lines and a `def` stand below them; what they would have
+  joined is the block above, as its closing lines, and that block introduces
+  the constants rather than labelling any one of them
+
 ## [1.0.0a13] - 2026-11-04
 
 A reader for the one claim the suite's comments make that the repository can
@@ -63,7 +89,8 @@ wrong pairing in order to correct it, and was dropped rather than narrowed.
   the suite ending most of its paragraphs without a full stop, and a comment
   with code in front of it stands alone and joins nothing - the four that
   label the tree-drawing constants from the end of their own lines would
-  otherwise be read as the opening lines of the block below them
+  otherwise be read as the closing lines of the block above them, which
+  introduces the constants rather than labelling any one of them
 - **The entries here are read as statements rather than as lines.** One
   bullet or one paragraph, its wrapped lines joined back into a line, ending
   at the next bullet, the next blank line or the next heading. The file wraps

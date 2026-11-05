@@ -474,6 +474,14 @@ def changelog_entries():
 # reads it as
 STATEMENT_OPENER = re.compile(r'\s*(?:[-*+]|\d+\.)\s')
 
+# the openers that give way inside a paragraph, which is the narrower
+# set. A number other than 1 is only a marker where a numbered list is
+# already running: Markdown lets a numbered item interrupt a paragraph
+# only where it is numbered 1, and a line opening "20." under running
+# prose is a figure the line above ran out of room for. The 1.0.0a9
+# entry wraps `collected 0/9` at 20 onto a line of its own
+PARAGRAPH_OPENER = re.compile(r'\s*(?:[-*+]|1\.)\s')
+
 
 def changelog_statements():
     # every entry of CHANGELOG.md as the statements it is written in,
@@ -487,6 +495,12 @@ def changelog_statements():
     # the next blank line and the next heading, which is as far as one
     # statement reaches
     #
+    # Which openers end it depends on what is running. Inside a list
+    # any numbered item opens the next statement; inside a paragraph
+    # only a bullet or a `1.` does, because a line of running prose
+    # opening "20." carries a figure the line above ran out of room for
+    # rather than a list starting at 20
+    #
     # Returns:
     #     dict: Version to its statements, one string each. The preamble
     #     above the first entry is under None, as is a heading neither
@@ -495,17 +509,20 @@ def changelog_statements():
     lines = read_project_file(CHANGELOG_PATH).splitlines()
     heads = {entry.number: entry.version for entry in changelog_entries()}
 
-    statements, version, current = {}, None, []
+    statements, version, current, listed = {}, None, [], False
     for number, line in enumerate(lines, start=1):
         opens = number in heads
+        opener = STATEMENT_OPENER if listed else PARAGRAPH_OPENER
         if current and (opens or not line.strip() or line.startswith('#')
-                        or STATEMENT_OPENER.match(line)):
+                        or opener.match(line)):
             statements.setdefault(version, []).append(' '.join(current))
             current = []
 
         if opens:
             version = heads[number]
         elif line.strip() and not line.startswith('#'):
+            if not current:
+                listed = bool(STATEMENT_OPENER.match(line))
             current.append(line.strip())
 
     if current:
@@ -13602,6 +13619,22 @@ class TestChangelogStatementReading(unittest.TestCase):
 
         self.assertEqual(len(bullet), 1)
         self.assertNotIn(bullet[0], lines)
+
+    def test_a_number_prose_wrapped_onto_a_line_opens_nothing(self):
+        # the 1.0.0a9 entry writes `  collected 0/9` at 20 columns and
+        # the 20 wraps onto a line of its own, so a reader taking every
+        # numbered line for a list item splits that paragraph at it and
+        # hands the pairing check two halves of one sentence. Markdown
+        # lets a numbered item interrupt a paragraph only where it is
+        # numbered 1
+        split = [one[:60] for lines in changelog_statements().values()
+                 for one in lines
+                 if re.match(r'\d+\.\s', one) and not one.startswith('1. ')]
+
+        self.assertEqual(split, [],
+                         'each of these opens with a figure the line '
+                         'above ran out of room for, and is the tail of '
+                         'the statement it was split off')
 
 
 def finish_quest(grid, quest):
