@@ -22,7 +22,58 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a14] - 2026-11-06
+
+What settles a claim about a constant's length, the fenced example that could
+have answered for one by accident, and tests for the three pairing rules this
+project's own prose never reached. Found reviewing `1.0.0a13` after it was
+tagged, alongside the two corrections that were already waiting here for a
+number.
+
+The reader added in `1.0.0a13` held a comment's credited version against that
+version's entry and took any entry stating the pair as an answer. Three
+entries here state the one pairing the suite credits, because a length gets
+restated whenever new wording is written to fit inside it and again whenever a
+correction has to quote it - so the check could be satisfied by re-dating the
+comment to an entry that records no change to the constant at all, which is
+the failure the reader exists to catch.
+
+### Added
+
+- **The three rules the pairing check rests on are exercised.** The pattern
+  reads the count written before the constant as well as after it; the two
+  have to stand within a fixed span of each other inside one statement; and
+  the entries stating a pair are reported in the changelog's own order. A
+  passing run reached none of the three - every statement in this file names
+  the constant first, nothing in it stands anywhere near the edge of that
+  span, and the list of entries is only built once a claim has already failed.
+  Each was taken out in turn and the whole suite still passed. The span's own
+  figure is held to its value as well, since the boundary tests read the
+  constant and would otherwise follow it anywhere
+- **The changelog reader is tested against changelogs written for the
+  purpose.** `changelog_entries()` and `changelog_statements()` take the path
+  they read, defaulting to this file, so a test can write a synthetic entry
+  the way the comment reader's tests already write synthetic Python. This file
+  carries no fenced block anywhere, which is why the reading below could be
+  pinned no other way
+
+### Changed
+
+- **The entry that settles a credited claim is the one recording the change**,
+  not every entry that mentions the pairing. The earliest entry stating it is
+  the one held to, and a comment crediting a later one is reported even though
+  that entry does say the words. Earliest is read off this file's own order,
+  which runs newest first and is already held to that, rather than by sorting
+  the version strings. A text sort reaches the right entry for the three
+  versions this file happens to carry and the wrong one for any two whose
+  counters are a single digit, so what is held is the order rather than one
+  answer it produced. The entry's own `### Added` or `### Fixed` section was
+  the other candidate and is wrong here: the entry recording the shortening
+  writes it under `### Changed`, which is where a constant losing a word
+  belongs, while both entries that only restate it write it under
+  `### Fixed`. What the rule chosen cannot see is a constant reaching the
+  same length twice, and the class comment says so rather than leaving the
+  limit to be discovered in a green run
 
 ### Fixed
 
@@ -47,6 +98,24 @@ when one is written.
   them. Two blank lines and a `def` stand below them; what they would have
   joined is the block above, as its closing lines, and that block introduces
   the constants rather than labelling any one of them
+- **An example inside a fenced block was read as the prose of the entry round
+  it.** `changelog_statements()` did not know where the fences were, unlike
+  the `changelog_entries()` it keys off, which skips a fenced `## ` heading on
+  purpose. Reading them on that side only was worse than reading them on
+  neither: in a worked entry of the shape `CONTRIBUTING.md` shows a
+  contributor - a fence holding a version heading with a bullet under it - the
+  heading was skipped while the bullet was appended to the entry the fence
+  sits inside, so that entry answered for a count no entry here ever stated. A
+  fence now closes the statement running into it and none of its lines joins
+  one
+- **Two comments described the comment join backwards.** The note on reading
+  comments and the test holding it both said the four labels written from the
+  ends of the tree-drawing constant lines would otherwise be read as the
+  opening lines of the block below them. Two blank lines and a `def` stand
+  below those four; the block they would have joined is the one above them,
+  which introduces the constants rather than labelling any one of them. The
+  `1.0.0a13` entry said it the same way round and is corrected above, so these
+  two were the places left
 
 ## [1.0.0a13] - 2026-11-04
 

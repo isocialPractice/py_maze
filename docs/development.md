@@ -230,10 +230,28 @@ whitespace and leaves Python that still passes.
 The suite's own comments are read for one claim in particular. A sentence of
 a comment that names a string constant of the package, counts its characters
 and credits a version for that count is held against that version's entry in
-`CHANGELOG.md`, which has to state the same count for the same constant. A
-comment dating a change that way is a claim about the history the changelog
-keeps, and the only reader such a claim had was a person reading the prose.
-The span is the sentence rather than the comment, so a count in one sentence
-and a version in another are not paired, and the comments are the only prose
-read: a correction in the changelog has to restate the wrong pairing in order
-to say what it was, which makes that file evidence of nothing.
+`CHANGELOG.md`. A comment dating a change that way is a claim about the
+history the changelog keeps, and the only reader such a claim had was a
+person reading the prose. The span is the sentence rather than the comment,
+so a count in one sentence and a version in another are not paired, and the
+comments are the only prose read: a correction in the changelog has to
+restate the wrong pairing in order to say what it was, which makes that file
+evidence of nothing.
+
+What settles the claim is the entry that records the change, not every entry
+that mentions it. A length gets restated for all sorts of reasons - new
+wording written to fit inside the line, or an entry quoting the pair in order
+to correct the version credited for it - so an entry mentioning a count is
+usually not the entry that gave the constant that count. The earliest entry
+stating the pair is the one held to, and a comment crediting a later entry is
+reported even though that entry does say the words. The limit of reading it
+that way is a constant that reaches the same length twice: the entry
+recording the second return states a pair an earlier entry already stated, so
+a correct comment crediting it would be reported wrong. A failure names every
+entry stating the pair, which is what a reader needs to tell the two apart.
+
+An entry's prose is read without its fenced blocks, on both sides of the
+reader. A fenced heading opens no entry and a fenced bullet joins none, so
+the worked entry `CONTRIBUTING.md` shows a contributor stays an example if
+that shape is ever written here - rather than putting the example's prose in
+the mouth of the entry the fence sits inside.

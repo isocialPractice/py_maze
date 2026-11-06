@@ -436,19 +436,24 @@ def starts_a_changelog_entry(number, line, inside):
     return number not in inside and line.startswith('## ')
 
 
-def changelog_entries():
-    # every entry heading CHANGELOG.md carries, in the order the file
+def changelog_entries(path=CHANGELOG_PATH):
+    # every entry heading a changelog carries, in the order the file
     # writes them
     #
     # What is inside a fenced block is not read, so the `## [Unreleased]`
     # CONTRIBUTING.md shows a contributor stays an example even when the
     # same shape is shown here one day
     #
+    # Args:
+    #     path: Absolute path to the changelog. This project's unless a
+    #         test writes a synthetic one, which is how the fenced
+    #         reading below is pinned - this file carries no fence
+    #
     # Returns:
     #     list: One ChangelogEntry per `## ` heading, its version and
     #     date None together where the heading is neither shape
 
-    lines = read_project_file(CHANGELOG_PATH).splitlines()
+    lines = read_project_file(path).splitlines()
     inside, _ = fenced_lines(lines)
 
     entries = []
@@ -483,8 +488,8 @@ STATEMENT_OPENER = re.compile(r'\s*(?:[-*+]|\d+\.)\s')
 PARAGRAPH_OPENER = re.compile(r'\s*(?:[-*+]|1\.)\s')
 
 
-def changelog_statements():
-    # every entry of CHANGELOG.md as the statements it is written in,
+def changelog_statements(path=CHANGELOG_PATH):
+    # every entry of a changelog as the statements it is written in,
     # keyed by the version heading them
     #
     # A statement is one bullet or one paragraph, its wrapped lines
@@ -501,26 +506,45 @@ def changelog_statements():
     # opening "20." carries a figure the line above ran out of room for
     # rather than a list starting at 20
     #
+    # What is inside a fenced block is an example and never prose of the
+    # entry holding it, which is how changelog_entries() already reads
+    # one. Reading the fences on one side only was worse than reading
+    # them on neither: the fenced `## ` heading was skipped, so it opened
+    # no entry, while the bullet under it was appended to the enclosing
+    # entry's statements - and that entry then answered for a count it
+    # never stated. CONTRIBUTING.md shows a contributor a worked entry of
+    # exactly that shape, so it is a block this file can come to carry. A
+    # fence closes the statement running into it and none of its lines
+    # joins one
+    #
+    # Args:
+    #     path: Absolute path to the changelog. This project's unless a
+    #         test writes a synthetic one
+    #
     # Returns:
-    #     dict: Version to its statements, one string each. The preamble
-    #     above the first entry is under None, as is a heading neither
-    #     shape, and nothing looks either up
+    #     dict: Version to its statements, one string each, keyed in the
+    #     order the file writes its entries. The preamble above the first
+    #     entry is under None, as is a heading neither shape, and nothing
+    #     looks either up
 
-    lines = read_project_file(CHANGELOG_PATH).splitlines()
-    heads = {entry.number: entry.version for entry in changelog_entries()}
+    lines = read_project_file(path).splitlines()
+    inside, _ = fenced_lines(lines)
+    heads = {entry.number: entry.version
+             for entry in changelog_entries(path)}
 
     statements, version, current, listed = {}, None, [], False
     for number, line in enumerate(lines, start=1):
         opens = number in heads
+        fenced = number in inside
         opener = STATEMENT_OPENER if listed else PARAGRAPH_OPENER
-        if current and (opens or not line.strip() or line.startswith('#')
-                        or opener.match(line)):
+        if current and (opens or fenced or not line.strip()
+                        or line.startswith('#') or opener.match(line)):
             statements.setdefault(version, []).append(' '.join(current))
             current = []
 
         if opens:
             version = heads[number]
-        elif line.strip() and not line.startswith('#'):
+        elif not fenced and line.strip() and not line.startswith('#'):
             if not current:
                 listed = bool(STATEMENT_OPENER.match(line))
             current.append(line.strip())
@@ -775,10 +799,14 @@ def comment_paragraphs(path):
     # check two paragraphs as one sentence
     #
     # A comment with code in front of it is a paragraph of its own and
-    # joins nothing. It is written about the line it sits on, which is
-    # not what the block below it is about - and the four of them that
-    # label the tree-drawing constants would otherwise be read as the
-    # opening lines of whatever comment block follows them
+    # joins nothing. It is written about the line it sits on, so it
+    # continues neither the block above it nor the block below - and the
+    # four of them that label the tree-drawing constants would otherwise
+    # be read as the closing lines of the block above them, which
+    # introduces the constants rather than labelling any one of them.
+    # Nothing follows those four: two blank lines and a `def` stand
+    # below them, so the block they would have joined is the one over
+    # their heads
     #
     # Args:
     #     path: Absolute path to the file
@@ -911,13 +939,16 @@ def states_the_count(statements, name, count):
 
 
 def entries_stating(statements, name, count):
-    # the versions whose entries do pair that constant with that count
+    # the versions whose entries pair that constant with that count, in
+    # the order the changelog writes them
     #
-    # This is read for a failure message and never for a verdict. The
-    # claim is settled by the entry the comment credits and by nothing
-    # else, which is why the check above takes one entry's statements
-    # rather than the file - but a reader told only that the credited
-    # entry is silent still has to go looking for the one that is not
+    # The order is the dict's, which changelog_statements() fills a line
+    # at a time, so these come back newest first the way the file is
+    # written - which is the order settling_entry() below reads the
+    # earliest of them off. Sorting them as text instead put 1.0.0a12 and
+    # 1.0.0a13 above 1.0.0a6, so the entry that records a change was
+    # listed below the two that only restate it, in a message whose one
+    # job is to send a reader to the right entry
     #
     # Args:
     #     statements: Every entry's statements, keyed by version
@@ -925,10 +956,51 @@ def entries_stating(statements, name, count):
     #     count: The character count, as the claim writes it
     #
     # Returns:
-    #     list: Their versions, in sorted order
+    #     list: Their versions, newest first
 
-    return sorted(version for version, lines in statements.items()
-                  if version and states_the_count(lines, name, count))
+    return [version for version, lines in statements.items()
+            if version and states_the_count(lines, name, count)]
+
+
+def settling_entry(statements, name, count):
+    # the one entry that settles a claim about how long a constant is:
+    # the earliest whose prose pairs the two
+    #
+    # An entry that mentions a pairing is not the entry that settles it,
+    # and reading every mention as an answer is how a comment credited to
+    # the wrong version passes. Three entries pair QUEST_CONTROLS_LINE
+    # with the count the suite credits it for: 1.0.0a6 records the
+    # shortening that made it so, while 1.0.0a12 writes the guide's
+    # answer to fit inside the line and 1.0.0a13 quotes the pair in order
+    # to correct the version credited for it. Only the first is the
+    # change, and the other two exist because of it
+    #
+    # The figure is deliberately not written above. credited_claims()
+    # reads this file, so a sentence here naming the constant, a count
+    # and a version is a claim like any other - and prose explaining the
+    # reader would be read by it as a fourth thing to check
+    #
+    # Earliest is read off the changelog's own order rather than by
+    # comparing the version strings. entries_stating() hands them over
+    # newest first, the order the file is written in and the order
+    # test_the_changelog_writes_its_dated_entries_newest_first holds it
+    # to, so the last of them is the earliest to state the pair. A text
+    # sort of `1.0.0aN` puts a12 and a13 below a6 and would name the
+    # wrong entry; a number sort would need a PEP 440 comparison this
+    # file has no other use for
+    #
+    # Args:
+    #     statements: Every entry's statements, keyed by version
+    #     name: The constant's name
+    #     count: The character count, as the claim writes it
+    #
+    # Returns:
+    #     str: That entry's version, or None where no entry states the
+    #     pair at all
+
+    stating = entries_stating(statements, name, count)
+
+    return stating[-1] if stating else None
 
 
 def version_pair(text):
@@ -13380,6 +13452,38 @@ class TestTheVersionsTheCommentsCredit(unittest.TestCase):
     # count and the version it was wrongly paired with names the right
     # version in the same sentence, which is the shape credited_claim()
     # allows several versions for
+    #
+    # One entry settles a claim and the rest only mention it, which is
+    # what settling_entry() picks out and what the check below is held
+    # to. Any entry that states it was the first reading, and it answers
+    # with the failure the reader was written to catch: three entries
+    # pair QUEST_CONTROLS_LINE with the count ANCHOR carries, so
+    # re-dating the comment from 1.0.0a6 to 1.0.0a13 satisfied a check of
+    # that shape, and 1.0.0a13 records no change to the constant - it
+    # quotes the pairing in order to correct the version credited for it.
+    # ANCHOR caught that one re-dating, and only because it pins the
+    # tuple; a claim written fresh against a mentioning entry had nothing
+    # reading it at all. This paragraph names no count for the same
+    # reason the one above it does not
+    #
+    # The earliest entry to state the pair is what settling_entry()
+    # reads, over the other candidate: the entry's own `### Added` or
+    # `### Fixed` section. That one is wrong here, and would have been
+    # worse than no rule. 1.0.0a6 records the shortening under
+    # `### Changed`, which is where a constant losing a word belongs,
+    # while both entries that only restate the pairing write it under
+    # `### Fixed` - so reading the section would have turned away the one
+    # entry that records the change and taken the two that do not
+    #
+    # What the earliest-entry rule cannot see is a constant reaching the
+    # same length twice. Were QUEST_CONTROLS_LINE to go 79, then
+    # something else, then 79 again, the entry recording the second
+    # return would state a pair an earlier entry already stated, and a
+    # correct comment crediting the later one would be reported wrong.
+    # Nothing in the file is that shape, and the failure names every
+    # entry stating the pair, so a reader meeting it can see what
+    # happened; telling the two apart would mean reading what an entry
+    # claims rather than what it pairs, which is prose matching
 
     # the claim the file carries today, as (constant, count, versions).
     # The reader above would pass the check below in silence if it came
@@ -13397,14 +13501,19 @@ class TestTheVersionsTheCommentsCredit(unittest.TestCase):
 
         wrong = []
         for claim in credited_claims(SUITE_PATH):
-            if any(states_the_count(statements.get(version, ()),
-                                    claim.name, claim.count)
-                   for version in claim.versions):
+            settles = settling_entry(statements, claim.name, claim.count)
+            if settles in claim.versions:
                 continue
 
             stated = entries_stating(statements, claim.name, claim.count)
-            says = ('which is what %s says' % ' and '.join(stated)
-                    if stated else 'which no entry states')
+            restate = [one for one in stated if one != settles]
+            if settles is None:
+                says = 'which no entry states'
+            elif restate:
+                says = ('which %s records and %s only restate'
+                        % (settles, ' and '.join(restate)))
+            else:
+                says = 'which %s records' % settles
             wrong.append('test_py_maze.py:%d credits %s with %s at %s '
                          'characters, %s'
                          % (claim.number, ' or '.join(claim.versions),
@@ -13413,7 +13522,9 @@ class TestTheVersionsTheCommentsCredit(unittest.TestCase):
         self.assertEqual(wrong, [],
                          'a comment dating a constant to a version is a '
                          'claim about that version\'s entry, and the '
-                         'entry is what settles it')
+                         'entry recording the change is what settles '
+                         'it - an entry that only restates the pairing '
+                         'does not')
 
     def test_the_claim_the_file_carries_is_one_of_the_claims_read(self):
         read = {(claim.name, claim.count, claim.versions)
@@ -13522,10 +13633,15 @@ class TestCreditedClaimReading(unittest.TestCase):
         self.assertEqual(claims, [])
 
     def test_a_comment_with_code_in_front_of_it_joins_nothing(self):
-        # it is written about its own line, so the block under it is
-        # not a continuation of it. Four of this file's own comments
-        # label a constant from the end of its line, and the paragraph
-        # below one of those would otherwise open with its label
+        # it is written about its own line, so it continues neither the
+        # block above it nor the block below. The file writes the first
+        # of those two shapes and this test writes the second: four of
+        # this file's own comments label a tree-drawing constant from the
+        # end of its line, with two blank lines and a `def` beneath, so
+        # the block they would otherwise join is the one above them,
+        # closing an introduction to the constants on four labels. The
+        # synthetic file below puts a comment under the trailing one
+        # instead, which is the side no comment in this file is on
         claims = self.written('WIDTH = 79  # QUEST_CONTROLS_LINE is 79\n'
                               '# characters as of 1.0.0a6.')
 
@@ -13577,6 +13693,29 @@ class TestChangelogStatementReading(unittest.TestCase):
     # of an entry, its wrap joined back up. The entry a claim credits is
     # read whole and nothing else is, so a statement that reached into
     # the bullet below it would answer for a neighbour
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = os.path.join(self.directory.name, 'CHANGELOG.md')
+
+    def written(self, *lines):
+        # read the statements out of a changelog written for one test
+        #
+        # CHANGELOG.md carries no fence anywhere, so the fenced reading
+        # is only ever visible here - which is the same reason
+        # TestCreditedClaimReading writes Python files of its own
+        #
+        # Args:
+        #     lines: The file's lines, without their endings
+        #
+        # Returns:
+        #     dict: Its statements, as changelog_statements() reads them
+
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(lines) + '\n')
+
+        return changelog_statements(self.path)
 
     def test_every_dated_entry_is_read_as_statements(self):
         # an entry read as nothing would make every claim crediting it
@@ -13635,6 +13774,272 @@ class TestChangelogStatementReading(unittest.TestCase):
                          'each of these opens with a figure the line '
                          'above ran out of room for, and is the tail of '
                          'the statement it was split off')
+
+    def test_a_fenced_bullet_is_no_statement_of_the_entry_round_it(self):
+        # CONTRIBUTING.md shows a contributor a worked entry, so a fence
+        # holding a `## ` heading and a bullet under it is a shape this
+        # file can come to carry. changelog_entries() has always skipped
+        # the fenced heading, so the fence opens no entry of its own -
+        # and reading the fences on that side only was worse than reading
+        # them on neither, because the bullet was then appended to the
+        # entry the fence sits inside. That entry answered for a count no
+        # entry in the file ever stated
+        statements = self.written(
+            '# Changelog',
+            '',
+            '## [1.0.0a14] - 2026-11-06',
+            '',
+            '### Fixed',
+            '',
+            '- a bullet this entry really does carry',
+            '',
+            'Write your own entry like this:',
+            '',
+            '```markdown',
+            '## [1.0.0a6] - 2026-10-20',
+            '',
+            '- `QUEST_CONTROLS_LINE` is 42 characters',
+            '```')
+
+        self.assertEqual(statements['1.0.0a14'],
+                         ['- a bullet this entry really does carry',
+                          'Write your own entry like this:'])
+        self.assertFalse(states_the_count(statements['1.0.0a14'],
+                                          'QUEST_CONTROLS_LINE', '42'))
+        self.assertEqual(entries_stating(statements,
+                                         'QUEST_CONTROLS_LINE', '42'), [])
+
+    def test_a_fenced_heading_opens_no_entry(self):
+        # the other half of the same reading, held here rather than left
+        # to changelog_entries() alone: the example's version must not
+        # become a key, or a claim crediting it would be settled by an
+        # entry the file does not have
+        statements = self.written(
+            '## [1.0.0a14] - 2026-11-06',
+            '',
+            '- the one bullet this entry carries',
+            '',
+            '```markdown',
+            '## [9.9.9] - 2026-01-01',
+            '',
+            '- the shape of an entry',
+            '```')
+
+        self.assertEqual(list(statements), ['1.0.0a14'])
+        self.assertNotIn('9.9.9', statements)
+
+    def test_a_fence_closes_the_statement_running_into_it(self):
+        # the prose introducing a block is a statement of the entry and
+        # the block is not part of it, the way a blank line ends one.
+        # The paragraph below the fence opens a statement of its own
+        statements = self.written(
+            '## [1.0.0a14] - 2026-11-06',
+            '',
+            'the paragraph that introduces the block',
+            '```text',
+            'py_maze --algorithm prim',
+            '```',
+            'the paragraph that follows it')
+
+        self.assertEqual(statements['1.0.0a14'],
+                         ['the paragraph that introduces the block',
+                          'the paragraph that follows it'])
+
+
+
+class TestCountPairingReading(unittest.TestCase):
+    # the three rules states_the_count() and entries_stating() rest on
+    # that this project's own prose never reaches, so that a green run
+    # executed none of them
+    #
+    # Every statement in CHANGELOG.md that pairs a constant with a count
+    # names the constant first; nothing in the file stands anywhere near
+    # the edge of CLAIM_SPREAD; and entries_stating() is only called once
+    # a claim has already failed, which on a passing run never happens.
+    # Each of the three was taken out in turn before this class existed
+    # and the whole suite still passed - the count-first half of the
+    # pattern deleted, CLAIM_SPREAD moved from 120 to 400, and
+    # entries_stating() made to answer the empty list. Each of the three
+    # fails here now, which is what the class is for
+    #
+    # The statements here are written rather than read off the file, for
+    # the reason TestCreditedClaimReading writes its own files: a rule
+    # the repository's prose does not exercise can only be exercised by
+    # prose written for it
+
+    NAME = 'QUEST_CONTROLS_LINE'
+
+    # entries as changelog_statements() keys them, newest first, which is
+    # the order the file is written in. The versions and the pairing are
+    # this project's own, because that pairing is the one the reader
+    # exists for, and each statement is cut to the clause that carries it
+    #
+    # This is code and not a comment, so credited_claims() does not read
+    # it. A comment here pairing the constant with the count would be
+    # read as a claim of its own, the way the prose explaining the reader
+    # was until it was written to name no count
+    STATEMENTS = {
+        None: ['the preamble above the first entry, which pairs '
+               'QUEST_CONTROLS_LINE with 79 characters and answers for '
+               'no version at all'],
+        '1.0.0a14': ['- an entry that says nothing about the foot'],
+        '1.0.0a13': ['- the comment named 1.0.0a7 as where '
+                     'QUEST_CONTROLS_LINE lost the word "Press" to reach '
+                     '79 characters, which is the 1.0.0a6 change'],
+        '1.0.0a12': ['- every answer is now written to fit inside '
+                     'QUEST_CONTROLS_LINE and its 79 characters'],
+        '1.0.0a6': ['- QUEST_CONTROLS_LINE is 79 characters rather than '
+                    '88, naming its keys without the word "Press"'],
+    }
+
+    # a second set, for the one thing STATEMENTS cannot show. Its three
+    # versions sort with 1.0.0a6 last by luck - `1` sorts below `6`, so
+    # both two-digit versions fall above it - and the earliest is read
+    # off the end of the list, so a text sort names the right entry there
+    # anyway. A reader could take from that that the order never reaches
+    # the verdict. Two single-digit versions is where it does
+    NEIGHBOURS = {
+        '1.0.0a3': ['- the foot was left alone, and QUEST_CONTROLS_LINE '
+                    'is still 79 characters'],
+        '1.0.0a2': ['- QUEST_CONTROLS_LINE is 79 characters rather than '
+                    '88, naming its keys without the word "Press"'],
+    }
+
+    def spanning(self, width, count_first=False):
+        # a statement pairing the constant with a count across a gap of
+        # exactly that many characters
+        #
+        # The gap opens and closes on a space because the pattern asks
+        # for a word boundary either side of the pair, and a letter
+        # against the constant's last character is not one. A gap built
+        # out of letters alone reads as unpaired at every width, which
+        # says nothing at all about CLAIM_SPREAD
+        #
+        # Args:
+        #     width: How many characters stand between the two
+        #     count_first: Write the count ahead of the constant
+        #
+        # Returns:
+        #     str: The statement
+
+        gap = ' ' + 'x' * (width - 2) + ' '
+        if count_first:
+            return '79 characters%s%s' % (gap, self.NAME)
+
+        return '%s%s79 characters' % (self.NAME, gap)
+
+    def test_a_statement_writing_the_constant_first_pairs_them(self):
+        # the half of the pattern this project's entries do write, kept
+        # beside the other so the two read as the one rule they are
+        self.assertTrue(states_the_count(
+            ['- QUEST_CONTROLS_LINE is 79 characters rather than 88'],
+            self.NAME, '79'))
+
+    def test_a_statement_writing_the_count_first_pairs_them(self):
+        # the half no entry in this file reaches. An entry is as free to
+        # write "runs to 79 characters now that QUEST_CONTROLS_LINE
+        # names" as to write it the other way about, and the alternative
+        # could have been deleted without a test saying so
+        self.assertTrue(states_the_count(
+            ['- the foot runs to 79 characters now that '
+             'QUEST_CONTROLS_LINE names its keys without the word '
+             '"Press"'], self.NAME, '79'))
+
+    def test_the_spread_is_the_figure_the_reader_was_fitted_with(self):
+        # the two tests below read CLAIM_SPREAD, so they pin which side
+        # of the boundary each span falls on and follow the figure
+        # wherever it goes - moved to 400 they both still pass. The
+        # figure came off the prototype rather than from anything
+        # derived, so this is what holds it: raising it is a decision
+        # somebody takes on purpose rather than a number that drifts
+        #
+        # Lowering it is caught from the other side already.
+        # test_the_entry_the_anchored_claim_credits_states_it reads the
+        # one pairing the file really carries out of the entry recording
+        # it, and a spread too narrow to span that statement fails there
+        self.assertEqual(CLAIM_SPREAD, 120)
+
+    def test_a_pair_exactly_claim_spread_apart_is_one_claim(self):
+        for count_first in (False, True):
+            with self.subTest(count_first=count_first):
+                self.assertTrue(states_the_count(
+                    [self.spanning(CLAIM_SPREAD, count_first)],
+                    self.NAME, '79'))
+
+    def test_a_pair_one_character_further_apart_is_not(self):
+        # the boundary from the other side. CLAIM_SPREAD came off the
+        # prototype rather than from anything derived, so what the figure
+        # is worth is that the reader is held to it exactly
+        for count_first in (False, True):
+            with self.subTest(count_first=count_first):
+                self.assertFalse(states_the_count(
+                    [self.spanning(CLAIM_SPREAD + 1, count_first)],
+                    self.NAME, '79'))
+
+    def test_a_pair_split_across_two_statements_is_neither(self):
+        # the spread is read inside one statement, so the two ends of a
+        # long bullet say nothing about each other however near the
+        # statements holding them sit
+        self.assertFalse(states_the_count(
+            ['- the line names its keys without the word "Press"',
+             '- the foot of a quest maze is 79 characters'],
+            self.NAME, '79'))
+
+    def test_a_count_the_entry_does_not_state_pairs_with_nothing(self):
+        # the 1.0.0a6 statement writes 88 as the length the constant
+        # left behind, not as a length it has, so nothing counts it
+        self.assertFalse(states_the_count(self.STATEMENTS['1.0.0a6'],
+                                          self.NAME, '88'))
+
+    def test_every_entry_pairing_them_is_named(self):
+        self.assertEqual(entries_stating(self.STATEMENTS, self.NAME, '79'),
+                         ['1.0.0a13', '1.0.0a12', '1.0.0a6'])
+
+    def test_the_entries_are_named_in_the_order_the_file_writes_them(self):
+        # newest first, which is the file's order and not the versions'
+        # text order. This is read for a failure message whose one job is
+        # to send a reader to the right entry
+        stating = entries_stating(self.STATEMENTS, self.NAME, '79')
+
+        self.assertEqual(stating, [version for version in self.STATEMENTS
+                                   if version in stating])
+
+    def test_the_preamble_is_no_entry_and_states_nothing(self):
+        # the statements above the first heading are keyed under None,
+        # which is no version and answers for none, however squarely
+        # they pair the two
+        self.assertEqual(entries_stating({None: self.STATEMENTS[None]},
+                                         self.NAME, '79'), [])
+
+    def test_the_settling_entry_is_the_earliest_to_state_the_pair(self):
+        # 1.0.0a6 records the shortening. 1.0.0a12 and 1.0.0a13 restate
+        # the pairing - one fitting an answer inside the line, one
+        # correcting the version credited for it - and neither settles it
+        self.assertEqual(settling_entry(self.STATEMENTS, self.NAME, '79'),
+                         '1.0.0a6')
+
+    def test_a_text_sort_would_name_a_restating_entry_instead(self):
+        # why the earliest is read off the file's order. `1.0.0a12` and
+        # `1.0.0a13` sort below `1.0.0a6` as text, so the first of a
+        # sorted list is an entry that only mentions the pairing
+        stating = entries_stating(self.STATEMENTS, self.NAME, '79')
+
+        self.assertEqual(sorted(stating)[0], '1.0.0a12')
+        self.assertEqual(stating[-1], '1.0.0a6')
+
+    def test_a_pair_no_entry_states_is_settled_by_nothing(self):
+        self.assertIsNone(settling_entry(self.STATEMENTS, self.NAME, '88'))
+
+    def test_the_file_order_is_what_decides_which_entry_settles_it(self):
+        # 1.0.0a2 records the change and 1.0.0a3 says the line was left
+        # alone, so the earlier of the two settles the claim. Sorted as
+        # text they come back the other way up, and the entry read off
+        # the end of the list is then the one that only restates it -
+        # which is the verdict going wrong rather than a message reading
+        # oddly
+        self.assertEqual(settling_entry(self.NEIGHBOURS, self.NAME, '79'),
+                         '1.0.0a2')
+        self.assertEqual(sorted(self.NEIGHBOURS)[-1], '1.0.0a3')
 
 
 def finish_quest(grid, quest):

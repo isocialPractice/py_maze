@@ -28,95 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - what settles a credited claim, and what tests it
-
-#### Resolve Issues
-
-- [ ] Credited Claims 1
-  - **Issue**: `changelog_statements()` does not know where a fenced block
-    is, unlike the `changelog_entries()` it keys off, which excludes a
-    fenced `## ` heading on purpose. Write the sample entry CONTRIBUTING.md
-    already shows a contributor into a `CHANGELOG.md` entry - a fence
-    holding `## [1.0.0a6] - 2026-10-20` and a bullet under it - and the
-    fenced heading is skipped as a heading while the fenced bullet is
-    appended to the enclosing version's statements. Probed against a
-    temporary changelog of that shape: a bullet reading
-    `` `QUEST_CONTROLS_LINE` is 42 characters `` inside a fence under
-    `## [1.0.0a14]` made `entries_stating` report `1.0.0a14` as stating a
-    count that entry never states, so a comment crediting `1.0.0a14` with
-    42 characters would pass
-  - **Goal**: read `inside, _ = fenced_lines(lines)` in
-    `changelog_statements()` the way `changelog_entries()` already does and
-    skip a line inside a block, so an example in an entry is an example on
-    both sides of the reader. `changelog_statements()` takes no path, so
-    pinning this needs either a path parameter - which
-    `TestChangelogStatementReading` could then write synthetic entries for,
-    the way `TestCreditedClaimReading` writes synthetic files - or an
-    example fence added to `CONTRIBUTING.md`'s own worked entry and read
-    from there
-  - From: Code Review Override - nothing reads the version a comment credits
-- [ ] Credited Claims 2
-  - **Issue**: an entry that only restates a pairing answers for it.
-    `entries_stating` reports `1.0.0a6`, `1.0.0a12` and `1.0.0a13` as
-    stating `QUEST_CONTROLS_LINE` at 79 characters: `1.0.0a6` records the
-    shortening, while `1.0.0a12` describes fitting the guide's answer
-    inside the line and `1.0.0a13` quotes the pairing in order to correct
-    the version credited for it. Re-date the claim at
-    `test_py_maze.py:14535` from 1.0.0a6 to 1.0.0a13 and
-    `test_every_version_a_comment_credits_states_the_count` passes, though
-    `1.0.0a13` records no change to that constant - which is the failure
-    the whole reader was written to catch, arriving through the entry
-    written to fix it
-  - **Goal**: decide what makes an entry the one that settles a claim
-    rather than one that mentions it, and hold the check to that. The
-    earliest entry stating the pair is one candidate and the entry's own
-    `### Added` or `### Fixed` section is another; whichever is chosen,
-    say in the class comment why the other was not, since the limitation
-    is currently invisible in a green run
-  - From: Code Review Override - nothing reads the version a comment credits
-- [ ] Credited Claims 3
-  - **Issue**: three of the rules the pairing check rests on are exercised
-    by nothing. `states_the_count` at `test_py_maze.py:888` documents that
-    the constant and the count "stand in either order", and its
-    count-first alternative never matches on this tree - every statement
-    that pairs them names the constant first - so that half of the pattern
-    could be removed without a test noticing. `CLAIM_SPREAD` at
-    `test_py_maze.py:753` is unexercised at its boundary, and the comment
-    on it says the figure came from the prototype rather than from
-    anything derived, so a span of 121 characters reading as unpaired and
-    one of 120 reading as paired is asserted nowhere. `entries_stating` at
-    `test_py_maze.py:913` is only reached when a claim already failed, so
-    a green run never executes it
-  - **Goal**: `states_the_count` and `entries_stating` both take their
-    statements as an argument, so pass them synthetic ones: a statement
-    writing the count before the constant, a pair exactly `CLAIM_SPREAD`
-    apart and a pair one character further, and a set of entries
-    `entries_stating` has to sort. Note while doing it that
-    `entries_stating` sorts versions as text, so its message currently
-    reads `1.0.0a12 and 1.0.0a13 and 1.0.0a6`
-  - From: Code Review Override - nothing reads the version a comment credits
-- [ ] Credited Claims 4
-  - **Issue**: two comments describe the rule they justify backwards. The
-    comment on `comment_paragraphs` at `test_py_maze.py:781` says the four
-    labels written from the ends of the tree-drawing constant lines "would
-    otherwise be read as the opening lines of whatever comment block
-    follows them", and the one on
-    `test_a_comment_with_code_in_front_of_it_joins_nothing` at
-    `test_py_maze.py:13528` says "the paragraph below one of those would
-    otherwise open with its label". Nothing follows them: the four sit at
-    `test_py_maze.py:157` to `160` and two blank lines and a `def` stand
-    below. Running the reader with the `alone` test removed joins all four
-    onto the block at `test_py_maze.py:155`, above them, as its closing
-    lines - and that block introduces the constants rather than labelling
-    any one of them. The same sentence in the `1.0.0a13` changelog entry
-    was corrected during this review, the entry being a release note
-  - **Goal**: say in both comments that the four would join the block
-    above them, keeping the point the comments are making, which is that a
-    comment written about its own line belongs to neither block. The test
-    body is correct as it stands and needs no change: the synthetic file it
-    writes does put a comment under the trailing one
-  - From: Code Review Override - nothing reads the version a comment credits
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3122,6 +3033,90 @@ No items are currently queued in this section.
     pairs no count with the constant, and the `CONTROLS_LINE` comment at
     `test_py_maze.py:4148` puts its count and the version 2.2.6 in
     different sentences
+  - From: Code Review Override - nothing reads the version a comment credits
+- [x] Credited Claims 1
+  - **Issue**: `changelog_statements()` does not know where a fenced block
+    is, unlike the `changelog_entries()` it keys off, which excludes a
+    fenced `## ` heading on purpose. Write the sample entry CONTRIBUTING.md
+    already shows a contributor into a `CHANGELOG.md` entry - a fence
+    holding `## [1.0.0a6] - 2026-10-20` and a bullet under it - and the
+    fenced heading is skipped as a heading while the fenced bullet is
+    appended to the enclosing version's statements. Probed against a
+    temporary changelog of that shape: a bullet reading
+    `` `QUEST_CONTROLS_LINE` is 42 characters `` inside a fence under
+    `## [1.0.0a14]` made `entries_stating` report `1.0.0a14` as stating a
+    count that entry never states, so a comment crediting `1.0.0a14` with
+    42 characters would pass
+  - **Goal**: read `inside, _ = fenced_lines(lines)` in
+    `changelog_statements()` the way `changelog_entries()` already does and
+    skip a line inside a block, so an example in an entry is an example on
+    both sides of the reader. `changelog_statements()` takes no path, so
+    pinning this needs either a path parameter - which
+    `TestChangelogStatementReading` could then write synthetic entries for,
+    the way `TestCreditedClaimReading` writes synthetic files - or an
+    example fence added to `CONTRIBUTING.md`'s own worked entry and read
+    from there
+  - From: Code Review Override - nothing reads the version a comment credits
+- [x] Credited Claims 2
+  - **Issue**: an entry that only restates a pairing answers for it.
+    `entries_stating` reports `1.0.0a6`, `1.0.0a12` and `1.0.0a13` as
+    stating `QUEST_CONTROLS_LINE` at 79 characters: `1.0.0a6` records the
+    shortening, while `1.0.0a12` describes fitting the guide's answer
+    inside the line and `1.0.0a13` quotes the pairing in order to correct
+    the version credited for it. Re-date the claim at
+    `test_py_maze.py:14535` from 1.0.0a6 to 1.0.0a13 and
+    `test_every_version_a_comment_credits_states_the_count` passes, though
+    `1.0.0a13` records no change to that constant - which is the failure
+    the whole reader was written to catch, arriving through the entry
+    written to fix it
+  - **Goal**: decide what makes an entry the one that settles a claim
+    rather than one that mentions it, and hold the check to that. The
+    earliest entry stating the pair is one candidate and the entry's own
+    `### Added` or `### Fixed` section is another; whichever is chosen,
+    say in the class comment why the other was not, since the limitation
+    is currently invisible in a green run
+  - From: Code Review Override - nothing reads the version a comment credits
+- [x] Credited Claims 3
+  - **Issue**: three of the rules the pairing check rests on are exercised
+    by nothing. `states_the_count` at `test_py_maze.py:888` documents that
+    the constant and the count "stand in either order", and its
+    count-first alternative never matches on this tree - every statement
+    that pairs them names the constant first - so that half of the pattern
+    could be removed without a test noticing. `CLAIM_SPREAD` at
+    `test_py_maze.py:753` is unexercised at its boundary, and the comment
+    on it says the figure came from the prototype rather than from
+    anything derived, so a span of 121 characters reading as unpaired and
+    one of 120 reading as paired is asserted nowhere. `entries_stating` at
+    `test_py_maze.py:913` is only reached when a claim already failed, so
+    a green run never executes it
+  - **Goal**: `states_the_count` and `entries_stating` both take their
+    statements as an argument, so pass them synthetic ones: a statement
+    writing the count before the constant, a pair exactly `CLAIM_SPREAD`
+    apart and a pair one character further, and a set of entries
+    `entries_stating` has to sort. Note while doing it that
+    `entries_stating` sorts versions as text, so its message currently
+    reads `1.0.0a12 and 1.0.0a13 and 1.0.0a6`
+  - From: Code Review Override - nothing reads the version a comment credits
+- [x] Credited Claims 4
+  - **Issue**: two comments describe the rule they justify backwards. The
+    comment on `comment_paragraphs` at `test_py_maze.py:781` says the four
+    labels written from the ends of the tree-drawing constant lines "would
+    otherwise be read as the opening lines of whatever comment block
+    follows them", and the one on
+    `test_a_comment_with_code_in_front_of_it_joins_nothing` at
+    `test_py_maze.py:13528` says "the paragraph below one of those would
+    otherwise open with its label". Nothing follows them: the four sit at
+    `test_py_maze.py:157` to `160` and two blank lines and a `def` stand
+    below. Running the reader with the `alone` test removed joins all four
+    onto the block at `test_py_maze.py:155`, above them, as its closing
+    lines - and that block introduces the constants rather than labelling
+    any one of them. The same sentence in the `1.0.0a13` changelog entry
+    was corrected during this review, the entry being a release note
+  - **Goal**: say in both comments that the four would join the block
+    above them, keeping the point the comments are making, which is that a
+    comment written about its own line belongs to neither block. The test
+    body is correct as it stands and needs no change: the synthetic file it
+    writes does put a comment under the trailing one
   - From: Code Review Override - nothing reads the version a comment credits
 
 </details>
