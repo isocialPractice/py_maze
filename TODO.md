@@ -28,6 +28,74 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
+### Code Review Override - the pairing rules the new tests still do not reach
+
+- [ ] Give the one-statement span a test that can fail
+  - **Issue**: `test_a_pair_split_across_two_statements_is_neither` at
+    `test_py_maze.py:13979` names the rule that a pair split across two
+    statements is no claim, and cannot fail for it. Neither of the two
+    statements it passes contains `QUEST_CONTROLS_LINE` at all, so
+    `states_the_count` answers False because the constant is absent
+    rather than because the span is one statement. Widening the span -
+    `return bool(pair.search(' '.join(statements)))` in place of the
+    `any()` at `test_py_maze.py:938` - leaves all 1256 tests green, so
+    the span `TestChangelogStatementReading`'s class comment opens by
+    describing is exercised by nothing, and this is the test that was
+    meant to exercise it
+  - **Goal**: write the constant into one of the two statements and the
+    count into the other, so the pair really is split, and re-run the
+    widening above to confirm the assertion now fails under it
+  - From: Code Review Override - the pairing rules the new tests still do
+    not reach
+- [ ] Pin the order `changelog_statements()` keys its entries in
+  - **Issue**: `settling_entry()` at `test_py_maze.py:965` reads the
+    earliest entry off the end of `entries_stating()`, which is the
+    statements dict's own order, and its comment says that order is the
+    changelog's. Nothing holds `changelog_statements()` to it.
+    `test_the_file_order_is_what_decides_which_entry_settles_it` pins
+    `settling_entry()` against a dict written by hand, and
+    `test_the_changelog_writes_its_dated_entries_newest_first` pins the
+    file through `changelog_entries()`, so the reader between the two is
+    held by nothing. Returning
+    `dict(sorted(statements.items(), key=lambda pair: str(pair[0])))`
+    from `test_py_maze.py:555` - the text sort `settling_entry()`'s own
+    comment says was rejected - leaves all 1256 tests green, because the
+    three versions this changelog carries reach `1.0.0a6` under a text
+    sort by luck. Reversing the order is caught, so what is missing is
+    the general pin rather than any pin at all
+  - **Goal**: assert that the versions `changelog_statements()` keys,
+    with the `None` key dropped, are the versions `changelog_entries()`
+    names and in that same order, so the invariant is held where it is
+    produced and not only where it is read
+  - From: Code Review Override - the pairing rules the new tests still do
+    not reach
+- [ ] Correct what the spread comment credits with a lowered figure
+  - **Issue**: the comment on
+    `test_the_spread_is_the_figure_the_reader_was_fitted_with` at
+    `test_py_maze.py:13948` says lowering the figure is caught from the
+    other side already, by
+    `test_the_entry_the_anchored_claim_credits_states_it`. The statement
+    that test reads writes its pair 5 characters apart, so that test
+    only fails for a spread narrower than 5, and every value from 5 up
+    to 119 is caught by nothing but the `assertEqual` the comment is
+    attached to. A reader who believes the comment can read that
+    assertion as guarding one direction when it guards both
+  - **Goal**: say that the assertion holds the figure in both
+    directions, and that the other test covers only a spread too narrow
+    for the pair the changelog really writes. Name no version in that
+    sentence beside the constant and a count, or `credited_claims()`
+    reads the correction as a fourth claim
+  - From: Code Review Override - the pairing rules the new tests still do
+    not reach
+- [ ] Close the three-blank-line gap before `TestCountPairingReading`
+  - **Issue**: `test_py_maze.py:13847` to `13849` are three blank lines
+    before `class TestCountPairingReading`, where every other top-level
+    definition in the file is preceded by two. It is the only run of
+    three in the file
+  - **Goal**: drop one of the three
+  - From: Code Review Override - the pairing rules the new tests still do
+    not reach
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
