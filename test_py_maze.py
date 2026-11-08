@@ -13729,6 +13729,28 @@ class TestChangelogStatementReading(unittest.TestCase):
                          'each of these entries was read as no prose at '
                          'all, so nothing it says can settle a claim')
 
+    def test_the_entries_are_keyed_in_the_order_the_file_writes_them(self):
+        # settling_entry() reads the earliest entry to state a pair off
+        # the end of this dict, which is the earliest only while the
+        # dict is keyed the way the file is written. Nothing held the
+        # reader to that. The order is pinned where it is read, against
+        # a dict written by hand, and the file's own order is pinned
+        # through changelog_entries() - so the reader between the two
+        # could sort its keys as text and both of those would pass. This
+        # is the pin where the order is produced
+        #
+        # The None key is dropped because it is no entry: the preamble
+        # above the first heading is under it, as is a heading neither
+        # shape, which a check of its own reports
+        keyed = [version for version in changelog_statements()
+                 if version is not None]
+
+        self.assertEqual(keyed, [entry.version for entry in
+                                 changelog_entries() if entry.version],
+                         'the earliest entry to state a pair is read off '
+                         'the end of this order, so it has to be the '
+                         'order the file writes its entries in')
+
     def test_the_entry_the_anchored_claim_credits_states_it(self):
         # the pair the whole check turns on, read from the entry rather
         # than from the file: 1.0.0a6 is where the shortening is
@@ -13846,7 +13868,6 @@ class TestChangelogStatementReading(unittest.TestCase):
                           'the paragraph that follows it'])
 
 
-
 class TestCountPairingReading(unittest.TestCase):
     # the three rules states_the_count() and entries_stating() rest on
     # that this project's own prose never reaches, so that a green run
@@ -13953,10 +13974,15 @@ class TestCountPairingReading(unittest.TestCase):
         # derived, so this is what holds it: raising it is a decision
         # somebody takes on purpose rather than a number that drifts
         #
-        # Lowering it is caught from the other side already.
-        # test_the_entry_the_anchored_claim_credits_states_it reads the
-        # one pairing the file really carries out of the entry recording
-        # it, and a spread too narrow to span that statement fails there
+        # Lowering it is held here too, because an equality fails in
+        # both directions. That side used to be credited to
+        # test_the_entry_the_anchored_claim_credits_states_it, which
+        # covers far less of it than the credit read: the one pairing
+        # the file really carries writes its two ends a handful of
+        # characters apart, so a spread has to fall below that handful
+        # before it cannot span them. The statements this class writes
+        # reach further, and the tests reading them catch the lower part
+        # of what is left - the rest is caught by this assertion alone
         self.assertEqual(CLAIM_SPREAD, 120)
 
     def test_a_pair_exactly_claim_spread_apart_is_one_claim(self):
@@ -13980,8 +14006,17 @@ class TestCountPairingReading(unittest.TestCase):
         # the spread is read inside one statement, so the two ends of a
         # long bullet say nothing about each other however near the
         # statements holding them sit
+        #
+        # The first of these names the constant and the second carries
+        # the count, well inside the spread of each other once the two
+        # are joined. That is what makes this a test of the span rather
+        # than of the pattern: a reader given the statements joined
+        # pairs them and this fails, where a pair neither statement
+        # holds half of would answer False for the name being absent and
+        # say nothing about how far the span reaches
         self.assertFalse(states_the_count(
-            ['- the line names its keys without the word "Press"',
+            ['- QUEST_CONTROLS_LINE names its keys without the word '
+             '"Press"',
              '- the foot of a quest maze is 79 characters'],
             self.NAME, '79'))
 

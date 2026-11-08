@@ -22,6 +22,45 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [1.0.0a15] - 2026-11-08
+
+Two of the pairing tests added in `1.0.0a14` could not fail for the rule they
+named, and the order the entries they read are keyed in was held by nothing.
+Found reviewing `1.0.0a14` after it was tagged.
+
+### Added
+
+- **The order `changelog_statements()` keys its entries in is pinned where it
+  is produced.** The earliest entry to state a pairing is read off the end of
+  that dict, so its keys have to run in the order the file writes its entries.
+  Both ends of that were already held - the file's own order through
+  `changelog_entries()`, and the reader of the dict against a dict written by
+  hand - and the reader between them was held by nothing. Keying its entries
+  by a text sort of the version left the whole suite passing, because the
+  three versions this file carries reach the right answer under a text sort by
+  luck. Reversing the order was caught, so what was missing was the general
+  pin rather than any pin at all
+
+### Fixed
+
+- **The test naming the one-statement span could not fail for it.** A pair
+  split across two statements is no claim, and neither statement the test
+  passed held the constant at all - so the reader answered no because the name
+  was absent rather than because the span is one statement. Widening the span
+  to the joined statements left every test passing, which is to say the span
+  the class comment opens by describing was exercised by nothing. One
+  statement now names the constant and the next carries the count, near enough
+  to pair once joined, and the widening fails here
+- **A comment credited another test with catching a lowered span figure.** The
+  test it named reads the one pairing this file really carries, and that
+  statement writes its two ends a handful of characters apart, so it fails
+  only for a span narrower than that handful. Most of the range below the
+  figure is caught by the equality the comment was attached to, and the
+  comment read that equality as guarding one direction where it guards both
+- **Three blank lines stood before a class.** Every other top-level definition
+  in the suite is preceded by two, and that run of three was the only one in
+  the file
+
 ## [1.0.0a14] - 2026-11-06
 
 What settles a claim about a constant's length, the fenced example that could
