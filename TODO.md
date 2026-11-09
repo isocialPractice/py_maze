@@ -89,11 +89,12 @@ into a `## Complete` section at the bottom of this file.
     under the widening it was rewritten for only because its two
     statements, once joined by that widening, leave `QUEST_CONTROLS_LINE`
     and `79 characters` 71 characters apart - inside `CLAIM_SPREAD`, which
-    is 120. Nothing records that. 49 characters of rewording to the first
-    statement puts the pair past the spread, and the test goes back to
-    passing under the widening while still reading as though it held the
-    one-statement span, which is the state the `1.0.0a15` fix was queued
-    to get it out of
+    is 120. Nothing records that. The margin is 49 characters: a first
+    statement 49 characters longer still pairs once joined, and 50 longer
+    does not, so a rewording of that size sends the test back to passing
+    under the widening while it still reads as though it held the
+    one-statement span - the state the `1.0.0a15` fix was queued to get
+    it out of
   - **Goal**: assert in the same test that the two statements joined do
     pair, so the fixture's own gap is held inside `CLAIM_SPREAD` and a
     rewording that carries it past the spread fails here rather than
