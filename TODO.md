@@ -32,25 +32,25 @@ into a `## Complete` section at the bottom of this file.
 
 #### Found Issues
 
-- [ ] Hold `changelog_statements()` to the entry each statement belongs to
-  - **Issue**: the pin added for `1.0.0a15`,
-    `test_the_entries_are_keyed_in_the_order_the_file_writes_them`, holds
-    the order of the keys and says nothing about which entry a statement
-    is keyed under. In `changelog_statements()` the flush at
-    `test_py_maze.py:542` runs before `version` is moved to the heading
-    just reached, and swapping those two adjacent statements - the
-    `if opens:` block lifted above the `if current and (...)` block -
-    keys every entry's last statement under the next heading instead,
-    which is the older entry. All 1257 tests still pass. That is the one
-    fault `settling_entry()` exists to prevent: a statement pairing a
-    constant with a count drifts to an entry that records no change, and
-    the reader answers with the wrong version while the key order the new
-    pin reads stays exactly right
-  - **Goal**: assert the attribution as well as the order, by reading a
-    synthetic changelog through `written()` whose entries each carry a
-    statement naming their own version, and checking each statement comes
-    back under the heading it was written below. Re-run the swap above to
-    confirm the new assertion fails under it
+- [ ] Read a changelog whose heading follows a statement directly
+  - **Issue**: `changelog_statements()` flushes the statement it is
+    holding before it moves `version` to the heading just reached, and
+    nothing holds it to that order. Swapping those two adjacent blocks at
+    `test_py_maze.py:536` - the `if opens:` block lifted above the
+    `if current and (...)` block - leaves all 1257 tests green. It is a
+    no-op on every changelog the suite reads, because the real file and
+    every synthetic one `written()` builds put a blank line before each
+    heading, and the statement has already flushed there. On the shape
+    none of them writes - `## [1.0.0a2] - ...`, `- a bullet`,
+    `## [1.0.0a1] - ...`, `- a bullet`, with no blank line anywhere - the
+    swap reads `{'1.0.0a1': ['- a bullet', '- a bullet']}`: the newer
+    entry's statement is keyed under the older entry and the newer entry
+    is not keyed at all. Clean code reads that shape correctly, so what
+    is held by nothing is the block order that makes it correct
+  - **Goal**: add a `written()` test for a heading that follows a
+    statement with no blank line between them, asserting each statement
+    comes back under the heading it was written below. Re-run the swap
+    above to confirm the new test fails under it
   - From: Code Review Override - what the new pins still do not hold
 - [ ] Report an entry read as no prose where a reader will recognize it
   - **Issue**: `test_the_entries_are_keyed_in_the_order_the_file_writes_them`
