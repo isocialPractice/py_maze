@@ -24,7 +24,7 @@ when one is written.
 
 ## [1.0.0a15] - 2026-11-08
 
-Two of the pairing tests added in `1.0.0a14` could not fail for the rule they
+One of the pairing tests added in `1.0.0a14` could not fail for the rule it
 named, and the order the entries they read are keyed in was held by nothing.
 Found reviewing `1.0.0a14` after it was tagged.
 
