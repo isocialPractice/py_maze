@@ -242,6 +242,13 @@ showing a module - the `__all__` and the carving function of the new
 algorithm above, say - is written in the repository's own style rather than
 around the check.
 
+The Python files are held to that PEP 8 rule directly rather than through
+the exemption. Two blank lines in a row is correct between top-level
+definitions, so `test_py_maze.py` and every module under `py_maze/` are
+read for a run of three or more instead - the length PEP 8 names nowhere.
+Leave two where two belong and one between methods, and nothing here will
+have anything to say about it.
+
 A fence is read inside a blockquote as well as outside one, which matters
 here because quoted prose is what this repository writes most of. The depth
 a fence opened at is the depth that closes it, and a block ends with the

@@ -227,6 +227,15 @@ wider number for a file whose test names are sentences. Both are things
 only a reader had been catching: a collapsed line continuation arrives as
 whitespace and leaves Python that still passes.
 
+Those same files are read for their blank lines, to the rule PEP 8 states
+rather than the one MD012 does. Two in a row is what stands between
+top-level definitions and is correct there, so what is reported is a third:
+a run of three or more in `test_py_maze.py` or in any module under
+`py_maze/`. The documents above are read for the pair and the Python files
+for the run, which is one check written to each file's own standard - and
+the Python side was reading nothing until a run of three was taken out of
+the suite by hand.
+
 The suite's own comments are read for one claim in particular. A sentence of
 a comment that names a string constant of the package, counts its characters
 and credits a version for that count is held against that version's entry in
@@ -255,3 +264,12 @@ reader. A fenced heading opens no entry and a fenced bullet joins none, so
 the worked entry `CONTRIBUTING.md` shows a contributor stays an example if
 that shape is ever written here - rather than putting the example's prose in
 the mouth of the entry the fence sits inside.
+
+Both ends of that reading are held where a reader would go looking. Every
+entry the file heads is read for prose, the dateless `## [Unreleased]`
+heading included, so an entry with nothing recorded under it yet is reported
+as no prose rather than as the keying order being wrong - two failures that
+used to be one, and the one that spoke named the order. The order itself is
+pinned where it is produced as well as where it is read: a statement is
+keyed under the heading it was written below even where no blank line
+separates the two, which is the one shape the file does not already carry.

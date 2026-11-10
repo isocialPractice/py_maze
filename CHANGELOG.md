@@ -22,6 +22,62 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [1.0.0a16] - 2026-11-10
+
+Four of the pins `1.0.0a15` added or reworded held less than they named: a
+block order nothing read, an empty entry reported as the wrong failure, a
+blank-line rule the Python files stood outside, and a fixture whose own
+margin was recorded nowhere. Found reviewing `1.0.0a15` after it was tagged.
+
+### Added
+
+- **A statement is pinned to the heading it was written below.**
+  `changelog_statements()` flushes the statement it is holding before it
+  moves to the heading it has just reached, and nothing read that order.
+  Every changelog the suite reads puts a blank line above a heading, which
+  flushes the statement a line earlier and leaves the order making no
+  difference, so the shape that reads it is the one none of them writes. A
+  heading directly below a paragraph keys that paragraph under the entry the
+  heading opens once the two blocks are swapped, which is the newer entry's
+  prose answering for the older entry. Both statement shapes are written,
+  because the loop fails them differently: a paragraph is held until the
+  heading reaches it, while a bullet is flushed by its own opener and keys
+  correctly under the swap
+- **A run of three blank lines is reported in the Python files.** `1.0.0a15`
+  records a run of three before a class becoming two, and nothing held that.
+  The pair check reads the Markdown documents and the published pages, so
+  the run could come back to either Python file unreported. PEP 8 asks two
+  blank lines between top-level definitions and names no shape that takes
+  three, so the Python files are read for the run where the documents are
+  read for the pair: `test_py_maze.py` and every module under `py_maze/`,
+  both already in reach of the width checks beside it
+
+### Changed
+
+- **Every entry carrying a version is read for prose, not every dated
+  one.** The dateless `## [Unreleased]` heading is the one this project adds
+  by hand between releases, and an empty one was the single shape the check
+  could not see, so the keying pin failed in its place and reported the
+  order of the entries when what was wrong was an entry missing from them.
+  The check named for an entry read as no prose reports it now
+- **The keying pin fails for the order alone.** It compared the versions
+  keyed against every version the file heads, so an entry read as no prose
+  was a list the wrong length rather than prose nobody could read. Only the
+  versions that were keyed are compared now, and the check above reports the
+  rest
+
+### Fixed
+
+- **The split-statement test's own margin was recorded nowhere.** The test
+  fails under the span widening it was rewritten for only because its two
+  statements, once joined, stand 71 characters apart, which is inside a
+  spread of 120 characters. The margin is 49 of them: a first statement 49
+  longer still pairs once joined and 50 longer does not, so a rewording of
+  that size would send the test back to passing for the span being too
+  narrow while it still read as a test of the statement boundary. The joined
+  pair is asserted in the same test, which holds the fixture's own gap
+  inside the spread
+
 ## [1.0.0a15] - 2026-11-08
 
 One of the pairing tests added in `1.0.0a14` could not fail for the rule it

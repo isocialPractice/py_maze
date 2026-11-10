@@ -353,6 +353,36 @@ def doubled_blank_lines(lines):
     return doubled
 
 
+def tripled_blank_lines(lines):
+    # the blank lines of a Python file that stand third or later in a
+    # run, which is one more than the file is written to anywhere: PEP 8
+    # asks two between top-level definitions, one between methods, and
+    # names no shape at all that takes three
+    #
+    # No fence is read, unlike doubled_blank_lines(). The exemption
+    # there is MD012's, and the reason for it is that two blank lines
+    # inside a block are PEP 8 asking for them - which is this rule
+    # rather than something to be excused from it. No Python file here
+    # carries a backtick fence at all, and a run of blank lines inside
+    # a docstring is still a run a reader scrolls past
+    #
+    # Args:
+    #     lines: The file's lines, without their endings
+    #
+    # Returns:
+    #     list: The number of each blank line standing third or later in
+    #     a run, counting from 1 as the file is read
+
+    tripled = []
+    blanks = 0
+    for number, line in enumerate(lines, start=1):
+        blanks = blanks + 1 if not line.strip() else 0
+        if blanks > 2:
+            tripled.append(number)
+
+    return tripled
+
+
 # how CHANGELOG.md heads an entry: the version in brackets and the date
 # it was written. The one other shape is the dateless `## [Unreleased]`
 # heading Keep a Changelog puts above the entries and CONTRIBUTING.md
@@ -13112,6 +13142,25 @@ class TestRepositoryTextShape(unittest.TestCase):
                          'each of these is the second blank line of a '
                          'pair, which is the shape MD012 names')
 
+    def test_no_python_file_carries_three_blank_lines_in_a_row(self):
+        # the run PEP 8 does not name: two blank lines between top-level
+        # definitions and no more. The `1.0.0a15` entry records a run of
+        # three in this file becoming two, and nothing held that -
+        # doubled_blank_lines() is applied above to self.documents(),
+        # which is the Markdown documents and the published pages, so
+        # the run could come back to either Python file and no check
+        # would report it. Both files are already in reach here, read
+        # for their width by the two tests above
+        tripled = []
+        for name in ['test_py_maze.py'] + package_modules():
+            tripled += ['%s:%d' % (name, number) for number
+                        in tripled_blank_lines(self.document(name))]
+
+        self.assertEqual(tripled, [],
+                         'each of these stands third in a run of blank '
+                         'lines, which is one more than PEP 8 asks '
+                         'between top-level definitions')
+
     def test_the_prose_read_here_is_every_document_the_root_carries(self):
         # DOCUMENTS is written out by hand, and three places say that
         # what it names is every Markdown document the repository root
@@ -13314,6 +13363,51 @@ class TestDoubledBlankLineReading(unittest.TestCase):
                 'two')
 
         self.assertEqual(self.numbers(page), [8])
+
+
+class TestTripledBlankLineReading(unittest.TestCase):
+    # the run tripled_blank_lines() counts, read against text written
+    # here rather than against the repository's own Python files. The
+    # check it serves passes on every one of them today, so a miscount
+    # would show up in no failure until somebody left a run of three
+    # behind - which is the state the check was written for
+
+    def numbers(self, source):
+        # the tripled blank lines of a file written as one string
+        #
+        # Args:
+        #     source: The file, its lines separated by newlines
+        #
+        # Returns:
+        #     list: What tripled_blank_lines() made of it
+
+        return tripled_blank_lines(source.split('\n'))
+
+    def test_two_blank_lines_between_definitions_is_the_shape_pep_8_asks(self):
+        self.assertEqual(self.numbers('one\n\n\ntwo'), [])
+
+    def test_it_names_the_third_blank_line_of_a_run(self):
+        self.assertEqual(self.numbers('one\n\n\n\ntwo'), [4])
+
+    def test_it_names_every_blank_line_past_the_second(self):
+        self.assertEqual(self.numbers('one\n\n\n\n\ntwo'), [4, 5])
+
+    def test_it_reads_a_line_of_nothing_but_whitespace_as_blank(self):
+        # the same reading doubled_blank_lines() takes, and the same
+        # reason: an editor that strips no trailing space leaves a run
+        # of three looking like one blank line short of a run
+        self.assertEqual(self.numbers('one\n\n   \n\ntwo'), [4])
+
+    def test_a_run_is_counted_from_the_line_that_broke_the_last_one(self):
+        # two runs of two with a definition between them is not a run of
+        # four, so the count has to start again rather than add up
+        self.assertEqual(self.numbers('one\n\n\ntwo\n\n\nthree'), [])
+
+    def test_a_file_opening_on_blank_lines_is_read_from_its_first_line(self):
+        # the run has no line above it to be counted from, which is the
+        # one place counting from 1 and counting the lines between could
+        # come apart
+        self.assertEqual(self.numbers('\n\n\none'), [3])
 
 
 class TestBlockquoteMarkerReading(unittest.TestCase):
@@ -13717,17 +13811,74 @@ class TestChangelogStatementReading(unittest.TestCase):
 
         return changelog_statements(self.path)
 
-    def test_every_dated_entry_is_read_as_statements(self):
+    def silent(self, statements, entries):
+        # every entry of a changelog that was read as no prose at all
+        #
+        # An entry is reached by its version rather than by its date,
+        # which is what brings the dateless `## [Unreleased]` heading
+        # into this. That heading is the one shape a reading filtered on
+        # the date cannot see, and it is the heading this project adds
+        # by hand between releases - so an entry with nothing under it
+        # yet is exactly the shape that went unreported here
+        #
+        # Args:
+        #     statements: The statements, as changelog_statements() keys
+        #         them
+        #     entries: The entries, as changelog_entries() reads them
+        #
+        # Returns:
+        #     list: The versions read as nothing, in the order the file
+        #     writes them
+
+        return [entry.version for entry in entries
+                if entry.version and not statements.get(entry.version)]
+
+    def keyed_order(self, statements, entries):
+        # the versions the statements are keyed under, beside the order
+        # the file writes those same versions in
+        #
+        # Only the versions that were keyed are compared. An entry read
+        # as no prose is never keyed at all, and comparing against every
+        # version the file heads would report that as the order being
+        # wrong - which sends a reader to the keying when what is wrong
+        # is a missing entry. silent() above reports that instead, and
+        # this is left reading for the order alone
+        #
+        # Args:
+        #     statements: The statements, as changelog_statements() keys
+        #         them
+        #     entries: The entries, as changelog_entries() reads them
+        #
+        # Returns:
+        #     tuple: The keyed order, and the file's order of the same
+        #     versions
+
+        keyed = [version for version in statements if version is not None]
+        written = [entry.version for entry in entries
+                   if entry.version in keyed]
+
+        return keyed, written
+
+    def test_every_versioned_entry_is_read_as_statements(self):
         # an entry read as nothing would make every claim crediting it
         # a failure, and an empty reader would make all of them one
-        statements = changelog_statements()
-
-        silent = [entry.version for entry in changelog_entries()
-                  if entry.date and not statements.get(entry.version)]
+        silent = self.silent(changelog_statements(), changelog_entries())
 
         self.assertEqual(silent, [],
                          'each of these entries was read as no prose at '
                          'all, so nothing it says can settle a claim')
+
+    def test_an_entry_with_nothing_under_it_is_read_as_no_prose(self):
+        # the `## [Unreleased]` heading on the day it is written, before
+        # anything is recorded under it. It carries no date, so a check
+        # filtering on the date reports an empty one as nothing at all -
+        # and the keying pin below failed in its place, naming the order
+        entries = [ChangelogEntry('Unreleased', None, 1),
+                   ChangelogEntry('1.0.0a15', '2026-11-08', 3)]
+
+        self.assertEqual(
+            self.silent({'1.0.0a15': ['- a bullet']}, entries),
+            ['Unreleased'])
 
     def test_the_entries_are_keyed_in_the_order_the_file_writes_them(self):
         # settling_entry() reads the earliest entry to state a pair off
@@ -13742,14 +13893,58 @@ class TestChangelogStatementReading(unittest.TestCase):
         # The None key is dropped because it is no entry: the preamble
         # above the first heading is under it, as is a heading neither
         # shape, which a check of its own reports
-        keyed = [version for version in changelog_statements()
-                 if version is not None]
+        keyed, written = self.keyed_order(changelog_statements(),
+                                          changelog_entries())
 
-        self.assertEqual(keyed, [entry.version for entry in
-                                 changelog_entries() if entry.version],
+        self.assertEqual(keyed, written,
                          'the earliest entry to state a pair is read off '
                          'the end of this order, so it has to be the '
                          'order the file writes its entries in')
+
+    def test_an_empty_entry_is_no_failure_of_the_keying_order(self):
+        # the other side of the test above it: the two entries that were
+        # keyed are keyed in the file's order, and the empty one between
+        # them is the previous test's finding rather than this one's
+        entries = [ChangelogEntry('Unreleased', None, 1),
+                   ChangelogEntry('1.0.0a15', '2026-11-08', 3),
+                   ChangelogEntry('1.0.0a14', '2026-11-06', 7)]
+        statements = {'1.0.0a15': ['- a bullet'],
+                      '1.0.0a14': ['- another bullet']}
+
+        keyed, written = self.keyed_order(statements, entries)
+
+        self.assertEqual(keyed, written)
+        self.assertEqual(keyed, ['1.0.0a15', '1.0.0a14'])
+
+    def test_a_heading_below_a_statement_keys_it_under_the_entry_above(self):
+        # the order the two blocks of the reading loop run in: the
+        # statement being held is flushed before `version` moves to the
+        # heading just reached. Every changelog the suite reads puts a
+        # blank line above a heading, which flushes the statement a line
+        # earlier and leaves the order making no difference - so the
+        # shape that reads it is the one none of them writes, a heading
+        # directly below a statement
+        #
+        # Both statement shapes are written because the loop fails them
+        # differently. A paragraph is held until the heading reaches it,
+        # so the order alone decides which entry it lands under; a
+        # bullet is flushed by the opener on its own line, which is a
+        # second reading of the same rule. One shape passing says
+        # nothing about the other
+        shapes = {'a bullet': '- the statement %s entry carries',
+                  'a paragraph': 'the statement %s entry carries'}
+        for shape, statement in shapes.items():
+            with self.subTest(shape=shape):
+                statements = self.written(
+                    '## [1.0.0a2] - 2026-10-11',
+                    statement % 'the newer',
+                    '## [1.0.0a1] - 2026-10-09',
+                    statement % 'the older')
+
+                self.assertEqual(
+                    statements,
+                    {'1.0.0a2': [statement % 'the newer'],
+                     '1.0.0a1': [statement % 'the older']})
 
     def test_the_entry_the_anchored_claim_credits_states_it(self):
         # the pair the whole check turns on, read from the entry rather
@@ -14014,11 +14209,23 @@ class TestCountPairingReading(unittest.TestCase):
         # pairs them and this fails, where a pair neither statement
         # holds half of would answer False for the name being absent and
         # say nothing about how far the span reaches
-        self.assertFalse(states_the_count(
-            ['- QUEST_CONTROLS_LINE names its keys without the word '
-             '"Press"',
-             '- the foot of a quest maze is 79 characters'],
-            self.NAME, '79'))
+        #
+        # So the joining is asserted here too, and it is not a second
+        # reading of the same thing. "Well inside the spread" is a fact
+        # about this fixture's own wording rather than about the reader,
+        # and the margin is finite: the two ends stand 71 characters
+        # apart joined, against a CLAIM_SPREAD of 120, so a first
+        # statement 50 characters longer carries them past it. A
+        # rewording of that size would send this test back to passing
+        # for the span being too narrow while it still read as a test of
+        # the statement boundary
+        split = ['- QUEST_CONTROLS_LINE names its keys without the word '
+                 '"Press"',
+                 '- the foot of a quest maze is 79 characters']
+
+        self.assertFalse(states_the_count(split, self.NAME, '79'))
+        self.assertTrue(states_the_count([' '.join(split)],
+                                         self.NAME, '79'))
 
     def test_a_count_the_entry_does_not_state_pairs_with_nothing(self):
         # the 1.0.0a6 statement writes 88 as the length the constant

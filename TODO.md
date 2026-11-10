@@ -28,79 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - what the new pins still do not hold
-
-#### Found Issues
-
-- [ ] Read a changelog whose heading follows a statement directly
-  - **Issue**: `changelog_statements()` flushes the statement it is
-    holding before it moves `version` to the heading just reached, and
-    nothing holds it to that order. Swapping those two adjacent blocks at
-    `test_py_maze.py:536` - the `if opens:` block lifted above the
-    `if current and (...)` block - leaves all 1257 tests green. It is a
-    no-op on every changelog the suite reads, because the real file and
-    every synthetic one `written()` builds put a blank line before each
-    heading, and the statement has already flushed there. On the shape
-    none of them writes - `## [1.0.0a2] - ...`, `- a bullet`,
-    `## [1.0.0a1] - ...`, `- a bullet`, with no blank line anywhere - the
-    swap reads `{'1.0.0a1': ['- a bullet', '- a bullet']}`: the newer
-    entry's statement is keyed under the older entry and the newer entry
-    is not keyed at all. Clean code reads that shape correctly, so what
-    is held by nothing is the block order that makes it correct
-  - **Goal**: add a `written()` test for a heading that follows a
-    statement with no blank line between them, asserting each statement
-    comes back under the heading it was written below. Re-run the swap
-    above to confirm the new test fails under it
-  - From: Code Review Override - what the new pins still do not hold
-- [ ] Report an entry read as no prose where a reader will recognize it
-  - **Issue**: `test_the_entries_are_keyed_in_the_order_the_file_writes_them`
-    compares two lists, so it also fails where an entry heading has
-    nothing under it - `changelog_statements()` keys a version only once
-    it produces a statement. Adding a `## [Unreleased]` heading with no
-    body above the newest entry fails that test alone, reporting
-    `First differing element 0: '1.0.0a15' != 'Unreleased'` under the
-    message "it has to be the order the file writes its entries in". The
-    order is not wrong; an entry is missing. The check that covers this,
-    `test_every_dated_entry_is_read_as_statements`, filters on
-    `entry.date`, so a dateless heading is the one shape it does not see -
-    and the dateless heading is exactly the one this project adds by hand
-    between releases
-  - **Goal**: widen `test_every_dated_entry_is_read_as_statements` to every
-    entry with a version rather than every dated one, so an empty entry is
-    reported as no prose by the check named for it and the keying pin is
-    left to fail only for the order
-  - From: Code Review Override - what the new pins still do not hold
-- [ ] Read the Python files for doubled blank lines too
-  - **Issue**: the `1.0.0a15` entry records three blank lines before
-    `class TestCountPairingReading` becoming two, and nothing holds that.
-    `doubled_blank_lines()` is applied at `test_py_maze.py:13109` to
-    `self.documents()`, which is the markdown documents and the published
-    pages, so the run of three could come back to either Python file and
-    no check would report it. The suite and the package are already read
-    for line width through `past_the_width()`, so the files are in reach
-    of this class
-  - **Goal**: report a run of more than two blank lines in `test_py_maze.py`
-    and in `package_modules()`, where PEP 8 allows two between top-level
-    definitions and no more. Restore the third blank line to confirm the
-    new check reports it
-  - From: Code Review Override - what the new pins still do not hold
-- [ ] Hold the split-statement fixture inside the span it relies on
-  - **Issue**: `test_a_pair_split_across_two_statements_is_neither` fails
-    under the widening it was rewritten for only because its two
-    statements, once joined by that widening, leave `QUEST_CONTROLS_LINE`
-    and `79 characters` 71 characters apart - inside `CLAIM_SPREAD`, which
-    is 120. Nothing records that. The margin is 49 characters: a first
-    statement 49 characters longer still pairs once joined, and 50 longer
-    does not, so a rewording of that size sends the test back to passing
-    under the widening while it still reads as though it held the
-    one-statement span - the state the `1.0.0a15` fix was queued to get
-    it out of
-  - **Goal**: assert in the same test that the two statements joined do
-    pair, so the fixture's own gap is held inside `CLAIM_SPREAD` and a
-    rewording that carries it past the spread fails here rather than
-    quietly stopping the test from failing
-  - From: Code Review Override - what the new pins still do not hold
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3256,5 +3183,73 @@ No items are currently queued in this section.
   - **Goal**: drop one of the three
   - From: Code Review Override - the pairing rules the new tests still do
     not reach
+- [x] Read a changelog whose heading follows a statement directly
+  - **Issue**: `changelog_statements()` flushes the statement it is
+    holding before it moves `version` to the heading just reached, and
+    nothing holds it to that order. Swapping those two adjacent blocks at
+    `test_py_maze.py:536` - the `if opens:` block lifted above the
+    `if current and (...)` block - leaves all 1257 tests green. It is a
+    no-op on every changelog the suite reads, because the real file and
+    every synthetic one `written()` builds put a blank line before each
+    heading, and the statement has already flushed there. On the shape
+    none of them writes - `## [1.0.0a2] - ...`, `- a bullet`,
+    `## [1.0.0a1] - ...`, `- a bullet`, with no blank line anywhere - the
+    swap reads `{'1.0.0a1': ['- a bullet', '- a bullet']}`: the newer
+    entry's statement is keyed under the older entry and the newer entry
+    is not keyed at all. Clean code reads that shape correctly, so what
+    is held by nothing is the block order that makes it correct
+  - **Goal**: add a `written()` test for a heading that follows a
+    statement with no blank line between them, asserting each statement
+    comes back under the heading it was written below. Re-run the swap
+    above to confirm the new test fails under it
+  - From: Code Review Override - what the new pins still do not hold
+- [x] Report an entry read as no prose where a reader will recognize it
+  - **Issue**: `test_the_entries_are_keyed_in_the_order_the_file_writes_them`
+    compares two lists, so it also fails where an entry heading has
+    nothing under it - `changelog_statements()` keys a version only once
+    it produces a statement. Adding a `## [Unreleased]` heading with no
+    body above the newest entry fails that test alone, reporting
+    `First differing element 0: '1.0.0a15' != 'Unreleased'` under the
+    message "it has to be the order the file writes its entries in". The
+    order is not wrong; an entry is missing. The check that covers this,
+    `test_every_dated_entry_is_read_as_statements`, filters on
+    `entry.date`, so a dateless heading is the one shape it does not see -
+    and the dateless heading is exactly the one this project adds by hand
+    between releases
+  - **Goal**: widen `test_every_dated_entry_is_read_as_statements` to every
+    entry with a version rather than every dated one, so an empty entry is
+    reported as no prose by the check named for it and the keying pin is
+    left to fail only for the order
+  - From: Code Review Override - what the new pins still do not hold
+- [x] Read the Python files for doubled blank lines too
+  - **Issue**: the `1.0.0a15` entry records three blank lines before
+    `class TestCountPairingReading` becoming two, and nothing holds that.
+    `doubled_blank_lines()` is applied at `test_py_maze.py:13109` to
+    `self.documents()`, which is the markdown documents and the published
+    pages, so the run of three could come back to either Python file and
+    no check would report it. The suite and the package are already read
+    for line width through `past_the_width()`, so the files are in reach
+    of this class
+  - **Goal**: report a run of more than two blank lines in `test_py_maze.py`
+    and in `package_modules()`, where PEP 8 allows two between top-level
+    definitions and no more. Restore the third blank line to confirm the
+    new check reports it
+  - From: Code Review Override - what the new pins still do not hold
+- [x] Hold the split-statement fixture inside the span it relies on
+  - **Issue**: `test_a_pair_split_across_two_statements_is_neither` fails
+    under the widening it was rewritten for only because its two
+    statements, once joined by that widening, leave `QUEST_CONTROLS_LINE`
+    and `79 characters` 71 characters apart - inside `CLAIM_SPREAD`, which
+    is 120. Nothing records that. The margin is 49 characters: a first
+    statement 49 characters longer still pairs once joined, and 50 longer
+    does not, so a rewording of that size sends the test back to passing
+    under the widening while it still reads as though it held the
+    one-statement span - the state the `1.0.0a15` fix was queued to get
+    it out of
+  - **Goal**: assert in the same test that the two statements joined do
+    pair, so the fixture's own gap is held inside `CLAIM_SPREAD` and a
+    rewording that carries it past the spread fails here rather than
+    quietly stopping the test from failing
+  - From: Code Review Override - what the new pins still do not hold
 
 </details>
