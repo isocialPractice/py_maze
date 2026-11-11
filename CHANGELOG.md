@@ -40,9 +40,9 @@ margin was recorded nowhere. Found reviewing `1.0.0a15` after it was tagged.
   heading directly below a paragraph keys that paragraph under the entry the
   heading opens once the two blocks are swapped, which is the newer entry's
   prose answering for the older entry. Both statement shapes are written,
-  because the loop fails them differently: a paragraph is held until the
-  heading reaches it, while a bullet is flushed by its own opener and keys
-  correctly under the swap
+  and the swap keys each of them under the older entry: a bullet's own
+  opener flushes the statement above it rather than itself, so where an
+  entry carries one statement the heading is what reaches both shapes
 - **A run of three blank lines is reported in the Python files.** `1.0.0a15`
   records a run of three before a class becoming two, and nothing held that.
   The pair check reads the Markdown documents and the published pages, so
