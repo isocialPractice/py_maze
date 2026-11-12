@@ -28,36 +28,6 @@ into a `## Complete` section at the bottom of this file.
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - the rationale the subtests do not bear out
-
-#### Resolve Issues
-
-- [ ] Heading Below Statement 1 - the comment says the two shapes fail the
-  swap differently, and they fail it identically
-  - **Issue**: the comment on
-    `test_a_heading_below_a_statement_keys_it_under_the_entry_above`
-    (`test_py_maze.py:13928`) states "the loop fails them differently" and
-    closes "One shape passing says nothing about the other". Neither shape
-    passes. Under the swap the item named - the `if opens:` block lifted
-    above the `if current and (...)` block in `changelog_statements()` -
-    both subtests fail: `shape='a bullet'` reports
-    `{'1.0.0a1': [newer, older]} != {'1.0.0a2': [newer], '1.0.0a1': [older]}`,
-    which is the same keying failure `shape='a paragraph'` reports, and
-    `test_a_wrapped_statement_is_read_as_one` stays green. The reason is
-    that a bullet's own opener flushes the statement *above* it rather
-    than itself, so an entry carrying one statement never flushes early
-    and the heading is what reaches both shapes. The premise is what a
-    later reader would act on: a model told the shapes diverge will trust
-    one subtest to cover a case the other does not
-  - **Goal**: reword the second paragraph of that comment to say what both
-    subtests do - that each keys under the older entry once the blocks are
-    swapped, and why the bullet is not flushed early where an entry holds
-    one statement. Keep both shapes; the pin is sound and the rationale is
-    what is wrong. Re-run the swap and the
-    `statements.setdefault(heads.get(number, version), [])` keying mutation
-    to confirm the reworded comment matches what each reports
-  - From: Code Review Override - what the new pins still do not hold
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3281,6 +3251,31 @@ No items are currently queued in this section.
     pair, so the fixture's own gap is held inside `CLAIM_SPREAD` and a
     rewording that carries it past the spread fails here rather than
     quietly stopping the test from failing
+  - From: Code Review Override - what the new pins still do not hold
+- [x] Heading Below Statement 1 - the comment says the two shapes fail the
+  swap differently, and they fail it identically
+  - **Issue**: the comment on
+    `test_a_heading_below_a_statement_keys_it_under_the_entry_above`
+    (`test_py_maze.py:13928`) states "the loop fails them differently" and
+    closes "One shape passing says nothing about the other". Neither shape
+    passes. Under the swap the item named - the `if opens:` block lifted
+    above the `if current and (...)` block in `changelog_statements()` -
+    both subtests fail: `shape='a bullet'` reports
+    `{'1.0.0a1': [newer, older]} != {'1.0.0a2': [newer], '1.0.0a1': [older]}`,
+    which is the same keying failure `shape='a paragraph'` reports, and
+    `test_a_wrapped_statement_is_read_as_one` stays green. The reason is
+    that a bullet's own opener flushes the statement *above* it rather
+    than itself, so an entry carrying one statement never flushes early
+    and the heading is what reaches both shapes. The premise is what a
+    later reader would act on: a model told the shapes diverge will trust
+    one subtest to cover a case the other does not
+  - **Goal**: reword the second paragraph of that comment to say what both
+    subtests do - that each keys under the older entry once the blocks are
+    swapped, and why the bullet is not flushed early where an entry holds
+    one statement. Keep both shapes; the pin is sound and the rationale is
+    what is wrong. Re-run the swap and the
+    `statements.setdefault(heads.get(number, version), [])` keying mutation
+    to confirm the reworded comment matches what each reports
   - From: Code Review Override - what the new pins still do not hold
 
 </details>

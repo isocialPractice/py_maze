@@ -22,6 +22,24 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [Unreleased]
+
+### Fixed
+
+- **The comment on the heading pin says what both of its subtests do.**
+  The `1.0.0a16` entry below records that the block swap keys each of the
+  two statement shapes under the older entry, and the comment on
+  `test_a_heading_below_a_statement_keys_it_under_the_entry_above` still
+  read the other way: that the loop fails the two shapes differently, a
+  paragraph by the order alone and a bullet by its own opener, and that
+  one shape passing said nothing about the other. Neither shape passes.
+  Both subtests report the same keying failure under the swap and under
+  the `statements.setdefault(heads.get(number, version), [])` keying
+  mutation, because a bullet's opener flushes the statement above it
+  rather than the one it starts - so an entry carrying one statement
+  never flushes early, and the heading is what reaches both shapes. Both
+  shapes are kept: the pin holds, and its rationale was what was wrong
+
 ## [1.0.0a16] - 2026-11-10
 
 Four of the pins `1.0.0a15` added or reworded held less than they named: a
