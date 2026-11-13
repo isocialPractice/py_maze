@@ -32,13 +32,20 @@ when one is written.
   `test_a_heading_below_a_statement_keys_it_under_the_entry_above` still
   read the other way: that the loop fails the two shapes differently, a
   paragraph by the order alone and a bullet by its own opener, and that
-  one shape passing said nothing about the other. Neither shape passes.
-  Both subtests report the same keying failure under the swap and under
+  one shape passing said nothing about the other. Both subtests report
+  the same keying failure under the reordering the pin names - the
+  `version = heads[number]` assignment lifted over the flush - and under
   the `statements.setdefault(heads.get(number, version), [])` keying
   mutation, because a bullet's opener flushes the statement above it
-  rather than the one it starts - so an entry carrying one statement
-  never flushes early, and the heading is what reaches both shapes. Both
-  shapes are kept: the pin holds, and its rationale was what was wrong
+  rather than the one it starts, so an entry carrying one statement
+  never flushes early and the heading is what reaches both shapes. The
+  comment names the second mutation too, exchanging the two blocks
+  whole, which carries the append up as well and does key the bullet
+  correctly: that edit is the one the earlier wording was describing, and
+  leaving the two unnamed is what let the rationale be rewritten twice.
+  Both shapes are kept: the pin holds, and its rationale was what was
+  wrong. The `1.0.0a16` wording stands as released; this entry is the
+  correction to it
 
 ## [1.0.0a16] - 2026-11-10
 

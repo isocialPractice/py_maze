@@ -13926,15 +13926,22 @@ class TestChangelogStatementReading(unittest.TestCase):
         # directly below a statement
         #
         # Both statement shapes are written, and the loop fails them
-        # identically: swap the two blocks and each subtest keys its
-        # statement under the older entry, the heading having moved
-        # `version` on before the flush reached it. A bullet is not
-        # flushed early by its own opener, because that flush reads the
-        # statement above the opener rather than the one it starts - so
-        # an entry carrying one statement never flushes early, and the
-        # heading is what reaches both shapes. They are kept as the two
-        # shapes a reader of the join has to carry, not as two readings
-        # of the order
+        # identically under the reordering this pins: lift the
+        # `version = heads[number]` assignment over the flush and each
+        # subtest keys its statement under the older entry, the heading
+        # having moved `version` on before the flush reached it. A
+        # bullet is not flushed early by its own opener, because that
+        # flush reads the statement above the opener rather than the one
+        # it starts - so an entry carrying one statement never flushes
+        # early, and the heading is what reaches both shapes
+        #
+        # Exchanging the two blocks whole is a second mutation and not
+        # that one. It carries the append up as well, so the opener's
+        # flush does reach the statement it starts: the bullet is
+        # flushed in its own iteration under the version already set, so
+        # it keys correctly and only the paragraph subtest fails. Both
+        # shapes are kept as the two shapes a reader of the join has to
+        # carry, not as two readings of the order
         shapes = {'a bullet': '- the statement %s entry carries',
                   'a paragraph': 'the statement %s entry carries'}
         for shape, statement in shapes.items():
