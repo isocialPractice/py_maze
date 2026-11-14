@@ -24,6 +24,7 @@ summary: >-
 | `--load` | `-l` | | a file, or `-` for standard input |
 | `--wall-char` | | `*` | one character, headerless files only |
 | `--open-char` | | space | one character, headerless files only |
+| `--style` | | `ascii` | `ascii`, `box`, `block` |
 | `--format` | `-f` | `text` | `text`, `json` |
 | `--solve` | `-S` | off | flag |
 | `--animate` | `-a` | off | flag |
@@ -34,7 +35,7 @@ summary: >-
 
 Capital `-H` is height, `-S` solves, `-A` is the algorithm, `-o` saves,
 `-m` is the mode. Lowercase `-h` is the help and `-s` is the seed. `--stats`
-has no short flag, both `s` letters being taken.
+and `--style` have no short flags, both `s` letters being taken.
 
 `--stats` prints under the maze and leaves the picture alone. A quiet run
 reports the measurements, having been asked for them; a `--format json` run
@@ -122,6 +123,13 @@ is the plain maze under it. [Game modes](modes.md) has all three.
 | `#` | A door you cannot pass yet, in quest mode | `DOOR_MARKER` |
 | `&` | A box with an item in it, in quest mode | `BOX_MARKER` |
 | `@` | The guide, in quest mode | `GUIDE_MARKER` |
+
+That table is the `ascii` style, which is the one `--style` defaults to.
+`box` draws its wall with the light cross and `block` with the full block;
+everything laid over the maze is drawn the same way in all three. On the
+package the three are `ASCII_STYLE`, `BOX_DRAWING_STYLE` and `BLOCK_STYLE`,
+mapped from their names by `STYLES`, with `named_style` looking one up and
+`drawable_style` settling on one the terminal can draw.
 
 ## Status codes
 

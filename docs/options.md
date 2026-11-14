@@ -22,6 +22,7 @@ summary: >-
 | `--load` | `-l` | | Play the maze saved in a file instead of generating one, or in standard input as `-` |
 | `--wall-char` | | `*` | Character a wall is drawn with in a loaded file that carries no py_maze header |
 | `--open-char` | | space | Character an open cell is drawn with in the same |
+| `--style` | | `ascii` | Characters the maze is drawn with: `ascii`, `box` or `block` |
 | `--format` | `-f` | `text` | How the maze is written: `text`, the picture, or `json`, a document |
 | `--solve` | `-S` | off | Print the solution path overlaid on the maze |
 | `--animate` | `-a` | off | Step through the solver's search on screen |
@@ -38,7 +39,8 @@ algorithm. The short flag for `--save` is `-o`, as in an output file, since
 flags: they are read by a loader rather than typed at a prompt. `-m` is the
 mode; the chase options and `--quest-stages` have no short flags, being
 settings for a mode rather than everyday typing. `--stats` has none either, there being no letter
-left that reads as it: `-s` is the seed and `-S` solves.
+left that reads as it: `-s` is the seed and `-S` solves. `--style` has none
+for the same reason, both `s` letters being spoken for.
 
 `--stats` prints under the maze rather than into it, so the picture is the
 one a run without it draws. A quiet run still reports the measurements,
@@ -74,11 +76,12 @@ python -m py_maze -w 1
 usage: py_maze [-h] [--width WIDTH] [--height HEIGHT]
                [--difficulty {easy,normal,hard}]
                [--algorithm {backtracker,prim,division}] [--braid [SHARE]]
-               [--seed SEED] [--collectibles COUNT] [--mode {plain,chase}]
-               [--chase-point PERCENT] [--chase-speed PRESET] [--save FILE]
+               [--seed SEED] [--collectibles COUNT]
+               [--mode {plain,chase,quest}] [--chase-point PERCENT]
+               [--chase-speed PRESET] [--quest-stages COUNT] [--save FILE]
                [--load FILE] [--wall-char CHAR] [--open-char CHAR]
-               [--format {text,json}] [--solve] [--animate] [--stats]
-               [--quiet] [--version]
+               [--style {ascii,box,block}] [--format {text,json}] [--solve]
+               [--animate] [--stats] [--quiet] [--version]
 py_maze: error: argument --width/-w: maze dimensions must be at least 2 cells, got 1
 ```
 
@@ -186,6 +189,100 @@ python -m py_maze -w 60 -H 60 > maze.txt
 
 A difficulty preset is capped the same way, so `--difficulty hard` on a small
 terminal generates the largest hard-ish maze that fits.
+
+## Drawing Styles
+
+A maze is drawn one character to a cell: a wall, or a space the player can
+stand on. `--style` picks which characters those are. It changes nothing
+about the maze, the solver or the keys, only what the picture is made of:
+
+| Style | Wall | Draws |
+| --- | --- | --- |
+| `ascii` | `*` | Asterisk walls, as py_maze has always drawn one |
+| `box` | the light cross | Box-drawing walls, which join up into a lattice |
+| `block` | the full block | Solid walls, for a font the asterisk reads poorly in |
+
+`ascii` is the default, so a run naming no style draws exactly what py_maze
+drew before the option existed.
+
+```bash
+python -m py_maze -d easy --seed 2024 -q --style box
+```
+
+**Output:**
+
+```
+start
+┼ ┼┼┼┼┼┼┼┼┼┼┼
+┼ ┼     ┼   ┼
+┼ ┼┼┼ ┼ ┼┼┼ ┼
+┼   ┼ ┼     ┼
+┼┼┼ ┼ ┼┼┼┼┼┼┼
+┼   ┼       ┼
+┼ ┼┼┼ ┼┼┼┼┼ ┼
+┼   ┼ ┼   ┼ ┼
+┼┼┼ ┼ ┼ ┼┼┼ ┼
+┼   ┼   ┼   ┼
+┼ ┼┼┼┼┼┼┼ ┼ ┼
+┼         ┼ ┼
+┼┼┼┼┼┼┼┼┼┼┼ ┼
+end
+```
+
+A wall here is a whole cell rather than the edge of one, so the character
+has to fill a cell. The light cross is the one box-drawing character that
+joins to the cell beside it on all four sides, which is why a run of them
+reads as the lattice a maze is; a corner or a straight piece would read as a
+wall with the wrong ends on it.
+
+`block` is for a terminal whose font leaves the asterisk hard to pick out
+from the spaces around it. The cell stays a space, so the maze reads as one
+wall with the corridors cut out of it rather than as a grid of characters:
+
+```bash
+python -m py_maze -d easy --seed 2024 -q --style block
+```
+
+**Output:**
+
+```
+start
+█ ███████████
+█ █     █   █
+█ ███ █ ███ █
+█   █ █     █
+███ █ ███████
+█   █       █
+█ ███ █████ █
+█   █ █   █ █
+███ █ █ ███ █
+█   █   █   █
+█ ███████ █ █
+█         █ █
+███████████ █
+end
+```
+
+The markers drawn over the maze are the same in every style: the player is
+an `o`, the solution a `.`, a pickup a `$`, and a mode's own markers are the
+mode's. They are read against whatever the wall turns out to be, and each
+of them already draws wherever these walls do.
+
+Two things about a style are easy to miss, because neither of them says
+anything at the terminal.
+
+**A style the destination cannot draw falls back to `ascii`**, without a
+word, the way the win banner falls back to its plain wording. A Windows
+console on a legacy code page is the usual case: `cp437` and `cp850` carry
+both of these walls and `cp1252` carries neither. The whole style falls back
+rather than the one character that failed, so a picture is never half in one
+style and half in another.
+
+**A maze is saved in `ascii` whatever it is drawn in.** The save format
+fixes the characters a picture is read back from, so a file drawn with the
+lattice is one `--load` would turn down. `--wall-char` and `--open-char` are
+the other half of that pair: they name the characters a loaded picture is
+read with, where `--style` names the characters one is drawn on screen with.
 
 ## Game Modes
 

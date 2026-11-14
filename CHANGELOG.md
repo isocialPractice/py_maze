@@ -22,7 +22,15 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-## [Unreleased]
+## [1.0.0a17] - 2026-11-14
+
+What a maze is drawn with is a choice now. The eight markers a picture is
+made of are one object, three styles are built out of it, and `--style`
+picks between them, with the two that leave ASCII giving way wherever the
+terminal cannot draw them. A bare run draws exactly what it drew before the
+option existed. The comment correction that was waiting under
+`## [Unreleased]` ships here as well, written reviewing `1.0.0a16` after it
+was tagged.
 
 ### Fixed
 
@@ -46,6 +54,68 @@ when one is written.
   Both shapes are kept: the pin holds, and its rationale was what was
   wrong. The `1.0.0a16` wording stands as released; this entry is the
   correction to it
+- **The usage block on the options page is the usage the parser prints.**
+  It showed `--mode {plain,chase}` and no `--quest-stages` at all, so it
+  had been stale since quest mode shipped. Nothing read it: the examples
+  the suite runs as written are named one at a time on the generating and
+  scripting pages, and this block is on neither
+- **The README counts the options there are.** It said twenty-one and
+  listed ten of them as "the rest", leaving `--quest-stages` out of both
+  the count and the list while the options page tabled it. With `--style`
+  there are twenty-three, which is what it now says
+
+### Added
+
+- **The markers a maze is drawn with are one object.** `MazeStyle` is a
+  named tuple of the eight the picture is made of - the wall, the open
+  cell, the player, the solution, the frontier, the visited cell, the hint
+  and the collectible - so a second way of drawing a maze is a second
+  object rather than a branch inside `maze_lines`. The chaser, the door,
+  the box and the guide stay module constants: each belongs to one mode
+  and was picked to say something a glyph had to argue for, the door
+  having to read heavier than the wall beside it, so a style re-picking
+  them would be making those arguments again against a wall it knows
+  nothing about
+- **The markers py_maze has always drawn with are a style under a name.**
+  `ASCII_STYLE` is built out of `WALL_MARKER` and the seven beside it
+  rather than repeating their characters, so a marker a caller imports by
+  name and the style that draws it cannot drift apart. It is what
+  `DEFAULT_STYLE` names and what every drawing function falls back on
+  when it is handed no style, which is why a run with no options draws
+  what it drew before and the suite's fixed mazes still match
+- **A box-drawing style, drawn only where it can be.**
+  `BOX_DRAWING_STYLE` draws its wall with the light cross: a wall here is
+  a whole cell rather than the edge of one, and that is the one character
+  in the set that joins to the cell beside it on all four sides, so a run
+  of them reads as the lattice a maze is. `drawable_style` settles a name
+  against the stream before the maze is drawn and hands back
+  `ASCII_STYLE` where the destination cannot draw every character of the
+  one asked for, the way `win_banner` falls back to its plain wording.
+  The whole style gives way rather than the character that failed, so a
+  picture is never half in one style and half in another
+- **A block style, for a font the asterisk reads poorly in.**
+  `BLOCK_STYLE` draws a full block for a wall and leaves the cell a
+  space, so the maze reads as one wall with the corridors cut out of it
+  rather than as a grid of characters. Both of these walls are in `cp437`
+  and `cp850` and in neither `cp1252` nor ASCII, so the fallback is a
+  measurement of the destination rather than a rule about Unicode
+- **`--style` picks between them**, defaulting to `ascii`, with the names
+  and what each draws listed in its help text the way `--algorithm` lists
+  its own. It has no short flag, both `s` letters being spoken for. The
+  style is settled once for the run and handed to the picture, the
+  solver's frames and the play screen alike, so a fallback reaches all
+  three or none of them, and every mode names it rather than reading it
+  out of the settings a mode reads one each of. A maze is saved in
+  `ascii` whatever it is drawn in: the format fixes the characters a
+  picture is read back from, so `save_lines` passes no style at all
+- **The option is documented where the others are.** A `Drawing Styles`
+  section on the options page draws the same maze in all three and says
+  the two things a terminal hides - the silent fallback, and the save
+  file being written in `ascii` regardless - with the option tabled on
+  the options page and the cheat sheet and a feature line in the README
+  and on the site's front page. The style names are on the public surface
+  as `STYLES`, `STYLE_NOTES`, `named_style` and `drawable_style`; the
+  table `docs/library.md` owes them is still queued
 
 ## [1.0.0a16] - 2026-11-10
 

@@ -7,25 +7,27 @@ into a `## Complete` section at the bottom of this file.
 
 ## Current
 
-- [ ] Gather the markers into one style object in `py_maze/rendering.py` -
-  the wall, the open cell, the player, the solution, the frontier, the
-  visited cell, the hint and the collectible - so a second style is a second
-  object rather than a change to `maze_lines`
+- [ ] Draw a mode's own markers in the style the run is drawing in. The
+  chaser, the door, the box and the guide are module constants a style does
+  not reach, and the door's glyph was picked to read heavier than the `*`
+  wall beside it - which it does not do beside a full block, so a
+  `--style block --mode quest` run draws a shut door reading lighter than
+  the wall it is set into and saying the opposite of what it means. Give a
+  style the four markers it is missing, or a mode a way to say what it
+  draws in each style, without re-making the argument the ASCII glyphs
+  already settled
   - From: Rendering Styles and Character Sets
-- [ ] Keep the current markers as the default style under a name, so a run
-  with no options draws exactly what it draws today and the suite's fixed
-  mazes still match
+- [ ] Report the style in the JSON document, so a program that reads a
+  document knows how the picture beside it was drawn
   - From: Rendering Styles and Character Sets
-- [ ] Add a box-drawing style using the light box characters, drawn only
-  where the output encoding can carry them, falling back to the ASCII style
-  the way the win banner already falls back
+- [ ] Add a table of the style names to `docs/library.md`, since a caller
+  drawing a maze with `maze_lines` picks a style the same way the command
+  line does. The public surface half of this item shipped with `--style`
+  itself: `py_maze` re-exports every module's `__all__`, so the names were
+  exported the moment they existed and the page is what is still owed
   - From: Rendering Styles and Character Sets
-- [ ] Add a `--style` option choosing between the styles, defaulting to the
-  current one, with the names listed in its help text as `--algorithm` lists
-  its own
-  - From: Rendering Styles and Character Sets
-- [ ] Add a heavy-block style for a terminal whose font makes the asterisk
-  maze hard to read, using a full block for a wall and a space for a cell
+- [ ] Extend `TestCarvingSectionExamples` to run each documented style, so a
+  style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
 ## Fixes and Hardening
@@ -389,28 +391,25 @@ No items are currently queued in this section.
 
 ## Rendering Styles and Character Sets
 
-What a maze is drawn with, as opposed to when the screen is redrawn. Today
-every maze is asterisks and spaces, and every marker is one ASCII character
-fixed in `py_maze/rendering.py`. This section makes the drawing a choice
-without changing what a bare run draws. New options with the current output
-unchanged, so completing an item here advances the version counter by one and
-the changelog entry says the change added an option.
+What a maze is drawn with, as opposed to when the screen is redrawn.
+`--style` picks between three styles built out of one `MazeStyle` object
+now, and what is left here is the rest of that work: the markers a style
+does not yet reach, the characters a maze is written and read back with,
+what a document says about how the picture beside it was drawn, and the
+tables and checks that keep a style honest.
+New options with the current output unchanged, so completing an item here
+advances the version counter by one and the changelog entry says the change
+added an option.
 
-- [ ] Gather the markers into one style object in `py_maze/rendering.py` -
-  the wall, the open cell, the player, the solution, the frontier, the
-  visited cell, the hint and the collectible - so a second style is a second
-  object rather than a change to `maze_lines`
-- [ ] Keep the current markers as the default style under a name, so a run
-  with no options draws exactly what it draws today and the suite's fixed
-  mazes still match
-- [ ] Add a box-drawing style using the light box characters, drawn only
-  where the output encoding can carry them, falling back to the ASCII style
-  the way the win banner already falls back
-- [ ] Add a `--style` option choosing between the styles, defaulting to the
-  current one, with the names listed in its help text as `--algorithm` lists
-  its own
-- [ ] Add a heavy-block style for a terminal whose font makes the asterisk
-  maze hard to read, using a full block for a wall and a space for a cell
+- [ ] Draw a mode's own markers in the style the run is drawing in. The
+  chaser, the door, the box and the guide are module constants a style does
+  not reach, and the door's glyph was picked to read heavier than the `*`
+  wall beside it - which it does not do beside a full block, so a
+  `--style block --mode quest` run draws a shut door reading lighter than
+  the wall it is set into and saying the opposite of what it means. Give a
+  style the four markers it is missing, or a mode a way to say what it
+  draws in each style, without re-making the argument the ASCII glyphs
+  already settled
 - [ ] Make `--wall-char` and `--open-char` apply to writing as well as
   reading, so a maze can be drawn with the characters it will be read back
   with, and say plainly in the documentation what that costs: a picture
@@ -420,9 +419,11 @@ the changelog entry says the change added an option.
   from, rather than writing a file `parse_save` will turn down
 - [ ] Report the style in the JSON document, so a program that reads a
   document knows how the picture beside it was drawn
-- [ ] Add the style names to the public surface and a table to
-  `docs/library.md`, since a caller drawing a maze with `maze_lines` picks a
-  style the same way the command line does
+- [ ] Add a table of the style names to `docs/library.md`, since a caller
+  drawing a maze with `maze_lines` picks a style the same way the command
+  line does. The public surface half of this item shipped with `--style`
+  itself: `py_maze` re-exports every module's `__all__`, so the names were
+  exported the moment they existed and the page is what is still owed
 - [ ] Extend `TestCarvingSectionExamples` to run each documented style, so a
   style that stops drawing what the documentation shows fails the suite
 
@@ -3277,5 +3278,25 @@ No items are currently queued in this section.
     `statements.setdefault(heads.get(number, version), [])` keying mutation
     to confirm the reworded comment matches what each reports
   - From: Code Review Override - what the new pins still do not hold
+- [x] Gather the markers into one style object in `py_maze/rendering.py` -
+  the wall, the open cell, the player, the solution, the frontier, the
+  visited cell, the hint and the collectible - so a second style is a second
+  object rather than a change to `maze_lines`
+  - From: Rendering Styles and Character Sets
+- [x] Keep the current markers as the default style under a name, so a run
+  with no options draws exactly what it draws today and the suite's fixed
+  mazes still match
+  - From: Rendering Styles and Character Sets
+- [x] Add a box-drawing style using the light box characters, drawn only
+  where the output encoding can carry them, falling back to the ASCII style
+  the way the win banner already falls back
+  - From: Rendering Styles and Character Sets
+- [x] Add a `--style` option choosing between the styles, defaulting to the
+  current one, with the names listed in its help text as `--algorithm` lists
+  its own
+  - From: Rendering Styles and Character Sets
+- [x] Add a heavy-block style for a terminal whose font makes the asterisk
+  maze hard to read, using a full block for a wall and a space for a cell
+  - From: Rendering Styles and Character Sets
 
 </details>

@@ -20,6 +20,9 @@ solvable mazes and navigate through them using your keyboard!
 - 🧱 **Three Carving Algorithms**: Winding backtracker corridors, Prim's more
   open branching, or the straight runs and rooms of recursive division
 - 🔀 **Braiding**: Open the dead ends and the maze gains a second way through
+- 🎨 **Drawing Styles**: `--style` draws the same maze with asterisks, with
+  box-drawing characters or with solid blocks, falling back where a terminal
+  cannot show them
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
 - 📐 **Measurements**: `--stats` reports the cells, dead ends, junctions,
@@ -80,8 +83,8 @@ reserved by argparse for `--help`. The same goes for `-S` and `-s`: capital
 `-S` solves the maze, lowercase `-s` seeds it.
 
 `--braid`, `--animate`, `--stats`, `--quiet`, `--format`, `--wall-char`,
-`--open-char`, `--chase-point`, `--chase-speed` and `--version` are the rest,
-and all twenty-one are tabled in full under
+`--open-char`, `--style`, `--chase-point`, `--chase-speed`, `--quest-stages`
+and `--version` are the rest, and all twenty-three are tabled in full under
 [Command-line options](docs/options.md).
 
 ## [Generating a Maze](docs/generating.md)

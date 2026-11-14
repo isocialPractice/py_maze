@@ -14,12 +14,11 @@ import time
 from .grid import find_entrance, find_exit
 from .keys import (read_key, read_key_posix, read_key_timed,
                    read_key_windows)
-from .rendering import (ANSI_ROW, CHASER_MARKER, COLLECTIBLE_MARKER,
-                        HINT_MARKER, PLAYER_MARKER, ansi_enabled, can_display,
-                        clear_screen, fit_frame, frame_diff, frame_height,
-                        frame_text, frame_wraps, maze_lines, quest_overlay,
-                        status_line, summary_lines, terminal_size, wipe_rows,
-                        wrap_on_spaces)
+from .rendering import (ANSI_ROW, ASCII_STYLE, CHASER_MARKER, ansi_enabled,
+                        can_display, clear_screen, fit_frame, frame_diff,
+                        frame_height, frame_text, frame_wraps, maze_lines,
+                        quest_overlay, status_line, summary_lines,
+                        terminal_size, wipe_rows, wrap_on_spaces)
 from .solving import solve_maze
 
 __all__ = [
@@ -170,7 +169,7 @@ class MazeGame:
     """Interactive maze game with player movement."""
 
     def __init__(self, maze_grid, collectibles=(), clock=None, chaser=None,
-                 quest=None):
+                 quest=None, style=None):
         """Initialize the game.
 
         Args:
@@ -186,11 +185,24 @@ class MazeGame:
             quest: A :class:`py_maze.Quest` whose doors shut the way on
                 until what opens them has been found, or None for a
                 maze with nothing in it to collect but its pickups
+            style: The :class:`py_maze.MazeStyle` the play screen is
+                drawn with, defaulting to
+                :data:`py_maze.ASCII_STYLE`. A caller settles it
+                against the terminal before the game starts, with
+                :func:`py_maze.drawable_style`, so the game draws the
+                same characters for the whole of itself rather than
+                asking a stream it has taken over
         """
 
         self.maze = [row[:] for row in maze_grid]  # copy the grid
         self.height = len(self.maze)
         self.width = len(self.maze[0])
+
+        # the characters every frame of this game is drawn with, settled
+        # once here. A frame is compared against the one on screen to
+        # decide which rows to write again, so a style that answered
+        # differently mid-game would leave rows nothing redrew
+        self.style = ASCII_STYLE if style is None else style
 
         # find starting position (first open space from top)
         self.player_x, self.player_y = find_entrance(self.maze)
@@ -560,9 +572,9 @@ class MazeGame:
             overlays.append((CHASER_MARKER, {self.chaser.cell()}))
 
         overlays += [
-            (PLAYER_MARKER, {(self.player_x, self.player_y)}),
-            (HINT_MARKER, self.hint_cells),
-            (COLLECTIBLE_MARKER, self.collectibles),
+            (self.style.player, {(self.player_x, self.player_y)}),
+            (self.style.hint, self.hint_cells),
+            (self.style.collectible, self.collectibles),
         ]
 
         # a door that has been opened is drawn as the corridor it has
@@ -571,7 +583,7 @@ class MazeGame:
         if self.quest is not None:
             overlays += quest_overlay(*self.quest.drawn())
 
-        return (["start"] + maze_lines(self.maze, overlays) +
+        return (["start"] + maze_lines(self.maze, overlays, self.style) +
                 ["end", self.status(), "",
                  self.quest_message or self.controls()])
 

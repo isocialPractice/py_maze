@@ -21,6 +21,12 @@ they belong to, which is why every mode ends in ``**settings``. A mode
 joining the list is then an entry here and the options it wants, with
 nothing to change in the modes already listed.
 
+``style`` is the exception, and is named by every mode rather than read out
+of ``**settings``. It belongs to none of them: the characters a maze is
+drawn with are the same question whichever mode is playing it, so a mode
+that left it in ``**settings`` would be the one mode drawing in the default
+style while the rest drew in the one that was asked for.
+
 Some of a mode is in the maze rather than in the game. Quest mode's doors
 and boxes are laid into the grid before a word is drawn, written into a
 JSON document beside the collectibles and read back out of one, so they
@@ -62,12 +68,16 @@ CHASE_MODE = 'chase'
 QUEST_MODE = 'quest'
 
 
-def plain_game(grid, collectibles=(), **settings):
+def plain_game(grid, collectibles=(), style=None, **settings):
     """Build the plain game: the walk from the entrance to the exit.
 
     Args:
         grid: 2D list of booleans (True = wall, False = path)
         collectibles: Cells holding a collectible to pick up
+        style: The :class:`py_maze.MazeStyle` the play screen is drawn
+            with, settled against the terminal by the caller. It
+            belongs to every mode rather than to one of them, so it is
+            named here rather than read out of **settings
         **settings: Settings belonging to the other modes, which this
             one has no use for
 
@@ -75,11 +85,11 @@ def plain_game(grid, collectibles=(), **settings):
         MazeGame: The game py_maze has always played
     """
 
-    return MazeGame(grid, collectibles)
+    return MazeGame(grid, collectibles, style=style)
 
 
 def quest_game(grid, collectibles=(), content=None,
-               quest_stages=DEFAULT_QUEST_STAGES, **settings):
+               quest_stages=DEFAULT_QUEST_STAGES, style=None, **settings):
     """Build the quest: the same maze, with the way on shut until it is earned.
 
     Args:
@@ -93,6 +103,8 @@ def quest_game(grid, collectibles=(), content=None,
             to, held between :data:`py_maze.MIN_QUEST_STAGES` and
             :data:`py_maze.MAX_QUEST_STAGES` by the option that reads
             it
+        style: The :class:`py_maze.MazeStyle` the play screen is drawn
+            with, as for :func:`plain_game`
         **settings: Settings belonging to the other modes
 
     Returns:
@@ -103,11 +115,11 @@ def quest_game(grid, collectibles=(), content=None,
     if content is None:
         content = place_quest(grid, quest_stages, taken=collectibles)
 
-    return MazeGame(grid, collectibles, quest=content)
+    return MazeGame(grid, collectibles, quest=content, style=style)
 
 
 def chase_game(grid, collectibles=(), chase_point=DEFAULT_CHASE_POINT,
-               chase_speed=DEFAULT_CHASE_SPEED, **settings):
+               chase_speed=DEFAULT_CHASE_SPEED, style=None, **settings):
     """Build the chase: the plain game with an antagonist behind it.
 
     The chaser waits on the entrance, which is behind the player by the
@@ -125,13 +137,15 @@ def chase_game(grid, collectibles=(), chase_point=DEFAULT_CHASE_POINT,
         chase_speed: Which of :data:`py_maze.CHASE_SPEEDS` the chaser
             moves at, read the same way and held inside the presets
             that exist
+        style: The :class:`py_maze.MazeStyle` the play screen is drawn
+            with, as for :func:`plain_game`
         **settings: Settings belonging to the other modes
 
     Returns:
         MazeGame: The game, with a chaser set to follow the player
     """
 
-    return MazeGame(grid, collectibles,
+    return MazeGame(grid, collectibles, style=style,
                     chaser=Chaser(find_entrance(grid), point=chase_point,
                                   speed=chase_speed))
 

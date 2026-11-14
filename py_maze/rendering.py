@@ -11,6 +11,7 @@ sequence of them and the first pair holding a cell decides what is drawn
 there, so the pairs run from the most important marker to the least.
 """
 
+import collections
 import os
 import shutil
 import sys
@@ -24,12 +25,16 @@ __all__ = [
     'ANSI_CLEAR_LINE',
     'ANSI_HOME',
     'ANSI_ROW',
+    'ASCII_STYLE',
+    'BLOCK_STYLE',
+    'BOX_DRAWING_STYLE',
     'BOX_MARKER',
     'CHASER_MARKER',
     'COLLECTIBLE_MARKER',
     'CUT_ABOVE',
     'CUT_BELOW',
     'CUT_FORMAT',
+    'DEFAULT_STYLE',
     'DOOR_MARKER',
     'FRAME_DELAY',
     'FRAME_FOOT_ROWS',
@@ -42,9 +47,12 @@ __all__ = [
     'PLAYER_MARKER',
     'RENDER_ROW_OVERHEAD',
     'SOLUTION_MARKER',
+    'STYLES',
+    'STYLE_NOTES',
     'VISITED_MARKER',
     'WALL_MARKER',
     'WINDOWS_TERMINAL_VARIABLE',
+    'MazeStyle',
     'animate_search',
     'ansi_enabled',
     'can_display',
@@ -52,6 +60,7 @@ __all__ = [
     'clear_screen',
     'collectible_overlay',
     'cut_marker',
+    'drawable_style',
     'fit_dimension',
     'fit_frame',
     'fit_to_terminal',
@@ -62,6 +71,7 @@ __all__ = [
     'frame_wraps',
     'line_fills_row',
     'maze_lines',
+    'named_style',
     'print_maze',
     'quest_overlay',
     'solution_overlay',
@@ -114,6 +124,83 @@ CHASER_MARKER = 'X'
 DOOR_MARKER = '#'
 BOX_MARKER = '&'
 GUIDE_MARKER = '@'
+
+
+class MazeStyle(collections.namedtuple(
+        'MazeStyle',
+        ('wall', 'open_cell', 'player', 'solution', 'frontier', 'visited',
+         'hint', 'collectible'))):
+    """The characters one drawing of a maze is made of.
+
+    Eight of the markers above, gathered so that a second way of
+    drawing a maze is a second object rather than a branch inside
+    :func:`maze_lines`. The wall and the open cell belong here for the
+    same reason the player and the solution do: they are characters a
+    picture is made out of, not facts about the maze, and a caller who
+    wants the lattice drawn differently wants all of them settled
+    together.
+
+    Every field is exactly one character. A maze is drawn one character
+    to a cell, and every measurement taken of a frame - the row a line
+    fills, the window a console is cut to, the lines a redraw has to
+    write again - counts characters, so a marker two characters wide
+    would move the whole picture rather than change what is on it.
+
+    The chaser, the door, the box and the guide are not fields of a
+    style. Each belongs to one mode and was picked to say something a
+    glyph had to argue for - the door has to read heavier than the wall
+    beside it, as the comment above sets out - so a style re-picking
+    them would be making those arguments again against a wall it knows
+    nothing about. A mode's markers stay the mode's.
+    """
+
+    __slots__ = ()
+
+
+# the style py_maze has always drawn with, so a run naming none draws
+# exactly what it drew before there was an option. It is built out of
+# the constants above rather than repeating their characters, so the
+# default style and the markers a caller imports by name cannot drift
+ASCII_STYLE = MazeStyle(wall=WALL_MARKER, open_cell=OPEN_MARKER,
+                        player=PLAYER_MARKER, solution=SOLUTION_MARKER,
+                        frontier=FRONTIER_MARKER, visited=VISITED_MARKER,
+                        hint=HINT_MARKER, collectible=COLLECTIBLE_MARKER)
+
+# the same maze drawn with the light box-drawing characters. The wall is
+# the one field that changes: a wall is a whole cell here rather than
+# the edge of one, so the character has to fill a cell, and the light
+# cross is the only one in that set that joins to the cell beside it on
+# all four sides - a run of them reads as the lattice a maze is, where
+# a corner or a straight piece would read as a wall with the wrong ends
+# on it. What is drawn over the lattice stays as it is: those markers
+# are read against whatever the wall turns out to be, and all of them
+# already draw wherever this wall does
+BOX_DRAWING_STYLE = ASCII_STYLE._replace(
+    wall='\N{BOX DRAWINGS LIGHT VERTICAL AND HORIZONTAL}')
+
+# the same maze drawn with a solid block, for a console whose font
+# leaves the asterisk hard to pick out from the spaces around it. The
+# open cell stays a space, so the maze reads as one wall with the
+# corridors cut out of it rather than as a grid of characters
+BLOCK_STYLE = ASCII_STYLE._replace(wall='\N{FULL BLOCK}')
+
+# the name each style answers to, and the characters it draws with
+STYLES = {
+    'ascii': ASCII_STYLE,
+    'box': BOX_DRAWING_STYLE,
+    'block': BLOCK_STYLE,
+}
+
+# what each one looks like, for the --style help text. The note lives
+# beside the style so a new one is still a single entry to add
+STYLE_NOTES = {
+    'ascii': 'asterisk walls, as py_maze has always drawn one',
+    'box': 'light box-drawing walls, where the terminal can draw them',
+    'block': 'solid block walls, for a font the asterisk reads poorly in',
+}
+
+# the style py_maze has always drawn with, so a bare run is unchanged
+DEFAULT_STYLE = 'ascii'
 
 # how a frame's edge marker reads when the window it drew does not
 # reach that edge of the maze. `start` and `end` are the only labels on
@@ -189,7 +276,7 @@ WINDOWS_TERMINAL_VARIABLE = 'WT_SESSION'
 _windows_ansi = None
 
 
-def maze_lines(grid, overlays=()):
+def maze_lines(grid, overlays=(), style=None):
     """Draw a maze, with markers laid over it.
 
     Args:
@@ -197,10 +284,17 @@ def maze_lines(grid, overlays=()):
         overlays: Sequence of (marker, cells) pairs. The first pair
             holding a cell decides what is drawn there, so the pairs run
             from the most important marker to the least
+        style: The :class:`MazeStyle` the grid itself is drawn with,
+            defaulting to :data:`ASCII_STYLE`. The overlays carry their
+            own characters, so a caller drawing in another style takes
+            them from the same style it passes here
 
     Returns:
         list: One string per row of the maze
     """
+
+    if style is None:
+        style = ASCII_STYLE
 
     lines = []
     for y, row in enumerate(grid):
@@ -211,26 +305,28 @@ def maze_lines(grid, overlays=()):
                     line += marker
                     break
             else:
-                line += WALL_MARKER if wall else OPEN_MARKER
+                line += style.wall if wall else style.open_cell
         lines.append(line)
 
     return lines
 
 
-def print_maze(grid, overlays=(), stream=None):
+def print_maze(grid, overlays=(), stream=None, style=None):
     """Print a maze between its start and end markers.
 
     Args:
         grid: 2D list of booleans (True = wall, False = path)
         overlays: Sequence of (marker, cells) pairs, as for maze_lines
         stream: Where the maze is written, defaulting to standard output
+        style: The :class:`MazeStyle` the maze is drawn with, as for
+            maze_lines
     """
 
     if stream is None:
         stream = sys.stdout
 
     print("start", file=stream)
-    for line in maze_lines(grid, overlays):
+    for line in maze_lines(grid, overlays, style):
         print(line, file=stream)
     print("end", file=stream)
 
@@ -422,6 +518,69 @@ def can_display(text, stream=None):
     # emulators among them included: the plain wording is what a Windows
     # console gets unless Windows Terminal announced itself
     return all(ord(character) <= LAST_BMP_CODE_POINT for character in text)
+
+
+def named_style(name):
+    """Look up the characters a maze is drawn with by name.
+
+    Args:
+        name: One of the keys of :data:`STYLES`
+
+    Returns:
+        MazeStyle: The style, whatever the destination can draw.
+        :func:`drawable_style` is what asks that second question
+
+    Raises:
+        ValueError: If no style goes by that name
+    """
+
+    try:
+        return STYLES[name]
+    except KeyError:
+        raise ValueError(
+            "no maze style called '%s', there is %s"
+            % (name, ", ".join(sorted(STYLES))))
+
+
+def drawable_style(name=DEFAULT_STYLE, stream=None):
+    """Settle on a style the destination can actually draw.
+
+    A style outside ASCII is a request rather than a setting: a console
+    on a legacy code page cannot carry the light cross, and one whose
+    cells hold a single code unit could carry a character and draw
+    something else in its place. So the named style is checked against
+    the stream before it is handed over, the way the win banner is
+    checked before it is printed.
+
+    The whole style falls back or none of it does. A picture half drawn
+    in one style and half in another is a worse answer than either
+    style on its own, and the character that failed is the wall, which
+    is most of what is on the screen.
+
+    Args:
+        name: One of the keys of :data:`STYLES`
+        stream: The stream the maze will be drawn to, defaulting to
+            standard output
+
+    Returns:
+        MazeStyle: The named style where the destination draws every
+        character of it, and :data:`ASCII_STYLE` where it does not. A
+        run that asked for nothing gets the default either way, so the
+        fallback costs it no check it would have failed
+
+    Raises:
+        ValueError: If no style goes by that name, as
+        :func:`named_style` raises for one
+    """
+
+    style = named_style(name)
+
+    # every field is one character, so the style joins up into the text
+    # can_display is asked about: one question for the eight of them
+    if can_display(''.join(style), stream):
+        return style
+
+    return ASCII_STYLE
 
 
 def clear_screen(stream=None):
@@ -828,30 +987,44 @@ def wrap_on_spaces(text, size):
     return chosen
 
 
-def solution_overlay(path):
+def solution_overlay(path, style=None):
     """Build the overlay that draws a solution path over a maze.
 
     Args:
         path: Cells of the solution, or None when there is no solution
+        style: The :class:`MazeStyle` the route is drawn in, defaulting
+            to :data:`ASCII_STYLE`. It is the style the maze under it is
+            drawn in: the two are read together, so they come from one
+            object
 
     Returns:
         list: Overlays for maze_lines, empty when there is nothing to draw
     """
 
-    return [(SOLUTION_MARKER, set(path))] if path else []
+    if style is None:
+        style = ASCII_STYLE
+
+    return [(style.solution, set(path))] if path else []
 
 
-def collectible_overlay(collectibles):
+def collectible_overlay(collectibles, style=None):
     """Build the overlay that draws collectibles over a maze.
 
     Args:
         collectibles: Cells holding a collectible, empty for a bare maze
+        style: The :class:`MazeStyle` the pickups are drawn in, as for
+            solution_overlay. A save file is written in the default
+            style whatever a run is drawing in, the format fixing the
+            characters a picture is read back from
 
     Returns:
         list: Overlays for maze_lines, empty when there is nothing to draw
     """
 
-    return [(COLLECTIBLE_MARKER, set(collectibles))] if collectibles else []
+    if style is None:
+        style = ASCII_STYLE
+
+    return [(style.collectible, set(collectibles))] if collectibles else []
 
 
 def quest_overlay(doors=(), boxes=(), guide=None):
@@ -1012,7 +1185,7 @@ def stats_lines(stats):
 
 
 def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
-                   stream=None, clear=None, pause=None):
+                   stream=None, clear=None, pause=None, style=None):
     """Play the solver's search through the terminal, frame by frame.
 
     Args:
@@ -1023,6 +1196,10 @@ def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
         stream: Where frames are written, defaulting to standard output
         clear: Callable that wipes the screen between frames
         pause: Callable that waits between frames
+        style: The :class:`MazeStyle` the frames are drawn with,
+            defaulting to :data:`ASCII_STYLE`. The legend under each
+            frame names the three markers out of the same style, so it
+            names what is on the screen above it
 
     Returns:
         list: The solution path, or None when the exit cannot be reached
@@ -1030,6 +1207,8 @@ def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
 
     if stream is None:
         stream = sys.stdout
+    if style is None:
+        style = ASCII_STYLE
     if clear is None:
         # the escape that wipes the screen goes to the stream being
         # animated rather than to whatever standard output happens to be
@@ -1039,7 +1218,7 @@ def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
         pause = time.sleep
 
     legend = ("frontier %s   explored %s   solution %s"
-              % (FRONTIER_MARKER, VISITED_MARKER, SOLUTION_MARKER))
+              % (style.frontier, style.visited, style.solution))
 
     path = None
     for visited, frontier, path in search_frames(grid, start, end):
@@ -1047,9 +1226,9 @@ def animate_search(grid, start=None, end=None, delay=FRAME_DELAY,
         print("Solving...", file=stream)
         # the frontier is drawn first so the wave stays visible on top of
         # the cells behind it, and the finished path on top of both
-        print_maze(grid, [(FRONTIER_MARKER, frontier)] +
-                   solution_overlay(path) +
-                   [(VISITED_MARKER, visited)], stream=stream)
+        print_maze(grid, [(style.frontier, frontier)] +
+                   solution_overlay(path, style) +
+                   [(style.visited, visited)], stream=stream, style=style)
         print(legend, file=stream)
         pause(delay)
 

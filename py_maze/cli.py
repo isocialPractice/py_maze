@@ -27,9 +27,10 @@ from .modes import (DEFAULT_MODE, MODE_CONTENT, MODE_NOTES, MODE_OPTIONS,
                     mode_status)
 from .quest import (DEFAULT_QUEST_STAGES, MAX_QUEST_STAGES,
                     MIN_QUEST_STAGES)
-from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DOOR_MARKER,
-                        OPEN_MARKER, WALL_MARKER,
-                        animate_search, collectible_overlay,
+from .rendering import (BOX_MARKER, COLLECTIBLE_MARKER, DEFAULT_STYLE,
+                        DOOR_MARKER, OPEN_MARKER, STYLES, STYLE_NOTES,
+                        WALL_MARKER,
+                        animate_search, collectible_overlay, drawable_style,
                         fit_to_terminal, print_maze, quest_overlay,
                         solution_overlay, stats_lines, terminal_size)
 from .saves import (DEFAULT_FORMAT, FORMATS, JSON_FORMAT, STDIN_NAME,
@@ -66,6 +67,7 @@ __all__ = [
     'notice',
     'quest_stage_count',
     'resolve_dimensions',
+    'style_summary',
 ]
 
 # preset maze sizes in cells, offered by the --difficulty option
@@ -317,6 +319,17 @@ def algorithm_summary():
                      for name in ALGORITHMS)
 
 
+def style_summary():
+    """Describe the drawing styles for the --style help text.
+
+    Returns:
+        str: Each style and what it draws a maze with
+    """
+
+    return ", ".join("%s (%s)" % (name, STYLE_NOTES[name])
+                     for name in STYLES)
+
+
 def mode_summary():
     """Describe the ways a maze can be played for the --mode help text.
 
@@ -464,6 +477,15 @@ def build_parser():
                         help="Character an open cell is drawn with in a "
                              "loaded file that carries no py_maze save "
                              "header (default: a space)")
+    parser.add_argument("--style", choices=list(STYLES),
+                        default=DEFAULT_STYLE,
+                        help="How the maze is drawn: %s (default: %s). A "
+                             "style the terminal cannot draw falls back to "
+                             "%s, and a maze is saved in %s whatever it is "
+                             "drawn in, the format fixing the characters a "
+                             "picture is read back from"
+                             % (style_summary(), DEFAULT_STYLE,
+                                DEFAULT_STYLE, DEFAULT_STYLE))
     parser.add_argument("--format", "-f", choices=list(FORMATS),
                         default=DEFAULT_FORMAT,
                         help="How the maze is written: %s, the picture "
@@ -779,7 +801,7 @@ def build_maze(args):
     return maze_grid, collectibles, seed, dead_ends_before, content, seed
 
 
-def build_game(args, grid, collectibles=(), content=None):
+def build_game(args, grid, collectibles=(), content=None, style=None):
     """Build the game this run plays, in the mode it was asked for.
 
     The mode is looked up rather than branched on, so a mode added to
@@ -795,6 +817,12 @@ def build_game(args, grid, collectibles=(), content=None):
         content: Whatever the mode already laid into this maze, as
             :func:`build_maze` hands it back. A mode handed None lays
             its own, so a caller with nothing to pass is not refused
+        style: The :class:`py_maze.MazeStyle` the play screen is drawn
+            with, as :func:`py_maze.drawable_style` settles one against
+            the terminal. It is passed in rather than read off ``args``
+            here because the run already settled it for the maze it
+            printed, and asking twice is what would let the picture and
+            the game it is played in disagree
 
     Returns:
         MazeGame: The game, set up for the mode --mode named
@@ -804,7 +832,8 @@ def build_game(args, grid, collectibles=(), content=None):
                                 chase_point=args.chase_point,
                                 chase_speed=args.chase_speed,
                                 content=content,
-                                quest_stages=args.quest_stages)
+                                quest_stages=args.quest_stages,
+                                style=style)
 
 
 def main():
@@ -828,6 +857,12 @@ def main():
 
     quiet = is_quiet(args)
 
+    # the characters this run draws with, settled once against the
+    # destination: the picture under the maze, the solver's frames and
+    # the play screen are all one run and read as one, so a style the
+    # terminal cannot carry falls back for all three or for none
+    style = drawable_style(args.style)
+
     try:
         (maze_grid, collectibles, seed, dead_ends_before, content,
          chain_seed) = build_maze(args)
@@ -840,7 +875,7 @@ def main():
     # redirected there is nothing to animate, so the maze is just solved
     solution = None
     if args.animate and terminal_size() is not None:
-        solution = animate_search(maze_grid)
+        solution = animate_search(maze_grid, style=style)
     elif args.animate or args.solve:
         solution = solve_maze(maze_grid)
 
@@ -881,11 +916,12 @@ def main():
             # maze still shows what there is to pick up along the way,
             # and so are the doors and boxes of a quest: the route runs
             # through a door whether or not it is open yet
-            drawn = collectible_overlay(collectibles)
+            drawn = collectible_overlay(collectibles, style)
             if content is not None:
                 drawn += quest_overlay(*content.drawn())
 
-            print_maze(maze_grid, drawn + solution_overlay(solution))
+            print_maze(maze_grid, drawn + solution_overlay(solution, style),
+                       style=style)
 
             # the measurements go under the maze rather than into it, and
             # a quiet run prints them too: --quiet drops what was never
@@ -930,7 +966,8 @@ def main():
         print(response)
 
         if response == 'y':
-            game = build_game(args, maze_grid, collectibles, content)
+            game = build_game(args, maze_grid, collectibles, content,
+                              style)
             game.play()
         else:
             print(GOODBYE_MESSAGE)

@@ -22,6 +22,7 @@ import sys
 import tempfile
 import time
 import tokenize
+import unicodedata
 import unittest
 from unittest import mock
 
@@ -73,6 +74,7 @@ DOCS_DIR = os.path.join(PROJECT_ROOT, 'docs')
 DEVELOPMENT_PATH = os.path.join(DOCS_DIR, 'development.md')
 GENERATING_PATH = os.path.join(DOCS_DIR, 'generating.md')
 ANALYSIS_PATH = os.path.join(DOCS_DIR, 'analysis.md')
+CHEATSHEET_PATH = os.path.join(DOCS_DIR, 'CHEATSHEET.md')
 LIBRARY_PATH = os.path.join(DOCS_DIR, 'library.md')
 MODES_PATH = os.path.join(DOCS_DIR, 'modes.md')
 OPTIONS_PATH = os.path.join(DOCS_DIR, 'options.md')
@@ -16186,6 +16188,429 @@ class TestModesPage(unittest.TestCase):
                     os.path.isfile(os.path.join(
                         DOCS_DIR, link[:-len('.html')] + '.md')),
                     'docs/modes.md links %s, which no page builds' % link)
+
+
+class TestMazeStyle(unittest.TestCase):
+    # the object the markers a maze is drawn with were gathered into,
+    # and the styles built out of it. The point of the object is that a
+    # second way of drawing a maze is a second style rather than a
+    # branch inside maze_lines, so what is read here is the registry
+    # and the shape every entry of it keeps
+
+    def test_the_default_style_draws_the_markers_the_package_names(self):
+        # the default is built out of the constants a caller imports by
+        # name rather than repeating their characters, so a marker and
+        # the style that draws it cannot drift apart
+        self.assertEqual(py_maze.ASCII_STYLE,
+                         (py_maze.WALL_MARKER, py_maze.OPEN_MARKER,
+                          py_maze.PLAYER_MARKER, py_maze.SOLUTION_MARKER,
+                          py_maze.FRONTIER_MARKER, py_maze.VISITED_MARKER,
+                          py_maze.HINT_MARKER, py_maze.COLLECTIBLE_MARKER))
+
+    def test_the_default_name_answers_with_the_default_style(self):
+        self.assertIs(py_maze.STYLES[py_maze.DEFAULT_STYLE],
+                      py_maze.ASCII_STYLE)
+
+    def test_every_style_fills_every_field_of_one(self):
+        for name, style in py_maze.STYLES.items():
+            for field, drawn in zip(style._fields, style):
+                with self.subTest(style=name, field=field):
+                    self.assertTrue(drawn, '%s draws nothing for the %s'
+                                           % (name, field))
+
+    def test_every_marker_of_every_style_is_one_character(self):
+        # a maze is drawn one character to a cell, and every
+        # measurement taken of a frame counts characters: the row a
+        # line fills, the window a console is cut to, the lines a
+        # redraw writes again. A marker two characters wide moves the
+        # whole picture rather than changing what is drawn on it
+        wide = ['%s draws the %s as %r' % (name, field, drawn)
+                for name, style in py_maze.STYLES.items()
+                for field, drawn in zip(style._fields, style)
+                if len(drawn) != 1]
+
+        self.assertEqual(wide, [], 'a style draws one character to a cell')
+
+    def test_no_two_styles_draw_the_same_wall(self):
+        # the wall is most of what is on the screen, so it is what
+        # tells one style from another. Two entries drawing the same
+        # one is an option offering a choice it does not have
+        walls = [style.wall for style in py_maze.STYLES.values()]
+
+        self.assertEqual(len(set(walls)), len(walls))
+
+    def test_the_box_style_draws_its_wall_with_a_light_box_character(self):
+        # a wall is a whole cell here rather than the edge of one, so
+        # the character has to fill a cell: the light cross is the one
+        # in that set that joins to the cell beside it on all four
+        # sides, and a run of them reads as the lattice a maze is
+        self.assertTrue(
+            unicodedata.name(py_maze.BOX_DRAWING_STYLE.wall)
+            .startswith('BOX DRAWINGS LIGHT'),
+            'the box style draws its wall with no box-drawing character')
+
+    def test_the_block_style_draws_a_full_block_and_an_empty_cell(self):
+        # the maze reads as one wall with the corridors cut out of it,
+        # which is what makes it legible in a font the asterisk is not
+        self.assertEqual(unicodedata.name(py_maze.BLOCK_STYLE.wall),
+                         'FULL BLOCK')
+        self.assertEqual(py_maze.BLOCK_STYLE.open_cell, ' ')
+
+    def test_every_style_is_described_for_the_help_text(self):
+        # the note lives beside the style so a new one is a single
+        # entry to add, which is only true while the two agree
+        self.assertEqual(set(py_maze.STYLE_NOTES), set(py_maze.STYLES))
+
+    def test_a_style_is_looked_up_by_the_name_it_answers_to(self):
+        for name, style in py_maze.STYLES.items():
+            with self.subTest(style=name):
+                self.assertIs(py_maze.named_style(name), style)
+
+    def test_a_name_no_style_answers_to_names_the_ones_that_do(self):
+        with self.assertRaises(ValueError) as caught:
+            py_maze.named_style('lattice')
+
+        for name in py_maze.STYLES:
+            with self.subTest(style=name):
+                self.assertIn(name, str(caught.exception))
+
+
+class TestDrawableStyle(unittest.TestCase):
+    # a style outside ASCII is a request rather than a setting: the
+    # destination has to be able to draw it, which is the question the
+    # win banner already asks of can_display before it is printed
+
+    def stream_with(self, encoding):
+        # Returns:
+        #     A stream naming an encoding and answering as a file
+        #     rather than a console, so the code page is what decides
+        #     and the cell-width half of can_display does not answer
+        #     for it
+
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return stream
+
+    def test_a_destination_that_draws_the_style_gets_the_style(self):
+        self.assertIs(py_maze.drawable_style('box',
+                                             self.stream_with('utf-8')),
+                      py_maze.BOX_DRAWING_STYLE)
+
+    def test_a_destination_that_cannot_carry_it_gets_the_default(self):
+        for encoding in ('ascii', 'cp1252'):
+            for name in ('box', 'block'):
+                with self.subTest(encoding=encoding, style=name):
+                    self.assertIs(
+                        py_maze.drawable_style(
+                            name, self.stream_with(encoding)),
+                        py_maze.ASCII_STYLE)
+
+    def test_a_legacy_code_page_that_does_carry_it_keeps_it(self):
+        # the fallback is a measurement rather than a rule about
+        # Unicode: both walls are in cp437, which is the code page a
+        # Windows console is likeliest to be on
+        self.assertIs(py_maze.drawable_style('block',
+                                             self.stream_with('cp437')),
+                      py_maze.BLOCK_STYLE)
+
+    def test_a_caller_naming_no_style_gets_the_default(self):
+        self.assertIs(
+            py_maze.drawable_style(stream=self.stream_with('ascii')),
+            py_maze.ASCII_STYLE)
+
+    def test_the_whole_style_falls_back_rather_than_the_marker(self):
+        # a picture half in one style and half in another is a worse
+        # answer than either on its own, and nothing about the rule is
+        # tied to the wall being the field that failed. The style
+        # written here draws an ASCII wall and a pickup no code page
+        # carries, and the whole of it gives way
+        unwritable = py_maze.ASCII_STYLE._replace(
+            collectible='\N{PARTY POPPER}')
+
+        with mock.patch.dict(py_maze.rendering.STYLES,
+                             {'poppers': unwritable}):
+            drawn = py_maze.drawable_style('poppers',
+                                           self.stream_with('ascii'))
+
+        self.assertIs(drawn, py_maze.ASCII_STYLE)
+
+    def test_a_name_no_style_answers_to_is_refused_before_the_stream(self):
+        with self.assertRaises(ValueError):
+            py_maze.drawable_style('lattice', self.stream_with('utf-8'))
+
+    def test_standard_output_is_the_destination_it_asks_about(self):
+        with mock.patch.object(sys, 'stdout', self.stream_with('ascii')):
+            self.assertIs(py_maze.drawable_style('box'), py_maze.ASCII_STYLE)
+
+
+class TestDrawingInAStyle(unittest.TestCase):
+    # what a style reaches: the grid, the markers laid over it and the
+    # solver's frames. The file a maze is saved as is the one drawing
+    # it deliberately does not reach, and that is read here too
+
+    def grid(self):
+        # Returns:
+        #     The fixed maze the documentation draws
+        return py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+    def walls_of(self, lines, wall):
+        # which cells of a drawn maze hold a wall, whatever the wall
+        # was drawn with
+        #
+        # Args:
+        #     lines: The maze as drawn, one string per row
+        #     wall: The character a wall is drawn with there
+        #
+        # Returns:
+        #     list: One list of booleans per row
+
+        return [[char == wall for char in line] for line in lines]
+
+    def test_a_grid_drawn_with_no_style_is_drawn_with_the_default(self):
+        grid = self.grid()
+
+        self.assertEqual(py_maze.maze_lines(grid),
+                         py_maze.maze_lines(grid, style=py_maze.ASCII_STYLE))
+        self.assertIn(py_maze.WALL_MARKER, py_maze.maze_lines(grid)[0])
+
+    def test_a_style_changes_the_characters_and_not_the_maze(self):
+        grid = self.grid()
+        plain = py_maze.maze_lines(grid)
+
+        for name, style in py_maze.STYLES.items():
+            with self.subTest(style=name):
+                drawn = py_maze.maze_lines(grid, style=style)
+
+                self.assertEqual(self.walls_of(drawn, style.wall),
+                                 self.walls_of(plain, py_maze.WALL_MARKER))
+
+    def test_print_maze_draws_between_the_markers_in_the_style(self):
+        written = io.StringIO()
+        py_maze.print_maze(self.grid(), stream=written,
+                           style=py_maze.BLOCK_STYLE)
+        printed = written.getvalue().splitlines()
+
+        self.assertEqual((printed[0], printed[-1]), ('start', 'end'))
+        self.assertEqual(printed[1:-1],
+                         py_maze.maze_lines(self.grid(),
+                                            style=py_maze.BLOCK_STYLE))
+
+    def test_the_overlays_draw_what_the_style_they_are_given_draws(self):
+        self.assertEqual(
+            py_maze.solution_overlay([(1, 1)], py_maze.BLOCK_STYLE),
+            [(py_maze.BLOCK_STYLE.solution, {(1, 1)})])
+        self.assertEqual(
+            py_maze.collectible_overlay({(1, 1)}, py_maze.BLOCK_STYLE),
+            [(py_maze.BLOCK_STYLE.collectible, {(1, 1)})])
+
+    def test_an_overlay_given_no_style_draws_the_default_marker(self):
+        self.assertEqual(py_maze.solution_overlay([(1, 1)]),
+                         [(py_maze.SOLUTION_MARKER, {(1, 1)})])
+        self.assertEqual(py_maze.collectible_overlay({(1, 1)}),
+                         [(py_maze.COLLECTIBLE_MARKER, {(1, 1)})])
+
+    def test_the_solver_names_the_markers_its_frames_were_drawn_with(self):
+        # the legend under a frame says which character is which, so it
+        # is read out of the same style the frame above it was drawn in
+        written = io.StringIO()
+        py_maze.animate_search(self.grid(), stream=written,
+                               clear=lambda: None, pause=lambda delay: None,
+                               style=py_maze.BLOCK_STYLE)
+        legend = written.getvalue().splitlines()[-1]
+
+        self.assertIn(py_maze.BLOCK_STYLE.wall, written.getvalue())
+        for marker in (py_maze.BLOCK_STYLE.frontier,
+                       py_maze.BLOCK_STYLE.visited,
+                       py_maze.BLOCK_STYLE.solution):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, legend)
+
+    def test_a_save_file_is_drawn_in_the_default_style(self):
+        # the format fixes the characters a picture is read back from,
+        # so save_lines passes no style whatever a run is drawing in: a
+        # file drawn with the lattice is one parse_save turns down
+        written = '\n'.join(py_maze.save_lines(self.grid(), {(1, 1)}))
+
+        self.assertIn(py_maze.WALL_MARKER, written)
+        for name, style in py_maze.STYLES.items():
+            if name == py_maze.DEFAULT_STYLE:
+                continue
+            with self.subTest(style=name):
+                self.assertNotIn(style.wall, written)
+
+
+class TestStyleOption(MainRunner, unittest.TestCase):
+    # --style is how a run picks its characters. A run naming none has
+    # to draw exactly what it drew before the option existed, which is
+    # most of what is read here
+
+    def drawn(self, name=None):
+        # the maze one run printed, in the style named or in none
+        #
+        # Args:
+        #     name: The style to name, or None to name none at all
+        #
+        # Returns:
+        #     str: The picture, without the markers around it
+
+        argv = ['-d', 'easy', '--seed', '2024', '-q']
+        if name is not None:
+            argv += ['--style', name]
+
+        output, _ = self.run_main(argv)
+        return self.maze_of(output)
+
+    def test_the_option_defaults_to_the_style_py_maze_always_drew(self):
+        parsed = py_maze.build_parser().parse_args([])
+
+        self.assertEqual(parsed.style, py_maze.DEFAULT_STYLE)
+        self.assertEqual(self.drawn(), self.drawn(py_maze.DEFAULT_STYLE))
+        self.assertIn(py_maze.WALL_MARKER, self.drawn())
+
+    def test_each_style_draws_the_same_maze_with_its_own_wall(self):
+        plain = self.drawn()
+
+        for name, style in py_maze.STYLES.items():
+            with self.subTest(style=name):
+                drawn = self.drawn(name)
+
+                self.assertIn(style.wall, drawn)
+                self.assertEqual([char == style.wall for char in drawn],
+                                 [char == py_maze.WALL_MARKER
+                                  for char in plain])
+
+    def test_the_help_text_names_every_style_there_is(self):
+        # the names go in the help the way --algorithm lists its own,
+        # so a reader of --help need not guess what --style takes
+        block = re.search(r'^  --style\s+(.*?)(?=^  -|\Z)',
+                          py_maze.build_parser().format_help(),
+                          re.DOTALL | re.MULTILINE)
+        self.assertIsNotNone(block, '--help says nothing about --style')
+        said = ' '.join(block.group(1).split())
+
+        for name, note in py_maze.STYLE_NOTES.items():
+            with self.subTest(style=name):
+                self.assertIn('%s (%s)' % (name, note), said)
+
+        self.assertIn('default: %s' % py_maze.DEFAULT_STYLE, said)
+
+    def test_a_name_no_style_answers_to_is_an_option_error(self):
+        code, said, _ = self.run_main_failing(['--style', 'lattice'])
+
+        self.assertEqual(code, py_maze.EXIT_USAGE)
+        self.assertIn('--style', said)
+
+    def test_the_run_settles_the_style_against_the_destination(self):
+        # the fallback only reaches a run that asks the question with
+        # one in it. named_style answers for the name alone, so a run
+        # reading its style that way draws a wall its console cannot
+        # and never falls back at all
+        with mock.patch.object(py_maze.cli, 'drawable_style',
+                               wraps=py_maze.drawable_style) as asked:
+            self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                           '--style', 'block'])
+
+        asked.assert_called_once_with('block')
+
+    def test_a_run_drawing_in_a_style_still_saves_in_the_default(self):
+        # the picture and the file part here: a save file is read back
+        # with the characters the format fixes, so the one thing the
+        # option must not reach is the file
+        output, _ = self.run_main(['-d', 'easy', '--seed', '2024', '-q',
+                                   '--style', 'block', '-o',
+                                   py_maze.STDIO_PATH])
+
+        self.assertNotIn(py_maze.BLOCK_STYLE.wall, output)
+        self.assertEqual(py_maze.parse_save(output).grid,
+                         py_maze.MazeGenerator(6, 6, seed=2024).generate())
+
+    def test_every_mode_plays_in_the_style_it_was_handed(self):
+        # the style belongs to no mode, so every mode names it rather
+        # than leaving it among the settings the modes read one each
+        # of: the mode that forgot would draw the default on its play
+        # screen while the picture above it drew what was asked for
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                game = py_maze.game_mode(name)(grid,
+                                               style=py_maze.BLOCK_STYLE)
+
+                self.assertIs(game.style, py_maze.BLOCK_STYLE)
+                self.assertIn(py_maze.BLOCK_STYLE.wall, game.frame()[1])
+
+    def test_a_game_given_no_style_draws_the_default(self):
+        game = py_maze.MazeGame(
+            py_maze.MazeGenerator(6, 6, seed=2024).generate())
+
+        self.assertIs(game.style, py_maze.ASCII_STYLE)
+        self.assertIn(py_maze.WALL_MARKER, game.frame()[1])
+
+    def test_the_game_is_built_in_the_style_it_is_handed(self):
+        # the run settles the style once and hands it on, so the game
+        # is built from what it was given rather than from the option
+        # read a second time
+        args = py_maze.build_parser().parse_args(['--style', 'block'])
+        grid = py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+        game = py_maze.build_game(args, grid,
+                                  style=py_maze.BOX_DRAWING_STYLE)
+
+        self.assertIs(game.style, py_maze.BOX_DRAWING_STYLE)
+
+
+class TestDrawingStylesDocumented(unittest.TestCase):
+    # --style is tabled on two pages and named on a third, and the
+    # names have to be the registry's in all of them
+
+    def section(self):
+        # the Drawing Styles section of the options page, its wrap
+        # closed up so the prose is read as the sentences it is
+        #
+        # Returns:
+        #     str: The section, as one line
+
+        found = re.search(r'\n## Drawing Styles\n(.*?)(?=\n## |\Z)',
+                          read_project_file(OPTIONS_PATH), re.DOTALL)
+        self.assertIsNotNone(found,
+                             'docs/options.md has no Drawing Styles section')
+        return ' '.join(found.group(1).split())
+
+    def test_the_options_page_tables_the_option_and_every_style(self):
+        page = read_project_file(OPTIONS_PATH)
+
+        self.assertIn('| `--style`', page)
+        for name in py_maze.STYLES:
+            with self.subTest(style=name):
+                self.assertIn('`%s`' % name, page)
+
+    def test_the_cheat_sheet_tables_the_option_and_every_style(self):
+        sheet = read_project_file(CHEATSHEET_PATH)
+
+        self.assertIn('| `--style`', sheet)
+        for name in py_maze.STYLES:
+            with self.subTest(style=name):
+                self.assertIn('`%s`' % name, sheet)
+
+    def test_the_section_names_every_style_there_is(self):
+        said = self.section()
+
+        for name in py_maze.STYLES:
+            with self.subTest(style=name):
+                self.assertIn('`%s`' % name, said)
+
+    def test_the_section_says_the_two_things_a_terminal_hides(self):
+        # both are silent where a player would see them: a style the
+        # console cannot draw is replaced without a word, and a maze
+        # saved under one is written with the format's own characters.
+        # The page is the only place either is said
+        said = self.section()
+
+        self.assertIn('falls back', said)
+        self.assertIn('save', said)
+
+    def test_the_readme_sends_a_reader_to_the_option(self):
+        self.assertIn('`--style`', read_project_file(README_PATH))
 
 
 if __name__ == '__main__':
