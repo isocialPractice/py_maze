@@ -30,6 +30,58 @@ into a `## Complete` section at the bottom of this file.
   style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the two new walls on a real console
+
+#### Found Issues
+
+- [ ] `--style` is documented as falling back on a console's code page,
+  and on a real console it measurably does not
+  - **Issue**: the Drawing Styles section of `docs/options.md` says "A
+    Windows console on a legacy code page is the usual case: `cp437` and
+    `cp850` carry both of these walls and `cp1252` carries neither", and
+    the `drawable_style` docstring says "a console on a legacy code page
+    cannot carry the light cross". Read back off a real console, neither
+    holds: at `chcp 1252` both `--style box` and `--style block` draw
+    their own wall, every cell of the maze holding U+253C or U+2588 and
+    none holding U+FFFD. CPython writes to a Windows console through
+    `_WindowsConsoleIO`, which is `WriteConsoleW` and UTF-16, so
+    `sys.stdout.encoding` is `utf-8` on every code page and `can_encode`
+    is never asked the question the documentation describes. The
+    fallback itself is sound and was measured firing twice - output
+    redirected to a file under a `cp1252` locale, and a console run with
+    `PYTHONLEGACYWINDOWSSTDIO=1` - silently and exit 0 both times. What
+    is wrong is the trigger the documentation names, not the code
+  - **Goal**: name the thing that actually fires it - a stream whose
+    encoding is a legacy code page, which on Windows means redirected
+    output or the legacy stdio writer rather than the console's own code
+    page - in the Drawing Styles section of `docs/options.md` and in the
+    `drawable_style` docstring. The paragraph in `docs/playing.md`
+    beginning "That covers two different terminals" tells the same story
+    about the win banner and is worth reading in the same pass, though
+    the banner falls back on its non-BMP half either way and what it
+    prints is unaffected
+  - From: UI/UX Override - the two new walls on a real console
+- [ ] Pin the redraw against a style in the suite's own screen, so a wall
+  that is neither a space nor an asterisk cannot change the picture
+  - **Issue**: the console readings bore out what `frame_diff` comparing
+    whole lines implies - a dozen moves in `--style block`, a turn and a
+    backtrack among them, left the screen identical to the same walk in
+    `ascii` with the wall substituted, at 100, 40 and 15 columns. No test
+    walks a game through a move in a style at all: the style tests check
+    `maze_lines`, the overlays, the solver's legend and which style a
+    game was handed, and every redraw test runs in `ascii`, so the one
+    thing a style could break about the redraw is checked only by a
+    harness that needs a Windows console
+  - **Goal**: drive a `MazeGame` through a fixed dozen moves twice, once
+    per style, feeding `frame_diff` to the suite's `TerminalScreen` the
+    way the existing redraw tests do, and assert the block screen with
+    U+2588 put back to `*` equals the ascii screen row for row, at a
+    width the frame fills and one it does not. It is stdlib-only and
+    runs wherever the suite runs, unlike the console harness the
+    `Pin the partial redraw against a real Windows console` item under
+    `## UI/UX and Screen Drawing` already carries
+  - From: UI/UX Override - the two new walls on a real console
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
