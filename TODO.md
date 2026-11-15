@@ -81,6 +81,54 @@ into a `## Complete` section at the bottom of this file.
     `Pin the partial redraw against a real Windows console` item under
     `## UI/UX and Screen Drawing` already carries
   - From: UI/UX Override - the two new walls on a real console
+- [ ] Draw a maze with a style whose eight fields differ, so the seven that
+  are unexercised stop being unexercised
+  - **Issue**: all three shipped styles are `ASCII_STYLE._replace(wall=...)`,
+    so `open_cell`, `player`, `solution`, `frontier`, `visited`, `hint` and
+    `collectible` hold the same character in every one of them, and every
+    test that reads a field compares it against `BLOCK_STYLE.<field>` -
+    which is that same ASCII character. Measured by mutation against the
+    whole suite: reverting `style.open_cell` in `maze_lines`,
+    `style.solution` in `solution_overlay`, `style.collectible` in
+    `collectible_overlay`, `style.frontier` and `style.visited` in
+    `animate_search`'s overlays and in its legend, and `self.style.player`,
+    `self.style.hint` and `self.style.collectible` in `MazeGame.frame`, each
+    to the module constant it replaced, leaves 1305 of 1305 tests green. Only
+    `style.wall` is caught, by 8 failures, and handing `self.style` to
+    `maze_lines` at all, by 3. `TestDrawingInAStyle` carries two tests that
+    read as covering this and do not -
+    `test_the_overlays_draw_what_the_style_they_are_given_draws` and
+    `test_the_solver_names_the_markers_its_frames_were_drawn_with` both pass
+    against code that ignores the style it was handed. A library caller
+    building a `MazeStyle` of its own is the case that breaks: seven of its
+    eight fields can stop being drawn with nothing in the suite noticing
+  - **Goal**: build one `MazeStyle` in the suite whose eight fields are eight
+    distinct characters, none of them a module constant's, draw the fixed
+    `seed=2024` maze with it through `maze_lines`, both overlays,
+    `animate_search` and `MazeGame.frame`, and assert each field's character
+    lands in the cells that field draws. Then re-run the mutations listed
+    above against the new test: a field whose mutation still passes is still
+    unexercised, whatever the test count says
+  - From: UI/UX Override - the two new walls on a real console
+- [ ] Correct the `--style` help text in the same pass as the two prose
+  locations queued above it
+  - **Issue**: `build_parser` tells every reader of `--help` that "A style
+    the terminal cannot draw falls back to ascii"
+    (`py_maze/cli.py` lines 482-483). That is the claim the first item of
+    this override measured as not holding - the fallback reads the stream's
+    encoding, which on a Windows console is `utf-8` whatever `chcp` says -
+    and `--help` is the most-read of the places that make it, but that
+    item's **Goal** names only the Drawing Styles section of
+    `docs/options.md` and the `drawable_style` docstring. A run working it
+    as written would correct both and leave `--help` promising a console a
+    fallback it never gets
+  - **Goal**: reword the help text in `py_maze/cli.py` alongside the other
+    two, keeping it short enough to read in the option list. The feature
+    lines in `README.md`, `docs/index.md` and `docs/CHEATSHEET.md` use the
+    same "terminal cannot draw" wording as a one-line summary; read them in
+    the same pass and decide whether a summary of this length needs the
+    distinction, rather than changing them by default
+  - From: UI/UX Override - the two new walls on a real console
 
 ## Fixes and Hardening
 
