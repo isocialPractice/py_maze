@@ -129,7 +129,7 @@ That table is the `ascii` style, which is the one `--style` defaults to.
 everything laid over the maze is drawn the same way in all three. On the
 package the three are `ASCII_STYLE`, `BOX_DRAWING_STYLE` and `BLOCK_STYLE`,
 mapped from their names by `STYLES`, with `named_style` looking one up and
-`drawable_style` settling on one the terminal can draw.
+`drawable_style` settling on one the destination can carry.
 
 ## Status codes
 

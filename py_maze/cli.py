@@ -480,10 +480,12 @@ def build_parser():
     parser.add_argument("--style", choices=list(STYLES),
                         default=DEFAULT_STYLE,
                         help="How the maze is drawn: %s (default: %s). A "
-                             "style the terminal cannot draw falls back to "
-                             "%s, and a maze is saved in %s whatever it is "
-                             "drawn in, the format fixing the characters a "
-                             "picture is read back from"
+                             "style the destination cannot carry falls back "
+                             "to %s - what is measured is the stream's "
+                             "encoding, not the console's code page - and a "
+                             "maze is saved in %s whatever it is drawn in, "
+                             "the format fixing the characters a picture is "
+                             "read back from"
                              % (style_summary(), DEFAULT_STYLE,
                                 DEFAULT_STYLE, DEFAULT_STYLE))
     parser.add_argument("--format", "-f", choices=list(FORMATS),

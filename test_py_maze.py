@@ -3363,7 +3363,7 @@ class PlaySession:
     MOVES = {'w': (0, -1), 's': (0, 1), 'a': (-1, 0), 'd': (1, 0)}
 
     def __init__(self, keys, maze=None, grid=None, collectibles=(),
-                 ticking=False, chaser=None):
+                 ticking=False, chaser=None, style=None):
         # Args:
         #     keys: The keypresses the game is fed, in order
         #     maze: Picture of the maze to play, defaulting to the
@@ -3375,6 +3375,10 @@ class PlaySession:
         #     chaser: A chaser to set on the player, for chase mode. The
         #         clock is the fake one, so a chaser only moves in a
         #         session whose clock is ticking
+        #     style: The MazeStyle the play screen is drawn with, or
+        #         None for the default. A run settles the style before
+        #         the game starts and hands it over, so a session
+        #         standing in for one passes it the same way
 
         self.keys = list(keys)
         self.ticking = ticking
@@ -3386,7 +3390,8 @@ class PlaySession:
         if grid is None:
             grid = grid_from_strings(maze or TestMazeGame.MAZE)
         self.game = py_maze.MazeGame(grid, collectibles=collectibles,
-                                     clock=self.clock, chaser=chaser)
+                                     clock=self.clock, chaser=chaser,
+                                     style=style)
 
     def tap(self):
         # a stream keeping each write on its own as well as the whole
@@ -16396,6 +16401,11 @@ class TestDrawingInAStyle(unittest.TestCase):
                                             style=py_maze.BLOCK_STYLE))
 
     def test_the_overlays_draw_what_the_style_they_are_given_draws(self):
+        # this reads wider than it is: BLOCK_STYLE.solution and
+        # BLOCK_STYLE.collectible are the module constants themselves,
+        # so it holds against an overlay that ignored the style it was
+        # handed. TestEveryFieldOfAStyleDraws is where those two fields
+        # are actually read
         self.assertEqual(
             py_maze.solution_overlay([(1, 1)], py_maze.BLOCK_STYLE),
             [(py_maze.BLOCK_STYLE.solution, {(1, 1)})])
@@ -16412,6 +16422,12 @@ class TestDrawingInAStyle(unittest.TestCase):
     def test_the_solver_names_the_markers_its_frames_were_drawn_with(self):
         # the legend under a frame says which character is which, so it
         # is read out of the same style the frame above it was drawn in
+        #
+        # The wall is the only field of BLOCK_STYLE this can tell from
+        # a module constant, so the three markers below hold against a
+        # legend that named the constants instead.
+        # TestEveryFieldOfAStyleDraws is where the legend is read
+        # against a style whose fields are its own
         written = io.StringIO()
         py_maze.animate_search(self.grid(), stream=written,
                                clear=lambda: None, pause=lambda delay: None,
@@ -16437,6 +16453,294 @@ class TestDrawingInAStyle(unittest.TestCase):
                 continue
             with self.subTest(style=name):
                 self.assertNotIn(style.wall, written)
+
+
+class TestRedrawInAStyle(unittest.TestCase):
+    # a style reaches the redraw as well as the picture, and the redraw
+    # is the one thing a style could break that nothing else here walks:
+    # every other style test reads maze_lines, the overlays, the legend
+    # or which style a game was handed, and every redraw test plays in
+    # ascii. frame_diff compares whole lines, so a wall that is neither
+    # a space nor an asterisk cannot change which rows a move rewrites -
+    # which is a reading of the code until a game is actually played in
+    # a style and the screen read back
+
+    # the fixed maze the documentation draws
+    CELLS = 6
+    SEED = 2024
+
+    # a dozen moves with two turns and a backtrack among them, so the
+    # redraw is asked for a row the player left, a row it arrived on,
+    # and rows it has already been down once. Every one of them lands
+    # on a new cell, so no move is a frame that changed nothing
+    ROUTE = ['s', 's', 's', 'd', 'd', 's', 's', 'a', 'a', 'd', 'd', 'w']
+
+    # the three widths the console reading was taken at. 100 columns
+    # is wider than the 60 character controls line, so nothing wraps
+    # and a move writes the rows it changed; 40 and 15 are narrower, so
+    # the controls line is carried onto the row below and render draws
+    # every frame whole instead. The first two are the two halves of
+    # the redraw and a style has to be invisible to both, and 15 is
+    # where the foot stands tallest over a maze that still fits a row
+    WIDE = 100
+    NARROW = 40
+    TIGHT = 15
+
+    # every width the pin is taken at, widest first
+    WIDTHS = (WIDE, NARROW, TIGHT)
+
+    # rows enough that fit_frame never cuts the frame, at either width
+    LINES = 24
+
+    def grid(self):
+        return py_maze.MazeGenerator(self.CELLS, self.CELLS,
+                                     seed=self.SEED).generate()
+
+    def walk(self, style, width):
+        # play the fixed route on a console of the given width
+        #
+        # Returns:
+        #     tuple: (the session, the screen it was played on). The
+        #     screen is read from what was written while the game was
+        #     still running, since what the end of it prints scrolls a
+        #     screen the frame already fills
+
+        session = PlaySession(self.ROUTE + ['q'], grid=self.grid(),
+                              style=style)
+        session.play(sizes=[terminal_size(width, self.LINES)])
+
+        return session, session.screen(height=self.LINES, width=width,
+                                       text=session.played())
+
+    def written_per_move(self, width):
+        # Returns:
+        #     list: Characters written while each move of the route was
+        #     handled, which is a whole frame or the rows that changed
+
+        session, _ = self.walk(py_maze.ASCII_STYLE, width)
+        return [sum(len(write) for write in session.after(index))
+                for index in range(len(self.ROUTE))]
+
+    def test_a_style_changes_the_wall_and_nothing_else_on_the_screen(self):
+        # the whole claim, read off the screen rather than off the
+        # frame: a dozen moves played in block leave the screen the
+        # same walk in ascii left, once the block is put back to the
+        # asterisk it stands in for
+        for width in self.WIDTHS:
+            with self.subTest(width=width):
+                _, plain = self.walk(py_maze.ASCII_STYLE, width)
+                _, drawn = self.walk(py_maze.BLOCK_STYLE, width)
+                blocks = drawn.lines()
+
+                self.assertTrue(any(py_maze.BLOCK_STYLE.wall in line
+                                    for line in blocks),
+                                'nothing was drawn in the style')
+                self.assertNotEqual(blocks, plain.lines(),
+                                    'the two walks drew the same wall')
+                self.assertEqual(
+                    [line.replace(py_maze.BLOCK_STYLE.wall,
+                                  py_maze.WALL_MARKER) for line in blocks],
+                    plain.lines())
+
+    def test_every_style_there_is_redraws_the_screen_alike(self):
+        # the pin above is taken against block because a console
+        # reading U+2588 back is what raised this. The registry is
+        # walked here as well, so a fourth style cannot ship without
+        # the same reading being taken of it
+        _, plain = self.walk(py_maze.ASCII_STYLE, self.WIDE)
+
+        for name, style in py_maze.STYLES.items():
+            with self.subTest(style=name):
+                _, drawn = self.walk(style, self.WIDE)
+
+                self.assertEqual(
+                    [line.replace(style.wall, py_maze.WALL_MARKER)
+                     for line in drawn.lines()],
+                    plain.lines())
+
+    def test_the_two_widths_are_the_two_halves_of_the_redraw(self):
+        # what makes reading the screen at both widths worth the
+        # second walk. At the wide one a move writes less than the
+        # frame has characters, so it is a difference; at the narrow
+        # one it writes more than the whole frame, every row being
+        # addressed by an escape of its own. A pin taken at one width
+        # alone would say nothing about the other
+        whole = sum(len(line) for line
+                    in py_maze.MazeGame(self.grid()).frame())
+
+        wide = self.written_per_move(self.WIDE)
+        narrow = self.written_per_move(self.NARROW)
+
+        self.assertLess(max(wide), whole)
+        self.assertGreater(min(narrow), whole)
+        self.assertGreater(min(narrow), max(wide))
+
+
+class TestEveryFieldOfAStyleDraws(unittest.TestCase):
+    # all three shipped styles are ASCII_STYLE._replace(wall=...), so
+    # seven of the eight fields hold the same character in every one of
+    # them: a test comparing a field against BLOCK_STYLE.<field> is
+    # comparing it against the module constant it replaced, and passes
+    # against code that ignores the style it was handed. A library
+    # caller building a MazeStyle of its own is the case that breaks,
+    # and this is the style that breaks it - eight distinct characters,
+    # none of them a marker any module defines
+
+    STYLE = py_maze.MazeStyle(wall='W', open_cell='_', player='P',
+                              solution='S', frontier='F', visited='V',
+                              hint='H', collectible='C')
+
+    # the markers the modules define, which the style above shares
+    # none of. Every one of them is what a field falls back to once
+    # the field stops being read
+    MARKERS = frozenset('* o.?~$X#&@')
+
+    # open cells of the fixed maze the solution does not run through,
+    # so a pickup laid on one is a cell the solution overlay is not
+    # also claiming
+    PICKUPS = frozenset([(3, 1), (5, 5)])
+
+    # two open cells a hint can light that are neither the player's
+    # nor a pickup's, the three overlays of a play screen being read
+    # in that order
+    HINTS = frozenset([(1, 1), (1, 2)])
+
+    def grid(self):
+        return py_maze.MazeGenerator(6, 6, seed=2024).generate()
+
+    def rows_of(self, frame, grid):
+        # the maze rows of a play screen, without the start and end
+        # markers around them
+        return frame[1:1 + len(grid)]
+
+    def frames_of(self, written):
+        # the maze rows of every frame the solver drew, read between
+        # the markers print_maze writes around a picture
+        #
+        # Returns:
+        #     list: One list of rows per frame
+
+        frames, rows = [], None
+        for line in written.splitlines():
+            if line == 'start':
+                rows = []
+            elif line == 'end':
+                frames.append(rows)
+                rows = None
+            elif rows is not None:
+                rows.append(line)
+
+        return frames
+
+    def test_the_style_shares_no_character_with_a_module_marker(self):
+        # what makes every test below mean anything. Without it a
+        # field read off the style is the character the module would
+        # have drawn anyway, and the assertion holds whether the field
+        # was read or not
+        self.assertEqual(len(set(self.STYLE)), len(self.STYLE))
+        self.assertEqual(set(self.STYLE) & self.MARKERS, frozenset())
+
+        for name in ('WALL_MARKER', 'OPEN_MARKER', 'PLAYER_MARKER',
+                     'SOLUTION_MARKER', 'FRONTIER_MARKER', 'VISITED_MARKER',
+                     'HINT_MARKER', 'COLLECTIBLE_MARKER', 'CHASER_MARKER',
+                     'DOOR_MARKER', 'BOX_MARKER', 'GUIDE_MARKER'):
+            with self.subTest(marker=name):
+                self.assertIn(getattr(py_maze, name), self.MARKERS)
+
+    def test_no_shipped_style_can_tell_a_field_from_its_marker(self):
+        # why the style above had to be written rather than taken from
+        # the registry: every shipped style replaces the wall alone, so
+        # its other seven fields are the module constants themselves
+        for name, style in py_maze.STYLES.items():
+            with self.subTest(style=name):
+                self.assertLessEqual(set(style) - {style.wall},
+                                     self.MARKERS)
+
+    def test_the_grid_draws_its_walls_and_its_open_cells_from_the_style(self):
+        grid = self.grid()
+
+        self.assertEqual(
+            py_maze.maze_lines(grid, style=self.STYLE),
+            [''.join(self.STYLE.wall if wall else self.STYLE.open_cell
+                     for wall in row) for row in grid])
+
+    def test_each_overlay_draws_its_cells_with_the_field_it_belongs_to(self):
+        grid = self.grid()
+        route = py_maze.solve_maze(grid)
+        self.assertFalse(self.PICKUPS & set(route),
+                         'a pickup was laid on the solution')
+
+        drawn = py_maze.maze_lines(
+            grid,
+            py_maze.collectible_overlay(self.PICKUPS, self.STYLE) +
+            py_maze.solution_overlay(route, self.STYLE),
+            self.STYLE)
+
+        for x, y in sorted(self.PICKUPS):
+            with self.subTest(pickup=(x, y)):
+                self.assertEqual(drawn[y][x], self.STYLE.collectible)
+        for x, y in route:
+            with self.subTest(step=(x, y)):
+                self.assertEqual(drawn[y][x], self.STYLE.solution)
+
+        self.assertLessEqual(set(''.join(drawn)), set(self.STYLE))
+
+    def test_the_solver_draws_and_names_the_markers_of_the_style(self):
+        written = io.StringIO()
+        py_maze.animate_search(self.grid(), stream=written,
+                               clear=lambda: None, pause=lambda delay: None,
+                               style=self.STYLE)
+        frames = self.frames_of(written.getvalue())
+        legend = written.getvalue().splitlines()[-1]
+
+        self.assertTrue(frames, 'the solver drew no frame at all')
+        drawn = set(''.join(''.join(rows) for rows in frames))
+        self.assertLessEqual(drawn, set(self.STYLE))
+
+        # the three fields a search frame is laid over with, each of
+        # them on the screen and named under it
+        for field in ('frontier', 'visited', 'solution'):
+            with self.subTest(field=field):
+                self.assertIn(getattr(self.STYLE, field), drawn)
+                self.assertIn(getattr(self.STYLE, field), legend)
+
+    def test_the_play_screen_draws_the_player_the_hint_and_the_pickup(self):
+        grid = self.grid()
+        game = py_maze.MazeGame(grid, collectibles=self.PICKUPS,
+                                style=self.STYLE)
+
+        # frame() is what is under test, and show_hint renders and
+        # sleeps before clearing the cells again, so the cells a hint
+        # lights are set here the way the hint sets them
+        game.hint_cells = set(self.HINTS)
+        rows = self.rows_of(game.frame(), grid)
+
+        self.assertEqual(rows[game.player_y][game.player_x],
+                         self.STYLE.player)
+        for x, y in sorted(self.HINTS):
+            with self.subTest(hint=(x, y)):
+                self.assertEqual(rows[y][x], self.STYLE.hint)
+        for x, y in sorted(self.PICKUPS):
+            with self.subTest(pickup=(x, y)):
+                self.assertEqual(rows[y][x], self.STYLE.collectible)
+
+        self.assertLessEqual(set(''.join(rows)), set(self.STYLE))
+
+    def test_every_mode_draws_its_whole_play_screen_from_the_style(self):
+        # a mode lays its own markers over the maze, and those are the
+        # mode's rather than the style's, so the reading here is that
+        # nothing a style does reach falls back to a module constant
+        grid = self.grid()
+
+        for name in py_maze.MODES:
+            with self.subTest(mode=name):
+                game = py_maze.game_mode(name)(grid, style=self.STYLE)
+                rows = self.rows_of(game.frame(), grid)
+
+                self.assertEqual(rows[game.player_y][game.player_x],
+                                 self.STYLE.player)
+                self.assertLessEqual(set(''.join(rows)) - self.MARKERS,
+                                     set(self.STYLE))
 
 
 class TestStyleOption(MainRunner, unittest.TestCase):

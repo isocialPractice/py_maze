@@ -22,6 +22,103 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
+## [1.0.0a18] - 2026-11-16
+
+What `--style` says about its own fallback, corrected against a real
+console, and the seven fields of a style that nothing was reading. The
+fallback itself is sound and was measured firing; what was wrong is the
+trigger every one of its five prose locations named. Beside that, a style
+whose eight fields are eight distinct characters, which is the first thing
+in the suite that can tell a field being read from a field being ignored.
+
+### Fixed
+
+- **The `--style` fallback is read off the stream's encoding, not off the
+  console's code page.** The Drawing Styles section of `docs/options.md`
+  said "A Windows console on a legacy code page is the usual case:
+  `cp437` and `cp850` carry both of these walls and `cp1252` carries
+  neither", the `drawable_style` docstring said "a console on a legacy
+  code page cannot carry the light cross", and `--help` told every reader
+  that "A style the terminal cannot draw falls back to ascii". Read back
+  off a real console, none of the three holds: at `chcp 1252` both
+  `--style box` and `--style block` draw their own wall, every cell of
+  the maze holding U+253C or U+2588 and none holding U+FFFD. CPython
+  writes to a Windows console through `_WindowsConsoleIO`, which is
+  `WriteConsoleW` and UTF-16, so `sys.stdout.encoding` is `utf-8` on
+  every code page and `can_encode` is never asked the question the
+  documentation described. What does fire the fallback is a stream whose
+  encoding really is a legacy code page - output redirected to a file or
+  a pipe under such a locale, or a run with
+  `PYTHONLEGACYWINDOWSSTDIO=1`, which puts the legacy writer back in
+  front of the console - and both were measured doing it, silently and
+  exit 0. All three locations now name that, and the one-line summaries
+  in `README.md`, `docs/index.md` and `docs/CHEATSHEET.md` say "where the
+  destination cannot carry them" rather than naming the terminal: a
+  bullet of that length does not owe the distinction, but it must not
+  name the wrong half of it. The `box` note `--help` prints beside the
+  corrected sentence is reworded with it, for the same reason
+- **The win banner's paragraph in `docs/playing.md` tells the same story
+  about the same two cases.** It opened "A legacy code page cannot encode
+  the glyph at all; a classic console window ... encodes it perfectly
+  well and still cannot draw it", which reads as a console at `chcp 1252`
+  being the first of the two when it is always the second. The paragraph
+  now says which destination is which and why a console cannot be the
+  first. What the banner prints is unaffected either way: the party
+  poppers are above the basic multilingual plane, so a classic console
+  falls back on the cell half whatever its code page carries
+
+### Added
+
+- **A style whose eight fields are eight distinct characters, so the
+  seven that were unexercised stop being unexercised.** All three shipped
+  styles are `ASCII_STYLE._replace(wall=...)`, so `open_cell`, `player`,
+  `solution`, `frontier`, `visited`, `hint` and `collectible` hold the
+  same character in every one of them, and every test that read a field
+  compared it against `BLOCK_STYLE.<field>` - which is that same ASCII
+  constant. Measured by mutation before the change: reverting
+  `style.open_cell` in `maze_lines`, `style.solution` in
+  `solution_overlay`, `style.collectible` in `collectible_overlay`,
+  `style.frontier` and `style.visited` in `animate_search`'s overlays
+  and in its legend, and `self.style.player`, `self.style.hint` and
+  `self.style.collectible` in `MazeGame.frame`, each to the constant it
+  replaced, left the whole suite green. `TestEveryFieldOfAStyleDraws`
+  draws the fixed `seed=2024` maze with a `MazeStyle` of eight
+  characters no module defines, through `maze_lines`, both overlays,
+  `animate_search` and `MazeGame.frame` in every mode, and asserts each
+  field's character lands in the cells that field draws. Re-run against
+  it, all twelve of those mutations now fail at least one test. Two of
+  its tests are guards rather than readings - that the style shares no
+  character with any module marker, and that no shipped style could have
+  done this job - because without the first every assertion holds
+  whether the field was read or not
+- **The redraw pinned against a style in the suite's own screen.** No
+  test walked a game through a move in a style at all: the style tests
+  read `maze_lines`, the overlays, the solver's legend and which style a
+  game was handed, and every redraw test ran in `ascii`, so the one
+  thing a style could break about the redraw was checked only by a
+  harness needing a Windows console. `TestRedrawInAStyle` plays a fixed
+  dozen moves - two turns and a backtrack among them, every one landing
+  on a new cell - once per style, at the three widths the console
+  reading was taken at, and asserts the block screen with U+2588 put
+  back to `*` equals the `ascii` screen row for row. 100 columns wraps
+  nothing, so a move writes the rows it changed; 40 and 15 carry the
+  controls line onto the row below, so every frame is drawn whole. A
+  third test holds the two widths to being those two halves, since a pin
+  taken at one of them says nothing about the other. `PlaySession` takes
+  a `style` to make this possible, passing it to the `MazeGame` it
+  builds the way a run hands one over
+
+### Changed
+
+- **The two style tests that read wider than they are say so.**
+  `test_the_overlays_draw_what_the_style_they_are_given_draws` and
+  `test_the_solver_names_the_markers_its_frames_were_drawn_with` both
+  pass against code that ignores the style it was handed, because the
+  fields they compare are `BLOCK_STYLE`'s and `BLOCK_STYLE`'s are the
+  constants. Both are kept - they pin the shape of what an overlay and
+  a legend return - and each now carries a comment saying what it cannot
+  tell apart and where those fields are actually read
+
 ## [1.0.0a17] - 2026-11-14
 
 What a maze is drawn with is a choice now. The eight markers a picture is

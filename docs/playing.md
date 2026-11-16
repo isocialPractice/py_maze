@@ -117,11 +117,16 @@ instead, so the message arrives whatever the terminal can show:
 Congratulations! You solved the maze!
 ```
 
-That covers two different terminals. A legacy code page cannot encode the
-glyph at all; a classic console window - what `cmd.exe` and a desktop
+That covers two different destinations. A stream whose encoding is a legacy
+code page cannot encode the glyph at all - output redirected to a file under
+such a locale, say; a classic console window - what `cmd.exe` and a desktop
 shortcut open - encodes it perfectly well and still cannot draw it, because
 a cell of its screen holds too little to store a character that wide and
-shows a replacement character in its place. Both get the plain wording.
+shows a replacement character in its place. A console is the second of those
+whatever `chcp` says, never the first: it is written through `WriteConsoleW`,
+so `sys.stdout.encoding` reads `utf-8` there on every code page and the code
+page never reaches the encoding the first case is about. Both get the plain
+wording.
 
 Windows Terminal announces itself in an environment variable, and a terminal
 that announces itself is taken at its word: it is documented as drawing a

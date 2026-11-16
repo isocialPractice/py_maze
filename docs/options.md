@@ -271,12 +271,19 @@ of them already draws wherever these walls do.
 Two things about a style are easy to miss, because neither of them says
 anything at the terminal.
 
-**A style the destination cannot draw falls back to `ascii`**, without a
-word, the way the win banner falls back to its plain wording. A Windows
-console on a legacy code page is the usual case: `cp437` and `cp850` carry
-both of these walls and `cp1252` carries neither. The whole style falls back
-rather than the one character that failed, so a picture is never half in one
-style and half in another.
+**A style the destination cannot carry falls back to `ascii`**, without a
+word, the way the win banner falls back to its plain wording. What decides
+it is the encoding of the stream being written to, and on Windows that is
+not the console's code page: CPython writes to a console through
+`WriteConsoleW`, so `sys.stdout.encoding` reads `utf-8` there whatever `chcp`
+is set to, and both of these walls draw at `chcp 1252` as readily as at
+`chcp 437`. The fallback fires where a stream really names a legacy code
+page - output redirected to a file or a pipe under such a locale, or a run
+with `PYTHONLEGACYWINDOWSSTDIO=1`, which puts the legacy writer back in front
+of the console - and there `cp437` and `cp850` carry both of these walls
+while `cp1252` carries neither. The whole style falls back rather than the
+one character that failed, so a picture is never half in one style and half
+in another.
 
 **A maze is saved in `ascii` whatever it is drawn in.** The save format
 fixes the characters a picture is read back from, so a file drawn with the

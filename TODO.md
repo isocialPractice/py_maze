@@ -30,106 +30,6 @@ into a `## Complete` section at the bottom of this file.
   style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the two new walls on a real console
-
-#### Found Issues
-
-- [ ] `--style` is documented as falling back on a console's code page,
-  and on a real console it measurably does not
-  - **Issue**: the Drawing Styles section of `docs/options.md` says "A
-    Windows console on a legacy code page is the usual case: `cp437` and
-    `cp850` carry both of these walls and `cp1252` carries neither", and
-    the `drawable_style` docstring says "a console on a legacy code page
-    cannot carry the light cross". Read back off a real console, neither
-    holds: at `chcp 1252` both `--style box` and `--style block` draw
-    their own wall, every cell of the maze holding U+253C or U+2588 and
-    none holding U+FFFD. CPython writes to a Windows console through
-    `_WindowsConsoleIO`, which is `WriteConsoleW` and UTF-16, so
-    `sys.stdout.encoding` is `utf-8` on every code page and `can_encode`
-    is never asked the question the documentation describes. The
-    fallback itself is sound and was measured firing twice - output
-    redirected to a file under a `cp1252` locale, and a console run with
-    `PYTHONLEGACYWINDOWSSTDIO=1` - silently and exit 0 both times. What
-    is wrong is the trigger the documentation names, not the code
-  - **Goal**: name the thing that actually fires it - a stream whose
-    encoding is a legacy code page, which on Windows means redirected
-    output or the legacy stdio writer rather than the console's own code
-    page - in the Drawing Styles section of `docs/options.md` and in the
-    `drawable_style` docstring. The paragraph in `docs/playing.md`
-    beginning "That covers two different terminals" tells the same story
-    about the win banner and is worth reading in the same pass, though
-    the banner falls back on its non-BMP half either way and what it
-    prints is unaffected
-  - From: UI/UX Override - the two new walls on a real console
-- [ ] Pin the redraw against a style in the suite's own screen, so a wall
-  that is neither a space nor an asterisk cannot change the picture
-  - **Issue**: the console readings bore out what `frame_diff` comparing
-    whole lines implies - a dozen moves in `--style block`, a turn and a
-    backtrack among them, left the screen identical to the same walk in
-    `ascii` with the wall substituted, at 100, 40 and 15 columns. No test
-    walks a game through a move in a style at all: the style tests check
-    `maze_lines`, the overlays, the solver's legend and which style a
-    game was handed, and every redraw test runs in `ascii`, so the one
-    thing a style could break about the redraw is checked only by a
-    harness that needs a Windows console
-  - **Goal**: drive a `MazeGame` through a fixed dozen moves twice, once
-    per style, feeding `frame_diff` to the suite's `TerminalScreen` the
-    way the existing redraw tests do, and assert the block screen with
-    U+2588 put back to `*` equals the ascii screen row for row, at a
-    width the frame fills and one it does not. It is stdlib-only and
-    runs wherever the suite runs, unlike the console harness the
-    `Pin the partial redraw against a real Windows console` item under
-    `## UI/UX and Screen Drawing` already carries
-  - From: UI/UX Override - the two new walls on a real console
-- [ ] Draw a maze with a style whose eight fields differ, so the seven that
-  are unexercised stop being unexercised
-  - **Issue**: all three shipped styles are `ASCII_STYLE._replace(wall=...)`,
-    so `open_cell`, `player`, `solution`, `frontier`, `visited`, `hint` and
-    `collectible` hold the same character in every one of them, and every
-    test that reads a field compares it against `BLOCK_STYLE.<field>` -
-    which is that same ASCII character. Measured by mutation against the
-    whole suite: reverting `style.open_cell` in `maze_lines`,
-    `style.solution` in `solution_overlay`, `style.collectible` in
-    `collectible_overlay`, `style.frontier` and `style.visited` in
-    `animate_search`'s overlays and in its legend, and `self.style.player`,
-    `self.style.hint` and `self.style.collectible` in `MazeGame.frame`, each
-    to the module constant it replaced, leaves 1305 of 1305 tests green. Only
-    `style.wall` is caught, by 8 failures, and handing `self.style` to
-    `maze_lines` at all, by 3. `TestDrawingInAStyle` carries two tests that
-    read as covering this and do not -
-    `test_the_overlays_draw_what_the_style_they_are_given_draws` and
-    `test_the_solver_names_the_markers_its_frames_were_drawn_with` both pass
-    against code that ignores the style it was handed. A library caller
-    building a `MazeStyle` of its own is the case that breaks: seven of its
-    eight fields can stop being drawn with nothing in the suite noticing
-  - **Goal**: build one `MazeStyle` in the suite whose eight fields are eight
-    distinct characters, none of them a module constant's, draw the fixed
-    `seed=2024` maze with it through `maze_lines`, both overlays,
-    `animate_search` and `MazeGame.frame`, and assert each field's character
-    lands in the cells that field draws. Then re-run the mutations listed
-    above against the new test: a field whose mutation still passes is still
-    unexercised, whatever the test count says
-  - From: UI/UX Override - the two new walls on a real console
-- [ ] Correct the `--style` help text in the same pass as the two prose
-  locations queued above it
-  - **Issue**: `build_parser` tells every reader of `--help` that "A style
-    the terminal cannot draw falls back to ascii"
-    (`py_maze/cli.py` lines 482-483). That is the claim the first item of
-    this override measured as not holding - the fallback reads the stream's
-    encoding, which on a Windows console is `utf-8` whatever `chcp` says -
-    and `--help` is the most-read of the places that make it, but that
-    item's **Goal** names only the Drawing Styles section of
-    `docs/options.md` and the `drawable_style` docstring. A run working it
-    as written would correct both and leave `--help` promising a console a
-    fallback it never gets
-  - **Goal**: reword the help text in `py_maze/cli.py` alongside the other
-    two, keeping it short enough to read in the option list. The feature
-    lines in `README.md`, `docs/index.md` and `docs/CHEATSHEET.md` use the
-    same "terminal cannot draw" wording as a one-line summary; read them in
-    the same pass and decide whether a summary of this length needs the
-    distinction, rather than changing them by default
-  - From: UI/UX Override - the two new walls on a real console
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3398,5 +3298,100 @@ No items are currently queued in this section.
 - [x] Add a heavy-block style for a terminal whose font makes the asterisk
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
+- [x] `--style` is documented as falling back on a console's code page,
+  and on a real console it measurably does not
+  - **Issue**: the Drawing Styles section of `docs/options.md` says "A
+    Windows console on a legacy code page is the usual case: `cp437` and
+    `cp850` carry both of these walls and `cp1252` carries neither", and
+    the `drawable_style` docstring says "a console on a legacy code page
+    cannot carry the light cross". Read back off a real console, neither
+    holds: at `chcp 1252` both `--style box` and `--style block` draw
+    their own wall, every cell of the maze holding U+253C or U+2588 and
+    none holding U+FFFD. CPython writes to a Windows console through
+    `_WindowsConsoleIO`, which is `WriteConsoleW` and UTF-16, so
+    `sys.stdout.encoding` is `utf-8` on every code page and `can_encode`
+    is never asked the question the documentation describes. The
+    fallback itself is sound and was measured firing twice - output
+    redirected to a file under a `cp1252` locale, and a console run with
+    `PYTHONLEGACYWINDOWSSTDIO=1` - silently and exit 0 both times. What
+    is wrong is the trigger the documentation names, not the code
+  - **Goal**: name the thing that actually fires it - a stream whose
+    encoding is a legacy code page, which on Windows means redirected
+    output or the legacy stdio writer rather than the console's own code
+    page - in the Drawing Styles section of `docs/options.md` and in the
+    `drawable_style` docstring. The paragraph in `docs/playing.md`
+    beginning "That covers two different terminals" tells the same story
+    about the win banner and is worth reading in the same pass, though
+    the banner falls back on its non-BMP half either way and what it
+    prints is unaffected
+  - From: UI/UX Override - the two new walls on a real console
+- [x] Pin the redraw against a style in the suite's own screen, so a wall
+  that is neither a space nor an asterisk cannot change the picture
+  - **Issue**: the console readings bore out what `frame_diff` comparing
+    whole lines implies - a dozen moves in `--style block`, a turn and a
+    backtrack among them, left the screen identical to the same walk in
+    `ascii` with the wall substituted, at 100, 40 and 15 columns. No test
+    walks a game through a move in a style at all: the style tests check
+    `maze_lines`, the overlays, the solver's legend and which style a
+    game was handed, and every redraw test runs in `ascii`, so the one
+    thing a style could break about the redraw is checked only by a
+    harness that needs a Windows console
+  - **Goal**: drive a `MazeGame` through a fixed dozen moves twice, once
+    per style, feeding `frame_diff` to the suite's `TerminalScreen` the
+    way the existing redraw tests do, and assert the block screen with
+    U+2588 put back to `*` equals the ascii screen row for row, at a
+    width the frame fills and one it does not. It is stdlib-only and
+    runs wherever the suite runs, unlike the console harness the
+    `Pin the partial redraw against a real Windows console` item under
+    `## UI/UX and Screen Drawing` already carries
+  - From: UI/UX Override - the two new walls on a real console
+- [x] Draw a maze with a style whose eight fields differ, so the seven that
+  are unexercised stop being unexercised
+  - **Issue**: all three shipped styles are `ASCII_STYLE._replace(wall=...)`,
+    so `open_cell`, `player`, `solution`, `frontier`, `visited`, `hint` and
+    `collectible` hold the same character in every one of them, and every
+    test that reads a field compares it against `BLOCK_STYLE.<field>` -
+    which is that same ASCII character. Measured by mutation against the
+    whole suite: reverting `style.open_cell` in `maze_lines`,
+    `style.solution` in `solution_overlay`, `style.collectible` in
+    `collectible_overlay`, `style.frontier` and `style.visited` in
+    `animate_search`'s overlays and in its legend, and `self.style.player`,
+    `self.style.hint` and `self.style.collectible` in `MazeGame.frame`, each
+    to the module constant it replaced, leaves 1305 of 1305 tests green. Only
+    `style.wall` is caught, by 8 failures, and handing `self.style` to
+    `maze_lines` at all, by 3. `TestDrawingInAStyle` carries two tests that
+    read as covering this and do not -
+    `test_the_overlays_draw_what_the_style_they_are_given_draws` and
+    `test_the_solver_names_the_markers_its_frames_were_drawn_with` both pass
+    against code that ignores the style it was handed. A library caller
+    building a `MazeStyle` of its own is the case that breaks: seven of its
+    eight fields can stop being drawn with nothing in the suite noticing
+  - **Goal**: build one `MazeStyle` in the suite whose eight fields are eight
+    distinct characters, none of them a module constant's, draw the fixed
+    `seed=2024` maze with it through `maze_lines`, both overlays,
+    `animate_search` and `MazeGame.frame`, and assert each field's character
+    lands in the cells that field draws. Then re-run the mutations listed
+    above against the new test: a field whose mutation still passes is still
+    unexercised, whatever the test count says
+  - From: UI/UX Override - the two new walls on a real console
+- [x] Correct the `--style` help text in the same pass as the two prose
+  locations queued above it
+  - **Issue**: `build_parser` tells every reader of `--help` that "A style
+    the terminal cannot draw falls back to ascii"
+    (`py_maze/cli.py` lines 482-483). That is the claim the first item of
+    this override measured as not holding - the fallback reads the stream's
+    encoding, which on a Windows console is `utf-8` whatever `chcp` says -
+    and `--help` is the most-read of the places that make it, but that
+    item's **Goal** names only the Drawing Styles section of
+    `docs/options.md` and the `drawable_style` docstring. A run working it
+    as written would correct both and leave `--help` promising a console a
+    fallback it never gets
+  - **Goal**: reword the help text in `py_maze/cli.py` alongside the other
+    two, keeping it short enough to read in the option list. The feature
+    lines in `README.md`, `docs/index.md` and `docs/CHEATSHEET.md` use the
+    same "terminal cannot draw" wording as a one-line summary; read them in
+    the same pass and decide whether a summary of this length needs the
+    distinction, rather than changing them by default
+  - From: UI/UX Override - the two new walls on a real console
 
 </details>

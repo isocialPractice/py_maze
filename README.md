@@ -21,8 +21,8 @@ solvable mazes and navigate through them using your keyboard!
   open branching, or the straight runs and rooms of recursive division
 - 🔀 **Braiding**: Open the dead ends and the maze gains a second way through
 - 🎨 **Drawing Styles**: `--style` draws the same maze with asterisks, with
-  box-drawing characters or with solid blocks, falling back where a terminal
-  cannot show them
+  box-drawing characters or with solid blocks, falling back where the
+  destination cannot carry them
 - 🌱 **Repeatable Mazes**: Every run reports its seed, so a good maze can be generated again
 - 🧭 **Built-In Solver**: Print the shortest way through, or watch the search find it
 - 📐 **Measurements**: `--stats` reports the cells, dead ends, junctions,

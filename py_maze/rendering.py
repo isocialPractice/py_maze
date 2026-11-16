@@ -195,7 +195,7 @@ STYLES = {
 # beside the style so a new one is still a single entry to add
 STYLE_NOTES = {
     'ascii': 'asterisk walls, as py_maze has always drawn one',
-    'box': 'light box-drawing walls, where the terminal can draw them',
+    'box': 'light box-drawing walls, where the destination carries them',
     'block': 'solid block walls, for a font the asterisk reads poorly in',
 }
 
@@ -545,12 +545,23 @@ def named_style(name):
 def drawable_style(name=DEFAULT_STYLE, stream=None):
     """Settle on a style the destination can actually draw.
 
-    A style outside ASCII is a request rather than a setting: a console
-    on a legacy code page cannot carry the light cross, and one whose
-    cells hold a single code unit could carry a character and draw
-    something else in its place. So the named style is checked against
-    the stream before it is handed over, the way the win banner is
-    checked before it is printed.
+    A style outside ASCII is a request rather than a setting: a stream
+    whose encoding is a legacy code page cannot carry the light cross,
+    and a destination whose cells hold a single code unit could carry a
+    character and draw something else in its place. So the named style
+    is checked against the stream before it is handed over, the way the
+    win banner is checked before it is printed.
+
+    Neither half of that is the console's code page, which this never
+    reads. CPython writes to a Windows console through ``WriteConsoleW``,
+    so ``sys.stdout.encoding`` is ``utf-8`` there on every code page and
+    :func:`can_encode` is never asked about ``cp1252``: read back off
+    a real console at ``chcp 1252``, both walls draw. What does reach
+    the encoding half is a stream naming a code page of its own -
+    output redirected under such a locale, or the legacy Windows stdio
+    writer ``PYTHONLEGACYWINDOWSSTDIO`` puts back in front of the
+    console - and what reaches the cell half is a character above the
+    basic multilingual plane, which no style shipped here holds.
 
     The whole style falls back or none of it does. A picture half drawn
     in one style and half in another is a worse answer than either
