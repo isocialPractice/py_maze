@@ -30,6 +30,68 @@ into a `## Complete` section at the bottom of this file.
   style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
+### UI/UX Override - the corrected fallback claim on a real console
+
+#### Resolve Issues
+
+- [ ] Fallback Trigger 1 - of the two destinations the corrected sentence
+  names, the legacy stdio writer is not one the console's code page decides
+  either
+  - **Issue**: the Drawing Styles section of `docs/options.md` now closes
+    "The fallback fires where a stream really names a legacy code page -
+    output redirected to a file or a pipe under such a locale, or a run with
+    `PYTHONLEGACYWINDOWSSTDIO=1`, which puts the legacy writer back in front
+    of the console - and there `cp437` and `cp850` carry both of these walls
+    while `cp1252` carries neither". That trailing clause is true of the
+    first destination and misleading about the second. Read off a real
+    console, the legacy writer names the process's *ANSI* code page, not the
+    console's output code page: at `chcp 437` with
+    `PYTHONLEGACYWINDOWSSTDIO=1`, `sys.stdout.encoding` is `cp1252` and both
+    `--style box` and `--style block` fall back to `*`, though `cp437`
+    carries both walls. The same run on a `chcp 1252` console reports
+    `cp1252` as well, so the console's code page is not being read at all,
+    and the child reported `isatty` true in both, so the handle really was a
+    console rather than a reopened file descriptor. The fallback is the
+    right answer either way - the writer is what cannot encode the wall -
+    but a reader on a `cp437` console is told the code page decides there
+    and it does not, which is the expectation the paragraph above has just
+    finished taking away from the console. The `drawable_style` docstring
+    says "a stream naming a code page of its own" and is already correct
+  - **Goal**: Say that the legacy stdio writer names the process's ANSI code
+    page, so `chcp` decides no more there than it does on a console, and
+    keep the `cp437` and `cp850` clause for the destination it is true of -
+    a stream redirected under such a locale. The sentence is the only place
+    that needs it; `py_maze/rendering.py`, `CHANGELOG.md`, `README.md`,
+    `docs/index.md` and `docs/CHEATSHEET.md` all stop short of the clause
+  - From: UI/UX Override - the two new walls on a real console
+
+#### Found Issues
+
+- [ ] Nothing settles a style against a console, where the cell half of
+  `can_display` is the only half that can refuse
+  - **Issue**: every stream in `TestDrawableStyle` comes from
+    `stream_with`, a mock whose `fileno()` is not a descriptor, so
+    `is_a_terminal` answers False and the whole class settles on the
+    encoding half. Measured on a real console at `chcp 437`, `1252` and
+    `65001`, that is the half that never fires: `sys.stdout.encoding` is
+    `utf-8` on all three and `can_encode` passed everything asked of it. The
+    only refusal in 18 console runs came from the cell half - `can_display`
+    answered False for the win banner's party popper on every one of the
+    three code pages while `can_encode` answered True. So the path a style
+    would really fall back on at a console is the one path `drawable_style`
+    is never driven through. `TestCanDisplay` covers that branch for
+    `can_display` itself, with a stand-in that patches `is_a_terminal`;
+    nothing pairs it with a style
+  - **Goal**: Add a test to `TestDrawableStyle` that registers a style
+    holding a character above the basic multilingual plane - the
+    `collectible='\N{PARTY POPPER}'` style
+    `test_the_whole_style_falls_back_rather_than_the_marker` already builds
+    - and settles it against a console stand-in reporting `utf-8`, built the
+    way `TestCanDisplay.on_windows` builds one, asserting `ASCII_STYLE`
+    comes back. It is stdlib-only and runs wherever the suite runs, unlike
+    the console harness that measured it
+  - From: UI/UX Override - the corrected fallback claim on a real console
+
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3298,8 +3360,8 @@ No items are currently queued in this section.
 - [x] Add a heavy-block style for a terminal whose font makes the asterisk
   maze hard to read, using a full block for a wall and a space for a cell
   - From: Rendering Styles and Character Sets
-- [x] `--style` is documented as falling back on a console's code page,
-  and on a real console it measurably does not
+- [x] **Fallback Trigger**: `--style` is documented as falling back on a
+  console's code page, and on a real console it measurably does not
   - **Issue**: the Drawing Styles section of `docs/options.md` says "A
     Windows console on a legacy code page is the usual case: `cp437` and
     `cp850` carry both of these walls and `cp1252` carries neither", and
