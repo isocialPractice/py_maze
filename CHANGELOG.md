@@ -78,19 +78,19 @@ in the suite that can tell a field being read from a field being ignored.
   constant. Measured by mutation before the change: reverting
   `style.open_cell` in `maze_lines`, `style.solution` in
   `solution_overlay`, `style.collectible` in `collectible_overlay`,
-  `style.frontier` and `style.visited` in `animate_search`'s overlays
-  and in its legend, and `self.style.player`, `self.style.hint` and
-  `self.style.collectible` in `MazeGame.frame`, each to the constant it
-  replaced, left the whole suite green. `TestEveryFieldOfAStyleDraws`
-  draws the fixed `seed=2024` maze with a `MazeStyle` of eight
-  characters no module defines, through `maze_lines`, both overlays,
-  `animate_search` and `MazeGame.frame` in every mode, and asserts each
-  field's character lands in the cells that field draws. Re-run against
-  it, all twelve of those mutations now fail at least one test. Two of
-  its tests are guards rather than readings - that the style shares no
-  character with any module marker, and that no shipped style could have
-  done this job - because without the first every assertion holds
-  whether the field was read or not
+  `style.frontier` and `style.visited` in `animate_search`'s overlays,
+  those two and `style.solution` in its legend, and `self.style.player`,
+  `self.style.hint` and `self.style.collectible` in `MazeGame.frame`,
+  each to the constant it replaced, left the whole suite green.
+  `TestEveryFieldOfAStyleDraws` draws the fixed `seed=2024` maze with a
+  `MazeStyle` of eight characters no module defines, through
+  `maze_lines`, both overlays, `animate_search` and `MazeGame.frame` in
+  every mode, and asserts each field's character lands in the cells that
+  field draws. Re-run against it, all eleven of those mutations now fail
+  at least one test. Two of its tests are guards rather than readings -
+  that the style shares no character with any module marker, and that no
+  shipped style could have done this job - because without the first
+  every assertion holds whether the field was read or not
 - **The redraw pinned against a style in the suite's own screen.** No
   test walked a game through a move in a style at all: the style tests
   read `maze_lines`, the overlays, the solver's legend and which style a
