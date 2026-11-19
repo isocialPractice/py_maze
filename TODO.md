@@ -64,6 +64,43 @@ into a `## Complete` section at the bottom of this file.
     that needs it; `py_maze/rendering.py`, `CHANGELOG.md`, `README.md`,
     `docs/index.md` and `docs/CHEATSHEET.md` all stop short of the clause
   - From: UI/UX Override - the two new walls on a real console
+- [ ] Eight Distinct Fields 1 - the mode screen test subtracts the very
+  markers it exists to detect, so its subset assertion reads nothing
+  - **Issue**: `test_every_mode_draws_its_whole_play_screen_from_the_style`
+    in `TestEveryFieldOfAStyleDraws` closes with
+    `assertLessEqual(set(''.join(rows)) - self.MARKERS, set(self.STYLE))`.
+    `MARKERS` holds all twelve module markers, and eight of those twelve
+    are the characters a style field falls back to, so every fallback the
+    test exists to catch is subtracted out before the comparison runs.
+    Measured: with `py_maze/rendering.py:308` changed to
+    `line += WALL_MARKER if wall else OPEN_MARKER`, this test passes - the
+    walls come back `*` and the open cells ` `, both in `MARKERS`, both
+    removed. Four other tests in the class do fail, so the mutation does
+    not survive the suite; what is wrong is that this test contributes
+    nothing to catching it. A sweep of all twelve style field reads shows
+    the test catching only `self.style.player`, which is its one positive
+    assertion: it misses `self.style.hint` and `self.style.collectible`,
+    caught solely by
+    `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`, and
+    misses `style.wall`, which the pre-existing
+    `TestStyleOption.test_every_mode_plays_in_the_style_it_was_handed`
+    catches for all three modes. The comment above it says "the reading
+    here is that nothing a style does reach falls back to a module
+    constant", which is the one reading the assertion cannot perform. The
+    screen it reads is thin as well: no `hint_cells` are set and no
+    `collectibles` passed, so only the wall, the open cell and the player
+    ever reach it, three of the eight fields
+  - **Goal**: Subtract only the markers a mode legitimately draws -
+    `CHASER_MARKER`, `DOOR_MARKER`, `BOX_MARKER` and `GUIDE_MARKER` -
+    rather than the whole of `MARKERS`, so a field falling back to its
+    module constant stays in the set and fails the subset. Then give the
+    test something to read: set `hint_cells` and pass `collectibles` the
+    way `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`
+    does, so a mode's screen carries more than three of the eight fields.
+    Re-run the eleven mutations the `1.0.0a18` entry lists against it; the
+    test should then fail on the `maze_lines` and `MazeGame.frame` ones
+    rather than on the player alone
+  - From: UI/UX Override - the two new walls on a real console
 
 #### Found Issues
 
@@ -90,6 +127,21 @@ into a `## Complete` section at the bottom of this file.
     way `TestCanDisplay.on_windows` builds one, asserting `ASCII_STYLE`
     comes back. It is stdlib-only and runs wherever the suite runs, unlike
     the console harness that measured it
+  - From: UI/UX Override - the corrected fallback claim on a real console
+- [ ] `TestRedrawInAStyle.LINES` says "either width" where three widths are
+  taken
+  - **Issue**: the comment on `LINES = 24` reads "rows enough that
+    `fit_frame` never cuts the frame, at either width", and `WIDTHS` holds
+    three of them - `WIDE = 100`, `NARROW = 40` and `TIGHT = 15`. The
+    substance of the comment is right: `frame_height` of the `seed=2024`
+    play frame is 18, 19 and 22 rows at those three widths against
+    `LINES = 24`, so `fit_frame` hands all 18 lines back untouched at every
+    one of them, and the pin compares two screens rather than two windows.
+    Only the count is wrong, and a reader checking whether the tightest
+    width was allowed for is told it was never considered
+  - **Goal**: Say "at every width" or "at all three widths". The sibling
+    comment on `WIDE`, `NARROW` and `TIGHT` directly above already
+    describes three, so this is the only line in the class that counts two
   - From: UI/UX Override - the corrected fallback claim on a real console
 
 ## Fixes and Hardening
@@ -3407,8 +3459,8 @@ No items are currently queued in this section.
     `Pin the partial redraw against a real Windows console` item under
     `## UI/UX and Screen Drawing` already carries
   - From: UI/UX Override - the two new walls on a real console
-- [x] Draw a maze with a style whose eight fields differ, so the seven that
-  are unexercised stop being unexercised
+- [x] **Eight Distinct Fields**: Draw a maze with a style whose eight fields
+  differ, so the seven that are unexercised stop being unexercised
   - **Issue**: all three shipped styles are `ASCII_STYLE._replace(wall=...)`,
     so `open_cell`, `player`, `solution`, `frontier`, `visited`, `hint` and
     `collectible` hold the same character in every one of them, and every
