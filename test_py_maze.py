@@ -95,14 +95,23 @@ SITE_NAV_PATH = os.path.join(DOCS_DIR, '_data', 'nav.yml')
 README_MAX_LINES = 300
 README_MAX_CHARACTERS = 30000
 
-# the one Markdown document in the repository root that is written by a
+# the Markdown documents in the repository root that are written by a
 # tool rather than by a person: the archive the completed-items roll
-# creates beside TODO.md for a repository that asks for one. It holds
-# finished items verbatim, so its shape is the archiver's and not this
-# repository's to keep, and the checks that read the root for documents
-# leave it out rather than measuring generated text. It may not be on
-# disk at all, which is the ordinary state
+# creates beside TODO.md for a repository that asks for one, and the year
+# files the changelog roll moves older entries into. Each holds text
+# verbatim under a heading the roll writes itself, so the shape is the
+# roll's and not this repository's to keep, and the checks that read the
+# root for documents leave them out rather than measuring generated text.
+# Neither need be on disk at all, which was the ordinary state until
+# 2026-11-23
+#
+# The changelog's are matched on the pattern rather than named, because
+# there is one per year: a list of them is a list that falls behind on a
+# January 1st, and what it would fail is the check holding the root
+# against DOCUMENTS - which is to say the new year would be reported as
+# an unread document rather than as a list needing a line
 GENERATED_DOCUMENT = 'TODO-archive.md'
+ROLLED_CHANGELOG = re.compile(r'^CHANGELOG-\d{4}\.md$')
 
 # the width this file is written to. 3.0.1 re-wrapped a line whose
 # backslash and newline had arrived as seventeen spaces, leaving a
@@ -205,10 +214,12 @@ def root_documents():
     #
     # Returns:
     #     set: The file names, without the folder in front of them, and
-    #     without the one document GENERATED_DOCUMENT names
+    #     without the generated documents GENERATED_DOCUMENT and
+    #     ROLLED_CHANGELOG name
 
     return {name for name in os.listdir(PROJECT_ROOT)
-            if name.endswith('.md') and name != GENERATED_DOCUMENT}
+            if name.endswith('.md') and name != GENERATED_DOCUMENT
+            and not ROLLED_CHANGELOG.match(name)}
 
 
 def package_modules():
@@ -16296,6 +16307,40 @@ class TestDrawableStyle(unittest.TestCase):
         stream.encoding = encoding
         return stream
 
+    def console_with(self, encoding='utf-8'):
+        # Returns:
+        #     A stream standing in for a console screen buffer rather
+        #     than a file: it names an encoding and answers as a
+        #     terminal, so the cell-width half of can_display is the
+        #     half that decides for it
+
+        stream = mock.Mock()
+        stream.encoding = encoding
+        return stream
+
+    def on_a_console(self, terminal=True):
+        # the classic console host a style is drawn to, as can_display
+        # reads it off: the platform, whether the stream is a terminal
+        # at all, and Windows Terminal not having announced itself.
+        # Built the way TestCanDisplay.on_windows builds one, that
+        # being the class that covers this branch for can_display
+        # itself
+        #
+        # Returns:
+        #     A context manager holding all three in place
+
+        environment = dict(os.environ)
+        environment.pop(py_maze.WINDOWS_TERMINAL_VARIABLE, None)
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(sys, 'platform', 'win32'))
+        stack.enter_context(mock.patch.dict(os.environ, environment,
+                                            clear=True))
+        stack.enter_context(mock.patch.object(py_maze.rendering,
+                                              'is_a_terminal',
+                                              return_value=terminal))
+        return stack
+
     def test_a_destination_that_draws_the_style_gets_the_style(self):
         self.assertIs(py_maze.drawable_style('box',
                                              self.stream_with('utf-8')),
@@ -16338,6 +16383,47 @@ class TestDrawableStyle(unittest.TestCase):
                                            self.stream_with('ascii'))
 
         self.assertIs(drawn, py_maze.ASCII_STYLE)
+
+    def test_a_console_cell_refuses_a_style_its_encoding_would_carry(self):
+        # the half of can_display every other test in this class
+        # settles away from, and the only half a real console was
+        # measured refusing on. Read back at chcp 437, 1252 and 65001,
+        # sys.stdout.encoding is utf-8 on all three and can_encode
+        # passed everything asked of it; the one refusal in 18 console
+        # runs was the cell half turning down the win banner's party
+        # popper on every one of the three code pages. So the path a
+        # style would really fall back on at a console is this one, and
+        # the style written here is the one that takes it: a character
+        # above the basic multilingual plane, which the encoding lets
+        # through and a UCS-2 cell cannot hold
+        unwritable = py_maze.ASCII_STYLE._replace(
+            collectible='\N{PARTY POPPER}')
+        console = self.console_with()
+
+        with mock.patch.dict(py_maze.rendering.STYLES,
+                             {'poppers': unwritable}), self.on_a_console():
+            drawn = py_maze.drawable_style('poppers', console)
+
+            # what makes the fallback above the cell half's rather
+            # than the encoding's: the code page carries every
+            # character of the style it just gave way for
+            self.assertTrue(py_maze.can_encode(''.join(unwritable),
+                                               console))
+
+        self.assertIs(drawn, py_maze.ASCII_STYLE)
+
+    def test_the_same_console_keeps_a_style_it_can_draw(self):
+        # the control the test above needs: a console stand-in that
+        # refused everything would pass it without reading a style at
+        # all. Both shipped walls are inside the plane, so the cell
+        # half has nothing to object to and the style asked for is the
+        # style drawn
+        with self.on_a_console():
+            for name, style in py_maze.STYLES.items():
+                with self.subTest(style=name):
+                    self.assertIs(
+                        py_maze.drawable_style(name, self.console_with()),
+                        style)
 
     def test_a_name_no_style_answers_to_is_refused_before_the_stream(self):
         with self.assertRaises(ValueError):
@@ -16489,7 +16575,10 @@ class TestRedrawInAStyle(unittest.TestCase):
     # every width the pin is taken at, widest first
     WIDTHS = (WIDE, NARROW, TIGHT)
 
-    # rows enough that fit_frame never cuts the frame, at either width
+    # rows enough that fit_frame never cuts the frame, at every one of
+    # those widths: the seed=2024 play frame occupies 18, 19 and 22 rows
+    # at them, so all 18 of its lines come back untouched and the pin
+    # compares two screens rather than two windows
     LINES = 24
 
     def grid(self):
@@ -16594,6 +16683,17 @@ class TestEveryFieldOfAStyleDraws(unittest.TestCase):
     # none of. Every one of them is what a field falls back to once
     # the field stops being read
     MARKERS = frozenset('* o.?~$X#&@')
+
+    # the four of those a mode lays over the maze itself, which belong
+    # to the mode rather than to the style and are drawn whatever a run
+    # is drawing in. These are the only markers a mode's play screen
+    # may legitimately carry, and so the only ones subtracted before a
+    # screen is read against the style it was drawn in: the other eight
+    # of MARKERS are exactly what a style field falls back to, and
+    # taking those out as well removes every fallback the reading
+    # exists to catch before the comparison runs
+    MODE_MARKERS = frozenset([py_maze.CHASER_MARKER, py_maze.DOOR_MARKER,
+                              py_maze.BOX_MARKER, py_maze.GUIDE_MARKER])
 
     # open cells of the fixed maze the solution does not run through,
     # so a pickup laid on one is a cell the solution overlay is not
@@ -16729,17 +16829,35 @@ class TestEveryFieldOfAStyleDraws(unittest.TestCase):
     def test_every_mode_draws_its_whole_play_screen_from_the_style(self):
         # a mode lays its own markers over the maze, and those are the
         # mode's rather than the style's, so the reading here is that
-        # nothing a style does reach falls back to a module constant
+        # nothing a style does reach falls back to a module constant.
+        # MODE_MARKERS is what that costs and all it costs: subtracting
+        # the whole of MARKERS instead takes the eight characters a
+        # style field falls back to out of the set as well, and the
+        # subset then holds against a screen drawn entirely in module
+        # constants
         grid = self.grid()
 
         for name in py_maze.MODES:
             with self.subTest(mode=name):
-                game = py_maze.game_mode(name)(grid, style=self.STYLE)
+                # the pickups come in with the game and the hint cells
+                # are set the way show_hint sets them, so a mode's
+                # screen carries five of the eight fields rather than
+                # the wall, the open cell and the player alone
+                game = py_maze.game_mode(name)(grid, self.PICKUPS,
+                                               style=self.STYLE)
+                game.hint_cells = set(self.HINTS)
                 rows = self.rows_of(game.frame(), grid)
 
                 self.assertEqual(rows[game.player_y][game.player_x],
                                  self.STYLE.player)
-                self.assertLessEqual(set(''.join(rows)) - self.MARKERS,
+                for x, y in sorted(self.HINTS):
+                    with self.subTest(hint=(x, y)):
+                        self.assertEqual(rows[y][x], self.STYLE.hint)
+                for x, y in sorted(self.PICKUPS):
+                    with self.subTest(pickup=(x, y)):
+                        self.assertEqual(rows[y][x], self.STYLE.collectible)
+
+                self.assertLessEqual(set(''.join(rows)) - self.MODE_MARKERS,
                                      set(self.STYLE))
 
 
@@ -16912,6 +17030,23 @@ class TestDrawingStylesDocumented(unittest.TestCase):
 
         self.assertIn('falls back', said)
         self.assertIn('save', said)
+
+    def test_the_section_says_which_code_page_the_legacy_writer_reads(self):
+        # the clause this paragraph has now been corrected over twice,
+        # both times for saying the console's code page decides
+        # something it does not. Neither destination the fallback fires
+        # on reads it: a redirected stream takes its locale's code
+        # page, and the legacy stdio writer takes the process's ANSI
+        # code page. Measured at `chcp 437` with
+        # PYTHONLEGACYWINDOWSSTDIO=1, where `sys.stdout.encoding` is
+        # cp1252 and both walls fall back though cp437 carries them, on
+        # a handle reporting isatty true. So naming the writer and not
+        # naming the code page it reads is the shape of the mistake,
+        # and it is the pair that is pinned
+        said = self.section()
+
+        self.assertIn('PYTHONLEGACYWINDOWSSTDIO', said)
+        self.assertIn('ANSI code page', said)
 
     def test_the_readme_sends_a_reader_to_the_option(self):
         self.assertIn('`--style`', read_project_file(README_PATH))

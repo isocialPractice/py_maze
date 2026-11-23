@@ -30,120 +30,6 @@ into a `## Complete` section at the bottom of this file.
   style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
-### UI/UX Override - the corrected fallback claim on a real console
-
-#### Resolve Issues
-
-- [ ] Fallback Trigger 1 - of the two destinations the corrected sentence
-  names, the legacy stdio writer is not one the console's code page decides
-  either
-  - **Issue**: the Drawing Styles section of `docs/options.md` now closes
-    "The fallback fires where a stream really names a legacy code page -
-    output redirected to a file or a pipe under such a locale, or a run with
-    `PYTHONLEGACYWINDOWSSTDIO=1`, which puts the legacy writer back in front
-    of the console - and there `cp437` and `cp850` carry both of these walls
-    while `cp1252` carries neither". That trailing clause is true of the
-    first destination and misleading about the second. Read off a real
-    console, the legacy writer names the process's *ANSI* code page, not the
-    console's output code page: at `chcp 437` with
-    `PYTHONLEGACYWINDOWSSTDIO=1`, `sys.stdout.encoding` is `cp1252` and both
-    `--style box` and `--style block` fall back to `*`, though `cp437`
-    carries both walls. The same run on a `chcp 1252` console reports
-    `cp1252` as well, so the console's code page is not being read at all,
-    and the child reported `isatty` true in both, so the handle really was a
-    console rather than a reopened file descriptor. The fallback is the
-    right answer either way - the writer is what cannot encode the wall -
-    but a reader on a `cp437` console is told the code page decides there
-    and it does not, which is the expectation the paragraph above has just
-    finished taking away from the console. The `drawable_style` docstring
-    says "a stream naming a code page of its own" and is already correct
-  - **Goal**: Say that the legacy stdio writer names the process's ANSI code
-    page, so `chcp` decides no more there than it does on a console, and
-    keep the `cp437` and `cp850` clause for the destination it is true of -
-    a stream redirected under such a locale. The sentence is the only place
-    that needs it; `py_maze/rendering.py`, `CHANGELOG.md`, `README.md`,
-    `docs/index.md` and `docs/CHEATSHEET.md` all stop short of the clause
-  - From: UI/UX Override - the two new walls on a real console
-- [ ] Eight Distinct Fields 1 - the mode screen test subtracts the very
-  markers it exists to detect, so its subset assertion reads nothing
-  - **Issue**: `test_every_mode_draws_its_whole_play_screen_from_the_style`
-    in `TestEveryFieldOfAStyleDraws` closes with
-    `assertLessEqual(set(''.join(rows)) - self.MARKERS, set(self.STYLE))`.
-    `MARKERS` holds all twelve module markers, and eight of those twelve
-    are the characters a style field falls back to, so every fallback the
-    test exists to catch is subtracted out before the comparison runs.
-    Measured: with `py_maze/rendering.py:308` changed to
-    `line += WALL_MARKER if wall else OPEN_MARKER`, this test passes - the
-    walls come back `*` and the open cells ` `, both in `MARKERS`, both
-    removed. Four other tests in the class do fail, so the mutation does
-    not survive the suite; what is wrong is that this test contributes
-    nothing to catching it. A sweep of all twelve style field reads shows
-    the test catching only `self.style.player`, which is its one positive
-    assertion: it misses `self.style.hint` and `self.style.collectible`,
-    caught solely by
-    `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`, and
-    misses `style.wall`, which the pre-existing
-    `TestStyleOption.test_every_mode_plays_in_the_style_it_was_handed`
-    catches for all three modes. The comment above it says "the reading
-    here is that nothing a style does reach falls back to a module
-    constant", which is the one reading the assertion cannot perform. The
-    screen it reads is thin as well: no `hint_cells` are set and no
-    `collectibles` passed, so only the wall, the open cell and the player
-    ever reach it, three of the eight fields
-  - **Goal**: Subtract only the markers a mode legitimately draws -
-    `CHASER_MARKER`, `DOOR_MARKER`, `BOX_MARKER` and `GUIDE_MARKER` -
-    rather than the whole of `MARKERS`, so a field falling back to its
-    module constant stays in the set and fails the subset. Then give the
-    test something to read: set `hint_cells` and pass `collectibles` the
-    way `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`
-    does, so a mode's screen carries more than three of the eight fields.
-    Re-run the eleven mutations the `1.0.0a18` entry lists against it; the
-    test should then fail on the `maze_lines` and `MazeGame.frame` ones
-    rather than on the player alone
-  - From: UI/UX Override - the two new walls on a real console
-
-#### Found Issues
-
-- [ ] Nothing settles a style against a console, where the cell half of
-  `can_display` is the only half that can refuse
-  - **Issue**: every stream in `TestDrawableStyle` comes from
-    `stream_with`, a mock whose `fileno()` is not a descriptor, so
-    `is_a_terminal` answers False and the whole class settles on the
-    encoding half. Measured on a real console at `chcp 437`, `1252` and
-    `65001`, that is the half that never fires: `sys.stdout.encoding` is
-    `utf-8` on all three and `can_encode` passed everything asked of it. The
-    only refusal in 18 console runs came from the cell half - `can_display`
-    answered False for the win banner's party popper on every one of the
-    three code pages while `can_encode` answered True. So the path a style
-    would really fall back on at a console is the one path `drawable_style`
-    is never driven through. `TestCanDisplay` covers that branch for
-    `can_display` itself, with a stand-in that patches `is_a_terminal`;
-    nothing pairs it with a style
-  - **Goal**: Add a test to `TestDrawableStyle` that registers a style
-    holding a character above the basic multilingual plane - the
-    `collectible='\N{PARTY POPPER}'` style
-    `test_the_whole_style_falls_back_rather_than_the_marker` already builds
-    - and settles it against a console stand-in reporting `utf-8`, built the
-    way `TestCanDisplay.on_windows` builds one, asserting `ASCII_STYLE`
-    comes back. It is stdlib-only and runs wherever the suite runs, unlike
-    the console harness that measured it
-  - From: UI/UX Override - the corrected fallback claim on a real console
-- [ ] `TestRedrawInAStyle.LINES` says "either width" where three widths are
-  taken
-  - **Issue**: the comment on `LINES = 24` reads "rows enough that
-    `fit_frame` never cuts the frame, at either width", and `WIDTHS` holds
-    three of them - `WIDE = 100`, `NARROW = 40` and `TIGHT = 15`. The
-    substance of the comment is right: `frame_height` of the `seed=2024`
-    play frame is 18, 19 and 22 rows at those three widths against
-    `LINES = 24`, so `fit_frame` hands all 18 lines back untouched at every
-    one of them, and the pin compares two screens rather than two windows.
-    Only the count is wrong, and a reader checking whether the tightest
-    width was allowed for is told it was never considered
-  - **Goal**: Say "at every width" or "at all three widths". The sibling
-    comment on `WIDE`, `NARROW` and `TIGHT` directly above already
-    describes three, so this is the only line in the class that counts two
-  - From: UI/UX Override - the corrected fallback claim on a real console
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -3507,5 +3393,111 @@ No items are currently queued in this section.
     the same pass and decide whether a summary of this length needs the
     distinction, rather than changing them by default
   - From: UI/UX Override - the two new walls on a real console
+- [x] Fallback Trigger 1 - of the two destinations the corrected sentence
+  names, the legacy stdio writer is not one the console's code page decides
+  either
+  - **Issue**: the Drawing Styles section of `docs/options.md` now closes
+    "The fallback fires where a stream really names a legacy code page -
+    output redirected to a file or a pipe under such a locale, or a run with
+    `PYTHONLEGACYWINDOWSSTDIO=1`, which puts the legacy writer back in front
+    of the console - and there `cp437` and `cp850` carry both of these walls
+    while `cp1252` carries neither". That trailing clause is true of the
+    first destination and misleading about the second. Read off a real
+    console, the legacy writer names the process's *ANSI* code page, not the
+    console's output code page: at `chcp 437` with
+    `PYTHONLEGACYWINDOWSSTDIO=1`, `sys.stdout.encoding` is `cp1252` and both
+    `--style box` and `--style block` fall back to `*`, though `cp437`
+    carries both walls. The same run on a `chcp 1252` console reports
+    `cp1252` as well, so the console's code page is not being read at all,
+    and the child reported `isatty` true in both, so the handle really was a
+    console rather than a reopened file descriptor. The fallback is the
+    right answer either way - the writer is what cannot encode the wall -
+    but a reader on a `cp437` console is told the code page decides there
+    and it does not, which is the expectation the paragraph above has just
+    finished taking away from the console. The `drawable_style` docstring
+    says "a stream naming a code page of its own" and is already correct
+  - **Goal**: Say that the legacy stdio writer names the process's ANSI code
+    page, so `chcp` decides no more there than it does on a console, and
+    keep the `cp437` and `cp850` clause for the destination it is true of -
+    a stream redirected under such a locale. The sentence is the only place
+    that needs it; `py_maze/rendering.py`, `CHANGELOG.md`, `README.md`,
+    `docs/index.md` and `docs/CHEATSHEET.md` all stop short of the clause
+  - From: UI/UX Override - the two new walls on a real console
+- [x] Eight Distinct Fields 1 - the mode screen test subtracts the very
+  markers it exists to detect, so its subset assertion reads nothing
+  - **Issue**: `test_every_mode_draws_its_whole_play_screen_from_the_style`
+    in `TestEveryFieldOfAStyleDraws` closes with
+    `assertLessEqual(set(''.join(rows)) - self.MARKERS, set(self.STYLE))`.
+    `MARKERS` holds all twelve module markers, and eight of those twelve
+    are the characters a style field falls back to, so every fallback the
+    test exists to catch is subtracted out before the comparison runs.
+    Measured: with `py_maze/rendering.py:308` changed to
+    `line += WALL_MARKER if wall else OPEN_MARKER`, this test passes - the
+    walls come back `*` and the open cells ` `, both in `MARKERS`, both
+    removed. Four other tests in the class do fail, so the mutation does
+    not survive the suite; what is wrong is that this test contributes
+    nothing to catching it. A sweep of all twelve style field reads shows
+    the test catching only `self.style.player`, which is its one positive
+    assertion: it misses `self.style.hint` and `self.style.collectible`,
+    caught solely by
+    `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`, and
+    misses `style.wall`, which the pre-existing
+    `TestStyleOption.test_every_mode_plays_in_the_style_it_was_handed`
+    catches for all three modes. The comment above it says "the reading
+    here is that nothing a style does reach falls back to a module
+    constant", which is the one reading the assertion cannot perform. The
+    screen it reads is thin as well: no `hint_cells` are set and no
+    `collectibles` passed, so only the wall, the open cell and the player
+    ever reach it, three of the eight fields
+  - **Goal**: Subtract only the markers a mode legitimately draws -
+    `CHASER_MARKER`, `DOOR_MARKER`, `BOX_MARKER` and `GUIDE_MARKER` -
+    rather than the whole of `MARKERS`, so a field falling back to its
+    module constant stays in the set and fails the subset. Then give the
+    test something to read: set `hint_cells` and pass `collectibles` the
+    way `test_the_play_screen_draws_the_player_the_hint_and_the_pickup`
+    does, so a mode's screen carries more than three of the eight fields.
+    Re-run the eleven mutations the `1.0.0a18` entry lists against it; the
+    test should then fail on the `maze_lines` and `MazeGame.frame` ones
+    rather than on the player alone
+  - From: UI/UX Override - the two new walls on a real console
+- [x] Nothing settles a style against a console, where the cell half of
+  `can_display` is the only half that can refuse
+  - **Issue**: every stream in `TestDrawableStyle` comes from
+    `stream_with`, a mock whose `fileno()` is not a descriptor, so
+    `is_a_terminal` answers False and the whole class settles on the
+    encoding half. Measured on a real console at `chcp 437`, `1252` and
+    `65001`, that is the half that never fires: `sys.stdout.encoding` is
+    `utf-8` on all three and `can_encode` passed everything asked of it. The
+    only refusal in 18 console runs came from the cell half - `can_display`
+    answered False for the win banner's party popper on every one of the
+    three code pages while `can_encode` answered True. So the path a style
+    would really fall back on at a console is the one path `drawable_style`
+    is never driven through. `TestCanDisplay` covers that branch for
+    `can_display` itself, with a stand-in that patches `is_a_terminal`;
+    nothing pairs it with a style
+  - **Goal**: Add a test to `TestDrawableStyle` that registers a style
+    holding a character above the basic multilingual plane - the
+    `collectible='\N{PARTY POPPER}'` style
+    `test_the_whole_style_falls_back_rather_than_the_marker` already builds
+    - and settles it against a console stand-in reporting `utf-8`, built the
+    way `TestCanDisplay.on_windows` builds one, asserting `ASCII_STYLE`
+    comes back. It is stdlib-only and runs wherever the suite runs, unlike
+    the console harness that measured it
+  - From: UI/UX Override - the corrected fallback claim on a real console
+- [x] `TestRedrawInAStyle.LINES` says "either width" where three widths are
+  taken
+  - **Issue**: the comment on `LINES = 24` reads "rows enough that
+    `fit_frame` never cuts the frame, at either width", and `WIDTHS` holds
+    three of them - `WIDE = 100`, `NARROW = 40` and `TIGHT = 15`. The
+    substance of the comment is right: `frame_height` of the `seed=2024`
+    play frame is 18, 19 and 22 rows at those three widths against
+    `LINES = 24`, so `fit_frame` hands all 18 lines back untouched at every
+    one of them, and the pin compares two screens rather than two windows.
+    Only the count is wrong, and a reader checking whether the tightest
+    width was allowed for is told it was never considered
+  - **Goal**: Say "at every width" or "at all three widths". The sibling
+    comment on `WIDE`, `NARROW` and `TIGHT` directly above already
+    describes three, so this is the only line in the class that counts two
+  - From: UI/UX Override - the corrected fallback claim on a real console
 
 </details>

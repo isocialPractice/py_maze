@@ -211,10 +211,15 @@ The shape of those files is read too. No two blank lines in a row stand in
 `CHANGELOG.md`, `README.md`, `TODO.md`, `CONTRIBUTING.md`,
 `DESIGN_LANGUAGE.md`, `KNOWN_BUGS.md` or any page here - the pair
 markdownlint MD012 names, which renders as one. That is every Markdown
-document in the repository root, and the root is read back to hold it so - a
-document added there and to nothing else fails the suite rather than being
-left unread. What sits inside a fenced code block is left out of the count
-the way MD012 leaves it out, so an example can be spaced the way PEP 8 asks.
+document in the repository root a person writes, and the root is read back to
+hold it so - a document added there and to nothing else fails the suite rather
+than being left unread. The ones a tool writes are left out, those being
+`TODO-archive.md`, where finished `TODO.md` items roll, and the
+`CHANGELOG-<year>.md` files older changelog entries roll into: each holds text
+verbatim under a heading the roll writes, so its shape belongs to the roll
+rather than to this repository. What sits inside a fenced code block is left
+out of the count the way MD012 leaves it out, so an example can be spaced the
+way PEP 8 asks.
 A fence is read inside a blockquote as well as outside one, closing at the
 depth it opened at, and every document is held to closing every fence it
 opens: one that never closes reads to the end of its document and takes the

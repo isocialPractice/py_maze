@@ -230,9 +230,13 @@ that drifts from the package fails the suite rather than a reader. It reads
 them for their shape as well: this file, `CHANGELOG.md`, `README.md`,
 `TODO.md`, `DESIGN_LANGUAGE.md`, `KNOWN_BUGS.md` and every page carry no two
 blank lines in a row, which is the pair markdownlint MD012 names and which
-renders as one. That is every Markdown document the repository root carries,
-and the root is read back to hold it so: a document added there and to
-nothing else fails the suite rather than being quietly left unread.
+renders as one. That is every Markdown document the repository root carries
+that a person writes, and the root is read back to hold it so: a document
+added there and to nothing else fails the suite rather than being quietly
+left unread. What a tool writes is left out - `TODO-archive.md` and the
+`CHANGELOG-<year>.md` files the two rolls move finished items and older
+entries into - because the shape of those is the roll's rather than this
+repository's.
 
 What is inside a fenced code block is left out of that count, as MD012
 leaves it out: the blank lines in there belong to the code rather than to
