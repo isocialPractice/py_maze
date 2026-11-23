@@ -53,3 +53,5 @@ blog-posts/
 *.swp
 .DS_Store
 Thumbs.db
+CHANGELOG-*.md 
+TODO-archive.md 
