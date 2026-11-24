@@ -426,6 +426,25 @@ added an option.
   exported the moment they existed and the page is what is still owed
 - [ ] Extend `TestCarvingSectionExamples` to run each documented style, so a
   style that stops drawing what the documentation shows fails the suite
+- [ ] Pin what the legacy stdio writer's code page actually is, on the
+  `windows-latest` runner the matrix already has.
+  `test_the_section_says_which_code_page_the_legacy_writer_reads` checks
+  that the Drawing Styles paragraph *says* `PYTHONLEGACYWINDOWSSTDIO` and
+  `ANSI code page`, which pins the clause's wording and not its truth: the
+  sentence has now been corrected twice for naming the wrong half of the
+  fallback, and the behaviour it reports is pinned nowhere, so a third
+  misreading would pass the suite exactly as the first two did. A test on
+  the Windows runner could assert the pair directly - put the console's
+  output code page somewhere `GetACP()` is not, run a child with
+  `PYTHONLEGACYWINDOWSSTDIO=1`, and assert its `sys.stdout.encoding` names
+  `cp<GetACP()>` rather than `cp<GetConsoleOutputCP()>`, with a child run
+  without the variable reporting `utf-8` on that same console as the
+  control that keeps a test which refused everything from passing. Measured
+  11-24-26 on conhost at `chcp` 437, 1252 and 65001: `cp1252` on all three
+  with the variable set and `utf-8` on all three without it, so the
+  assertion holds on every code page the two differ on. Skip where
+  `sys.platform` is not `win32` and where no console is attached, leaving
+  the other eleven matrix combinations untouched
 
 ## The Documentation Site
 
