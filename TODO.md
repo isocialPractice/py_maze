@@ -30,111 +30,6 @@ into a `## Complete` section at the bottom of this file.
   style that stops drawing what the documentation shows fails the suite
   - From: Rendering Styles and Character Sets
 
-### Code Review Override - the deferred-promotion check that outlived its limit
-
-#### Found Issues
-
-- [ ] The agent note's check on the override branch's flag promotion outlived
-  its retention limit without ever reaching a state this repository's turn
-  cycle produces
-  - **Issue**: `.claude/agent-note.md` carried a section written 10-09-26,
-    `The deferred code review was promoted, not rewritten again`, verifying a
-    hand fix to `.claude/constants.md` - the **On complete** step of the
-    override branch under `## Code Review Conditions` `->` `### Initial
-    Prompt`, changed so that a deferred `.claude/code-review.skipped` is
-    **moved** into `.claude/code-review.requested` rather than written over
-    with a fresh one. `node notes.mjs --stale .` named it on 11-24-26 as
-    written 46 days ago against a limit of 30
-    (`folders.agent-note.max-days` in the tool's `configs/retention.json`),
-    and it was closed on that ask rather than carried another turn. What was
-    tried: 42 **Observed** lines from 10-08-26 to 11-23-26, each recording
-    whether a deferred review flag was on disk and whether `## Current`
-    carried a level 3 override header. The check could answer only from the
-    pair `flag: yes, override: yes`, that being the one branch the fix
-    governs, and the pair was recorded twice - 10-08-26, the turn that opened
-    the deferral, and 10-09-26, the failure the fix was written for - and
-    never once in the 40 lines after the fix shipped. The cause is the cycle
-    rather than the check: a turn that finds a deferred flag takes the `Else`
-    branch and promotes it, the reviewer answers that request and deletes it,
-    and the override turn that follows therefore arrives with no review name
-    on disk and writes a fresh `.claude/code-review.skipped` on its way out.
-    The pair needs two override turns back to back, or a promoted request a
-    reviewer never answers, and neither happened in 46 days. The fix has been
-    exercised throughout - roughly half those lines are promotions - but only
-    on the branch that promoted correctly before it as well. **Attempts**
-    stood at 1, so the three-strike close was never reached either
-  - **Goal**: Settle what to do with a check whose answering state this
-    repository does not produce, and record the decision where the next
-    reader of `.claude/constants.md` will meet it, since the override
-    branch's promotion step is the one part of that block no run here has
-    been observed taking. Three answers are open and this item picks none of
-    them: accept the fix as exercised on the `Else` branch and read on the
-    override branch, on the ground that the note's second section, `No
-    deferred review name outlives the turn that promoted it`, is already
-    watching the same pair under a bounded ten-line stop so nothing is left
-    unwatched; or re-aim the check at a state the cycle does produce, such as
-    an override turn following a turn whose promoted request went unanswered;
-    or drive the branch once deliberately, by leaving an override header
-    standing through a turn that also carries a deferred flag, and read what
-    the turn does with it
-  - From: Code Review Override - the deferred-promotion check that outlived its limit
-- [ ] `CHANGELOG.md` sends a reader to two files no clone of this repository
-  carries
-  - **Issue**: the archive step in `6a3fa34` moved 26 entries out of
-    `CHANGELOG.md` into `CHANGELOG-2026.md` and `CHANGELOG-2025.md` and
-    wrote two pointers above the entries - `> 25 earlier entries in
-    CHANGELOG-2026.md, newest first.` and `> 1 earlier entry in
-    CHANGELOG-2025.md, newest first.` - and committed both year files as
-    tracked in that same commit, so the pointers were true when they were
-    written. `1fdd8e2`, later the same day, ran both files out of the index
-    and added `CHANGELOG-*.md` to `.gitignore`. They are still on disk here
-    and `git ls-files` names neither, so a `git clone` of this repository
-    gets a `CHANGELOG.md` whose first two lines of navigation point at files
-    that are not there, and the 26 entries each year file's own preamble
-    says are "here so a dated entry can still be found by its date" exist on
-    one machine only. Nothing in the suite reads those pointer lines, and
-    `root_documents()` now matches `CHANGELOG-<year>.md` away, so neither
-    the shape checks nor `TestDevelopmentFileTree` look at the year files
-    either - the suite is green on a checkout the pointers are broken in.
-    The same turn's rewrites of `docs/development.md` (line 218) and
-    `CONTRIBUTING.md` (line 237) describe them as documents the repository
-    root carries, which a reader of a clone cannot verify, and the comment
-    on `ROLLED_CHANGELOG` at `test_py_maze.py:105` says neither file being
-    on disk "was the ordinary state until 2026-11-23", which is still the
-    ordinary state in every checkout but this one
-  - **Goal**: Settle whether the year files belong in the repository, then
-    make one of the two sides say so. Either drop `CHANGELOG-*.md` from
-    `.gitignore` and track them, which keeps both pointers and both
-    documentation paragraphs true exactly as written and is what the roll's
-    own wording assumes; or keep them untracked and have the pointer lines,
-    the two documentation paragraphs and the `ROLLED_CHANGELOG` comment say
-    the roll writes them beside a working copy rather than into the
-    repository. The `.gitignore` line is the user's and the pointer text is
-    the archive roll's own output - a pointer edited here is rewritten by the
-    next roll - so neither half of this is for a review to choose
-  - From: Code Review Override - the deferred-promotion check that outlived its limit
-- [ ] The two new comments on `MODE_MARKERS` count seven characters as eight
-  - **Issue**: `TestEveryFieldOfAStyleDraws.MARKERS` is
-    `frozenset('* o.?~$X#&@')`, eleven characters, and `MODE_MARKERS` holds
-    four of them - `X`, `#`, `&` and `@`. The remainder is seven, not eight,
-    because `FRONTIER_MARKER` and `HINT_MARKER` are both `?`: the eight
-    style fields fall back to seven distinct characters.
-    `len(MARKERS - MODE_MARKERS)` is 7. Both comments added in `6a3fa34`
-    say eight - `test_py_maze.py:16691`, "the other eight of MARKERS are
-    exactly what a style field falls back to", and `test_py_maze.py:16834`,
-    subtracting the whole of `MARKERS` "takes the eight characters a style
-    field falls back to out of the set as well". The `1.0.0a19` entry states
-    it correctly one commit over - "Eight of the twelve markers in
-    `MARKERS` - seven distinct characters among them, `FRONTIER_MARKER` and
-    `HINT_MARKER` both being `?`" - so the distinction was known when the
-    comments were written and only the comments dropped it. Nothing fails;
-    a reader counting the frozenset against either comment finds the two
-    disagree, and the count is the whole of what those comments are for
-  - **Goal**: Say seven characters in both, or say eight fields and seven
-    characters the way the changelog entry does, so the figure a reader can
-    check matches the figure the comment claims
-  - From: Code Review Override - the deferred-promotion check that outlived its limit
-
 ## Fixes and Hardening
 
 Bug fixes and robustness improvements to the existing game. Completing an
@@ -590,7 +485,35 @@ these move the version.
 Files the project is expected to carry and the prose the library half needs.
 None of these move the version.
 
-No items are currently queued in this section.
+- [ ] Say in `.claude/constants.md` that the override branch's flag promotion
+  is correct and unexercised here, so the next reader of that block does not
+  raise it a fourth time
+  - **Issue**: under `## Code Review Conditions` `->` `### Initial Prompt`,
+    the override branch's **On complete** splits on whether a deferred review
+    name is on disk. Its *either flag is there* half has never been observed
+    running in this repository, and the reason is the turn cycle rather than
+    the rule: an override turn ends by writing a fresh
+    `.claude/code-review.skipped`, so its reviewer stands down and queues
+    nothing; the turn after finds that name, takes the `Else` branch, promotes
+    it and exits without touching the queue; the reviewer answers the promoted
+    request and deletes it; so the override turn that reviewer queues always
+    arrives with no review name on disk. The pair needs an override header to
+    survive its own turn, which happens only on a partially applied override
+    run or behind a paused override item. Three checks have now been written
+    to wait for it: `Deferred GUI Test 2`'s agent note from 10-09-26, the
+    section retired on 11-24-26 after 46 days and 42 observed lines, and the
+    found issue that retirement raised, worked on 11-25-26 by re-aiming the
+    live check at the invariant the cycle does produce - a deferred name
+    written, found unchanged, promoted, and gone the turn after
+  - **Goal**: `.claude/constants.md` is the user's file and no run edits it,
+    so this item cannot write the note itself. One sentence under the override
+    branch's **On complete** is what it asks for: that the *either flag is
+    there* half is correct and unexercised here, that an override header
+    surviving its own turn is what would exercise it, and that the invariant
+    is watched in `.claude/agent-note.md` instead. Working this item is one
+    read of `.claude/constants.md`: check it off either way, and say in the
+    run's output whether that branch now carries the sentence, so the operator
+    hears about this once per raising rather than once per run
 
 ## Complete
 
@@ -3623,5 +3546,105 @@ No items are currently queued in this section.
     comment on `WIDE`, `NARROW` and `TIGHT` directly above already
     describes three, so this is the only line in the class that counts two
   - From: UI/UX Override - the corrected fallback claim on a real console
+- [x] The agent note's check on the override branch's flag promotion outlived
+  its retention limit without ever reaching a state this repository's turn
+  cycle produces
+  - **Issue**: `.claude/agent-note.md` carried a section written 10-09-26,
+    `The deferred code review was promoted, not rewritten again`, verifying a
+    hand fix to `.claude/constants.md` - the **On complete** step of the
+    override branch under `## Code Review Conditions` `->` `### Initial
+    Prompt`, changed so that a deferred `.claude/code-review.skipped` is
+    **moved** into `.claude/code-review.requested` rather than written over
+    with a fresh one. `node notes.mjs --stale .` named it on 11-24-26 as
+    written 46 days ago against a limit of 30
+    (`folders.agent-note.max-days` in the tool's `configs/retention.json`),
+    and it was closed on that ask rather than carried another turn. What was
+    tried: 42 **Observed** lines from 10-08-26 to 11-23-26, each recording
+    whether a deferred review flag was on disk and whether `## Current`
+    carried a level 3 override header. The check could answer only from the
+    pair `flag: yes, override: yes`, that being the one branch the fix
+    governs, and the pair was recorded twice - 10-08-26, the turn that opened
+    the deferral, and 10-09-26, the failure the fix was written for - and
+    never once in the 40 lines after the fix shipped. The cause is the cycle
+    rather than the check: a turn that finds a deferred flag takes the `Else`
+    branch and promotes it, the reviewer answers that request and deletes it,
+    and the override turn that follows therefore arrives with no review name
+    on disk and writes a fresh `.claude/code-review.skipped` on its way out.
+    The pair needs two override turns back to back, or a promoted request a
+    reviewer never answers, and neither happened in 46 days. The fix has been
+    exercised throughout - roughly half those lines are promotions - but only
+    on the branch that promoted correctly before it as well. **Attempts**
+    stood at 1, so the three-strike close was never reached either
+  - **Goal**: Settle what to do with a check whose answering state this
+    repository does not produce, and record the decision where the next
+    reader of `.claude/constants.md` will meet it, since the override
+    branch's promotion step is the one part of that block no run here has
+    been observed taking. Three answers are open and this item picks none of
+    them: accept the fix as exercised on the `Else` branch and read on the
+    override branch, on the ground that the note's second section, `No
+    deferred review name outlives the turn that promoted it`, is already
+    watching the same pair under a bounded ten-line stop so nothing is left
+    unwatched; or re-aim the check at a state the cycle does produce, such as
+    an override turn following a turn whose promoted request went unanswered;
+    or drive the branch once deliberately, by leaving an override header
+    standing through a turn that also carries a deferred flag, and read what
+    the turn does with it
+  - From: Code Review Override - the deferred-promotion check that outlived its limit
+- [x] `CHANGELOG.md` sends a reader to two files no clone of this repository
+  carries
+  - **Issue**: the archive step in `6a3fa34` moved 26 entries out of
+    `CHANGELOG.md` into `CHANGELOG-2026.md` and `CHANGELOG-2025.md` and
+    wrote two pointers above the entries - `> 25 earlier entries in
+    CHANGELOG-2026.md, newest first.` and `> 1 earlier entry in
+    CHANGELOG-2025.md, newest first.` - and committed both year files as
+    tracked in that same commit, so the pointers were true when they were
+    written. `1fdd8e2`, later the same day, ran both files out of the index
+    and added `CHANGELOG-*.md` to `.gitignore`. They are still on disk here
+    and `git ls-files` names neither, so a `git clone` of this repository
+    gets a `CHANGELOG.md` whose first two lines of navigation point at files
+    that are not there, and the 26 entries each year file's own preamble
+    says are "here so a dated entry can still be found by its date" exist on
+    one machine only. Nothing in the suite reads those pointer lines, and
+    `root_documents()` now matches `CHANGELOG-<year>.md` away, so neither
+    the shape checks nor `TestDevelopmentFileTree` look at the year files
+    either - the suite is green on a checkout the pointers are broken in.
+    The same turn's rewrites of `docs/development.md` (line 218) and
+    `CONTRIBUTING.md` (line 237) describe them as documents the repository
+    root carries, which a reader of a clone cannot verify, and the comment
+    on `ROLLED_CHANGELOG` at `test_py_maze.py:105` says neither file being
+    on disk "was the ordinary state until 2026-11-23", which is still the
+    ordinary state in every checkout but this one
+  - **Goal**: Settle whether the year files belong in the repository, then
+    make one of the two sides say so. Either drop `CHANGELOG-*.md` from
+    `.gitignore` and track them, which keeps both pointers and both
+    documentation paragraphs true exactly as written and is what the roll's
+    own wording assumes; or keep them untracked and have the pointer lines,
+    the two documentation paragraphs and the `ROLLED_CHANGELOG` comment say
+    the roll writes them beside a working copy rather than into the
+    repository. The `.gitignore` line is the user's and the pointer text is
+    the archive roll's own output - a pointer edited here is rewritten by the
+    next roll - so neither half of this is for a review to choose
+  - From: Code Review Override - the deferred-promotion check that outlived its limit
+- [x] The two new comments on `MODE_MARKERS` count seven characters as eight
+  - **Issue**: `TestEveryFieldOfAStyleDraws.MARKERS` is
+    `frozenset('* o.?~$X#&@')`, eleven characters, and `MODE_MARKERS` holds
+    four of them - `X`, `#`, `&` and `@`. The remainder is seven, not eight,
+    because `FRONTIER_MARKER` and `HINT_MARKER` are both `?`: the eight
+    style fields fall back to seven distinct characters.
+    `len(MARKERS - MODE_MARKERS)` is 7. Both comments added in `6a3fa34`
+    say eight - `test_py_maze.py:16691`, "the other eight of MARKERS are
+    exactly what a style field falls back to", and `test_py_maze.py:16834`,
+    subtracting the whole of `MARKERS` "takes the eight characters a style
+    field falls back to out of the set as well". The `1.0.0a19` entry states
+    it correctly one commit over - "Eight of the twelve markers in
+    `MARKERS` - seven distinct characters among them, `FRONTIER_MARKER` and
+    `HINT_MARKER` both being `?`" - so the distinction was known when the
+    comments were written and only the comments dropped it. Nothing fails;
+    a reader counting the frozenset against either comment finds the two
+    disagree, and the count is the whole of what those comments are for
+  - **Goal**: Say seven characters in both, or say eight fields and seven
+    characters the way the changelog entry does, so the figure a reader can
+    check matches the figure the comment claims
+  - From: Code Review Override - the deferred-promotion check that outlived its limit
 
 </details>

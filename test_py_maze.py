@@ -102,8 +102,9 @@ README_MAX_CHARACTERS = 30000
 # verbatim under a heading the roll writes itself, so the shape is the
 # roll's and not this repository's to keep, and the checks that read the
 # root for documents leave them out rather than measuring generated text.
-# Neither need be on disk at all, which was the ordinary state until
-# 2026-11-23
+# Neither is tracked - .gitignore names both - so neither need be on disk
+# at all, and in a fresh clone neither is: each is written beside a
+# working copy its roll has run in
 #
 # The changelog's are matched on the pattern rather than named, because
 # there is one per year: a list of them is a list that falls behind on a
@@ -16688,10 +16689,12 @@ class TestEveryFieldOfAStyleDraws(unittest.TestCase):
     # to the mode rather than to the style and are drawn whatever a run
     # is drawing in. These are the only markers a mode's play screen
     # may legitimately carry, and so the only ones subtracted before a
-    # screen is read against the style it was drawn in: the other eight
-    # of MARKERS are exactly what a style field falls back to, and
-    # taking those out as well removes every fallback the reading
-    # exists to catch before the comparison runs
+    # screen is read against the style it was drawn in: the seven
+    # characters left in MARKERS are exactly what the eight style
+    # fields fall back to - seven characters over eight fields because
+    # FRONTIER_MARKER and HINT_MARKER are both `?` - and taking those
+    # out as well removes every fallback the reading exists to catch
+    # before the comparison runs
     MODE_MARKERS = frozenset([py_maze.CHASER_MARKER, py_maze.DOOR_MARKER,
                               py_maze.BOX_MARKER, py_maze.GUIDE_MARKER])
 
@@ -16746,6 +16749,27 @@ class TestEveryFieldOfAStyleDraws(unittest.TestCase):
                      'DOOR_MARKER', 'BOX_MARKER', 'GUIDE_MARKER'):
             with self.subTest(marker=name):
                 self.assertIn(getattr(py_maze, name), self.MARKERS)
+
+    def test_the_mode_markers_leave_seven_characters_behind(self):
+        # the figure both comments on MODE_MARKERS state, read off the
+        # sets rather than left to a reader to count. The 1.0.0a19
+        # comments said eight characters, which is the count of the
+        # fields: MARKERS holds eleven characters for twelve module
+        # markers, four of them a mode's, so what a style field can
+        # fall back to is seven characters over eight fields,
+        # FRONTIER_MARKER and HINT_MARKER both being `?`
+        fallbacks = frozenset(
+            getattr(py_maze, name)
+            for name in ('WALL_MARKER', 'OPEN_MARKER', 'PLAYER_MARKER',
+                         'SOLUTION_MARKER', 'FRONTIER_MARKER',
+                         'VISITED_MARKER', 'HINT_MARKER',
+                         'COLLECTIBLE_MARKER'))
+
+        self.assertEqual(len(py_maze.MazeStyle._fields), 8)
+        self.assertEqual(len(self.MARKERS), 11)
+        self.assertEqual(len(self.MODE_MARKERS), 4)
+        self.assertEqual(self.MARKERS - self.MODE_MARKERS, fallbacks)
+        self.assertEqual(len(fallbacks), 7)
 
     def test_no_shipped_style_can_tell_a_field_from_its_marker(self):
         # why the style above had to be written rather than taken from
@@ -16831,10 +16855,10 @@ class TestEveryFieldOfAStyleDraws(unittest.TestCase):
         # mode's rather than the style's, so the reading here is that
         # nothing a style does reach falls back to a module constant.
         # MODE_MARKERS is what that costs and all it costs: subtracting
-        # the whole of MARKERS instead takes the eight characters a
-        # style field falls back to out of the set as well, and the
-        # subset then holds against a screen drawn entirely in module
-        # constants
+        # the whole of MARKERS instead takes the seven characters the
+        # eight style fields fall back to out of the set as well, and
+        # the subset then holds against a screen drawn entirely in
+        # module constants
         grid = self.grid()
 
         for name in py_maze.MODES:

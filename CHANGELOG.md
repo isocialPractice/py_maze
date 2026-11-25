@@ -22,9 +22,68 @@ recorded under a dateless `## [Unreleased]` heading above the entries, which
 is where Keep a Changelog puts it, and folds into the next version's entry
 when one is written.
 
-> 25 earlier entries in `CHANGELOG-2026.md`, newest first.
+**The two lines below are the changelog roll's own, and name files this
+repository does not carry.** Entries older than the window the roll keeps are
+moved into a `CHANGELOG-<year>.md` beside this file, one per year, and a line
+counting each is written here. `.gitignore` names those files, so each is
+written beside a working copy the roll has run in rather than into the
+repository: in a clone the entries they count are in this file's history
+rather than in a document on disk.
+
+> 26 earlier entries in `CHANGELOG-2026.md`, newest first.
 
 > 1 earlier entry in `CHANGELOG-2025.md`, newest first.
+
+## [1.0.0a20] - 2026-11-25
+
+Every claim this entry corrects is a claim about the repository rather than
+about the code: a marker count stated in two comments and checkable in
+neither, and four places describing the changelog's year files as documents
+a clone carries. The suite gained the one test that makes the count
+checkable.
+
+### Added
+
+- **`test_the_mode_markers_leave_seven_characters_behind` pins the partition
+  both `MODE_MARKERS` comments describe.** `MARKERS` is
+  `frozenset('* o.?~$X#&@')` - eleven characters for the twelve markers the
+  modules define - and `MODE_MARKERS` holds four of them, so what the eight
+  style fields fall back to is the other seven. The figure was stated in two
+  comments and in the `1.0.0a19` entry and checkable in none of them: it now
+  reads the sets, holding `len(MazeStyle._fields)` at eight, `len(MARKERS)`
+  at eleven, `len(MODE_MARKERS)` at four, and `MARKERS - MODE_MARKERS`
+  against the eight fallback constants themselves, which are seven
+  characters. Measured by moving that last count to the eight the comments
+  had: the test fails
+
+### Fixed
+
+- **The two comments on `MODE_MARKERS` counted seven characters as eight.**
+  `test_py_maze.py` said "the other eight of MARKERS are exactly what a
+  style field falls back to" where `MODE_MARKERS` is defined, and
+  "subtracting the whole of MARKERS instead takes the eight characters a
+  style field falls back to out of the set as well" in
+  `test_every_mode_draws_its_whole_play_screen_from_the_style`.
+  `len(MARKERS - MODE_MARKERS)` is seven, `FRONTIER_MARKER` and
+  `HINT_MARKER` both being `?`; eight is the count of the style's fields,
+  which is the distinction the `1.0.0a19` entry drew one commit earlier and
+  these two comments dropped. Both now say seven characters over eight
+  fields
+- **Four places described the changelog's year files as documents this
+  repository carries.** `.gitignore` names `CHANGELOG-*.md` and
+  `TODO-archive.md`, so a `git clone` gets neither, while the two
+  `> N earlier entries in CHANGELOG-<year>.md` pointers above the entries
+  here name them as though it did. Those pointer lines are the changelog
+  roll's own output and are rewritten by every roll, so the four places a
+  person writes are what changed: the preamble of this file, the shape
+  paragraph in `CONTRIBUTING.md`, the same paragraph in
+  `docs/development.md`, and the comment on `ROLLED_CHANGELOG` in
+  `test_py_maze.py`. Each now says the year files are written beside a
+  working copy the roll has run in, with the entries they count in this
+  repository's history rather than in a document it holds. The
+  `ROLLED_CHANGELOG` comment no longer dates their absence to before
+  2026-11-23, which is still the state of every checkout but the one the
+  roll ran in
 
 ## [1.0.0a19] - 2026-11-23
 
@@ -2312,40 +2371,3 @@ reading rather than two that have to be kept agreeing.
 - The library page checks every `>>>` example on it rather than only the
   first. The new one under **Measuring a maze** would otherwise have been
   prose nothing ran, which is the drift the check exists to catch.
-
-## [2.7.4] - 2026-09-24
-
-A review of the two tests 2.7.3 rewrote: the sweep now has both of its ends
-pinned, but neither was read off a screen anything held still, and the two
-assertions that replaced a tautology were each a line a sibling test already
-made on the same play. Both are test-suite changes. Nothing a player does
-behaves differently and nothing is added to the public surface.
-
-### Fixed
-
-- `test_the_sweep_runs_from_a_cut_frame_to_a_whole_one` now checks the start
-  marker is still on the top row before it reads an index off the screen,
-  the guard every other index-reading test in
-  `TestTheEndingIsGivenRowsOfItsOwn` takes in one of its two forms. An index
-  says where the game drew something only while nothing has scrolled off the
-  top: a frame drawn with `k` maze rows more than the end claims, on a
-  console that then scrolls `k` rows to pay for them, leaves the foot on the
-  same index and the assertion holds for an end that is not the one the
-  comment names. That state is what `fit_frame` reserving a row too few
-  reaches at the tightest end of the sweep, which is the defect the class
-  exists to catch, and the test passed it. It now fails on the start marker
-  at that end.
-- `test_the_maze_is_what_the_extra_row_costs` and
-  `test_the_maze_is_what_an_interrupt_costs_too` no longer restate an
-  assertion a sibling test makes. Each gained one in 2.7.3 in place of the
-  tautology it dropped, and each replacement compares the same rows a
-  sibling compares on identical keys and an identical console: the ending
-  slice in the first is the one `assert_the_frame_survived` checks for
-  `test_a_chase_played_to_a_catch_keeps_the_start_marker`, and the goodbye
-  slice in the second is the third assertion of
-  `test_an_interrupt_is_given_rows_of_its_own_as_well`. Both lines are gone,
-  so each fact is stated once and each test carries its own subject. What
-  the tautology covered is covered still: `frame_foot_at` matches the
-  frame's foot rows against the screen and fails the test outright when they
-  are nowhere on it, so the length line above pins a row those rows were
-  found on, and both tests now say so where they are read.

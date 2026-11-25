@@ -236,7 +236,10 @@ added there and to nothing else fails the suite rather than being quietly
 left unread. What a tool writes is left out - `TODO-archive.md` and the
 `CHANGELOG-<year>.md` files the two rolls move finished items and older
 entries into - because the shape of those is the roll's rather than this
-repository's.
+repository's. `.gitignore` names both, so neither is a document the
+repository carries: each is written beside a working copy its roll has run
+in, and a clone has neither. `CHANGELOG.md` opens with what that means for
+the two pointer lines the changelog roll writes above its entries.
 
 What is inside a fenced code block is left out of that count, as MD012
 leaves it out: the blank lines in there belong to the code rather than to

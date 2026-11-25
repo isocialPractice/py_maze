@@ -217,7 +217,13 @@ than being left unread. The ones a tool writes are left out, those being
 `TODO-archive.md`, where finished `TODO.md` items roll, and the
 `CHANGELOG-<year>.md` files older changelog entries roll into: each holds text
 verbatim under a heading the roll writes, so its shape belongs to the roll
-rather than to this repository. What sits inside a fenced code block is left
+rather than to this repository. Neither is in the repository at all -
+`.gitignore` names both - so each is written beside a working copy its roll
+has run in, and a fresh clone carries neither. That is what the
+`> N earlier entries in CHANGELOG-<year>.md` lines above the entries in
+`CHANGELOG.md` are: the changelog roll's own output, naming files of that
+kind, with the entries they count held in this repository's history rather
+than in a document it carries. What sits inside a fenced code block is left
 out of the count the way MD012 leaves it out, so an example can be spaced the
 way PEP 8 asks.
 A fence is read inside a blockquote as well as outside one, closing at the
